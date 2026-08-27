@@ -36,6 +36,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
 
   // Official PKCE Compliant Native Google OAuth Request Hook
   const [request, response, promptAsync] = Google.useAuthRequest({
+    clientId: GOOGLE_CONFIG.webClientId,
     webClientId: GOOGLE_CONFIG.webClientId,
     iosClientId: GOOGLE_CONFIG.iosClientId,
     androidClientId: GOOGLE_CONFIG.androidClientId,
