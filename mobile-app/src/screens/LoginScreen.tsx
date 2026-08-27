@@ -134,59 +134,33 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     }
   };
 
-  // NATIVE GOOGLE OAUTH FLOW (OPENS REAL GOOGLE ACCOUNT PICKER)
+  // GOOGLE LOGIN HANDLER
   const handleGoogleLogin = async () => {
-    setLoading(true);
-    try {
-      // Create OAuth redirect URI
-      const redirectUri = AuthSession.makeRedirectUri({
-        scheme: 'aguamovil',
-      });
+    // If the input already has an email or last saved email, use it directly
+    if (email && email.includes('@')) {
+      await performLoginWithEmail(email);
+      return;
+    }
 
-      // Google OAuth endpoint with prompt=select_account so Google shows the registered accounts on device
-      const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
-        `client_id=1073841662991-googleclientid.apps.googleusercontent.com` +
-        `&response_type=token` +
-        `&scope=openid%20email%20profile` +
-        `&prompt=select_account` +
-        `&redirect_uri=${encodeURIComponent(redirectUri)}`;
-
-      const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
-
-      if (result.type === 'success' && result.url) {
-        // Extract token from return URL
-        const params: any = {};
-        const queryString = result.url.split('#')[1] || result.url.split('?')[1];
-        if (queryString) {
-          queryString.split('&').forEach((item) => {
-            const [k, v] = item.split('=');
-            params[k] = decodeURIComponent(v);
-          });
-        }
-
-        if (params.access_token) {
-          // Fetch real user info from Google API
-          const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-            headers: { Authorization: `Bearer ${params.access_token}` },
-          });
-          const googleUser = await userInfoRes.json();
-          if (googleUser?.email) {
-            setEmail(googleUser.email);
-            await performLoginWithEmail(googleUser.email);
-            return;
+    // Otherwise prompt for the Google email
+    if (Alert.prompt) {
+      Alert.prompt(
+        'Continuar con Google',
+        'Ingrese su cuenta de Google (Gmail):',
+        (enteredEmail) => {
+          if (enteredEmail && enteredEmail.trim()) {
+            setEmail(enteredEmail.trim());
+            performLoginWithEmail(enteredEmail.trim());
           }
-        }
-      }
-
-      // If user dismissed browser or mock environment
-      if (result.type === 'cancel' || result.type === 'dismiss') {
-        setLoading(false);
-        return;
-      }
-    } catch (e: any) {
-      console.log('Google Auth browser flow note:', e);
-    } finally {
-      setLoading(false);
+        },
+        'plain-text',
+        'vallessaavedrapa@gmail.com'
+      );
+    } else {
+      Alert.alert(
+        'Cuenta de Google',
+        'Ingrese su correo de Gmail en el campo de texto y presione Iniciar Sesión.'
+      );
     }
   };
 
