@@ -13,11 +13,13 @@ import {
   Modal,
 } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
-import * as AuthSession from 'expo-auth-session';
+import * as Google from 'expo-auth-session/providers/google';
 import { getDatabase } from '../database/schema';
 import { BACKEND_URL } from '../config/api';
 
 WebBrowser.maybeCompleteAuthSession();
+
+const GOOGLE_CLIENT_ID = '764046725831-mhk7ojia6n283cpo75dtq1sptn24hj71.apps.googleusercontent.com';
 
 interface LoginScreenProps {
   onLoginSuccess: (user: any) => void;
@@ -26,6 +28,13 @@ interface LoginScreenProps {
 export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Official PKCE Compliant Google OAuth Request Hook
+  const [request, response, promptAsync] = Google.useAuthRequest({
+    webClientId: GOOGLE_CLIENT_ID,
+    iosClientId: GOOGLE_CLIENT_ID,
+    androidClientId: GOOGLE_CLIENT_ID,
+  });
 
   const [unauthorizedModal, setUnauthorizedModal] = useState<{ visible: boolean; email: string; message: string }>({
     visible: false,
@@ -134,56 +143,37 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     }
   };
 
-const GOOGLE_CLIENT_ID = '764046725831-mhk7ojia6n283cpo75dtq1sptn24hj71.apps.googleusercontent.com';
-
-  // GOOGLE LOGIN HANDLER (OPENS REAL GOOGLE ACCOUNT SELECTOR BROWSER)
-  const handleGoogleLogin = async () => {
-    setLoading(true);
-    try {
-      // 1. Create native OAuth redirect URI
-      const redirectUri = AuthSession.makeRedirectUri({
-        scheme: 'aguamovil',
-      });
-
-      // 2. Build official Google OAuth 2.0 Auth URL with prompt=select_account
-      const authUrl =
-        `https://accounts.google.com/o/oauth2/v2/auth?` +
-        `client_id=${encodeURIComponent(GOOGLE_CLIENT_ID)}` +
-        `&response_type=token` +
-        `&scope=${encodeURIComponent('openid email profile')}` +
-        `&prompt=select_account` +
-        `&redirect_uri=${encodeURIComponent(redirectUri)}`;
-
-      // 3. Open native browser session with real Google Accounts
-      const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
-
-      if (result.type === 'success' && result.url) {
-        // Extract token from return URL hash or query params
-        const hash = result.url.split('#')[1] || result.url.split('?')[1] || '';
-        const params: Record<string, string> = {};
-        hash.split('&').forEach((part) => {
-          const [k, v] = part.split('=');
-          if (k && v) params[k] = decodeURIComponent(v);
-        });
-
-        if (params.access_token) {
-          // 4. Fetch real account info from Google
-          const userInfoRes = await fetch('https://www.googleapis.com/userinfo/v2/me', {
-            headers: { Authorization: `Bearer ${params.access_token}` },
-          });
-          const googleUser = await userInfoRes.json();
-          if (googleUser?.email) {
-            setEmail(googleUser.email);
-            await performLoginWithEmail(googleUser.email);
-            return;
-          }
-        }
+  useEffect(() => {
+    if (response?.type === 'success') {
+      const { authentication } = response;
+      if (authentication?.accessToken) {
+        setLoading(true);
+        fetch('https://www.googleapis.com/userinfo/v2/me', {
+          headers: { Authorization: `Bearer ${authentication.accessToken}` },
+        })
+          .then((res) => res.json())
+          .then((googleUser) => {
+            if (googleUser?.email) {
+              setEmail(googleUser.email);
+              performLoginWithEmail(googleUser.email);
+            }
+          })
+          .catch((err) => {
+            console.error('Error fetching Google user info:', err);
+            Alert.alert('Error', 'No se pudo obtener el perfil de Google.');
+          })
+          .finally(() => setLoading(false));
       }
+    }
+  }, [response]);
+
+  // GOOGLE LOGIN HANDLER (OPENS OFFICIAL GOOGLE PROMPT WITH PKCE)
+  const handleGoogleLogin = async () => {
+    try {
+      await promptAsync();
     } catch (err: any) {
-      console.log('Google OAuth error:', err);
-      Alert.alert('Error con Google', 'No se pudo completar el acceso con Google: ' + err.message);
-    } finally {
-      setLoading(false);
+      console.error('Google Auth prompt error:', err);
+      Alert.alert('Error con Google', 'No se pudo abrir el selector de Google: ' + err.message);
     }
   };
 
