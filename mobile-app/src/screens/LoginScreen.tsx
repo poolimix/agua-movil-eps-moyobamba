@@ -145,37 +145,26 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     }
   };
 
-  useEffect(() => {
-    if (response?.type === 'success') {
-      const { authentication } = response;
-      if (authentication?.accessToken) {
-        setLoading(true);
-        fetch('https://www.googleapis.com/userinfo/v2/me', {
-          headers: { Authorization: `Bearer ${authentication.accessToken}` },
-        })
-          .then((res) => res.json())
-          .then((googleUser) => {
-            if (googleUser?.email) {
-              setEmail(googleUser.email);
-              performLoginWithEmail(googleUser.email);
-            }
-          })
-          .catch((err) => {
-            console.error('Error fetching Google user info:', err);
-            Alert.alert('Error', 'No se pudo obtener el perfil de Google.');
-          })
-          .finally(() => setLoading(false));
-      }
-    }
-  }, [response]);
-
-  // GOOGLE LOGIN HANDLER (OPENS OFFICIAL GOOGLE PROMPT WITH PKCE)
+  // GOOGLE LOGIN HANDLER (OPENS OFFICIAL GOOGLE PROMPT)
   const handleGoogleLogin = async () => {
+    setLoading(true);
     try {
-      await promptAsync();
+      const result = await promptAsync();
+      if (result.type === 'success' && result.authentication?.accessToken) {
+        const userInfoRes = await fetch('https://www.googleapis.com/userinfo/v2/me', {
+          headers: { Authorization: `Bearer ${result.authentication.accessToken}` },
+        });
+        const googleUser = await userInfoRes.json();
+        if (googleUser?.email) {
+          setEmail(googleUser.email);
+          await performLoginWithEmail(googleUser.email);
+          return;
+        }
+      }
     } catch (err: any) {
       console.error('Google Auth prompt error:', err);
-      Alert.alert('Error con Google', 'No se pudo abrir el selector de Google: ' + err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
