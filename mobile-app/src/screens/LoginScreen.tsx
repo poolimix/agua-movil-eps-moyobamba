@@ -13,7 +13,7 @@ import {
   Modal,
 } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
-import * as Google from 'expo-auth-session/providers/google';
+import * as AuthSession from 'expo-auth-session';
 import { getDatabase } from '../database/schema';
 import { BACKEND_URL } from '../config/api';
 
@@ -28,15 +28,6 @@ interface LoginScreenProps {
 export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
-
-  // Official PKCE Compliant Google OAuth Request Hook with Expo Auth Proxy
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    clientId: GOOGLE_CLIENT_ID,
-    webClientId: GOOGLE_CLIENT_ID,
-    iosClientId: GOOGLE_CLIENT_ID,
-    androidClientId: GOOGLE_CLIENT_ID,
-    redirectUri: 'https://auth.expo.io/@poolimix/mobile-app',
-  });
 
   const [unauthorizedModal, setUnauthorizedModal] = useState<{ visible: boolean; email: string; message: string }>({
     visible: false,
@@ -145,46 +136,56 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     }
   };
 
-  // GOOGLE LOGIN HANDLER (OPENS OFFICIAL GOOGLE PROMPT)
+  // DIRECT GOOGLE AUTH (BYPASSES AUTH.EXPO.IO ENTIRELY)
   const handleGoogleLogin = async () => {
     setLoading(true);
     try {
-      const result = await promptAsync();
-      if (result.type === 'success' && result.authentication?.accessToken) {
-        const userInfoRes = await fetch('https://www.googleapis.com/userinfo/v2/me', {
-          headers: { Authorization: `Bearer ${result.authentication.accessToken}` },
+      const redirectUri = AuthSession.makeRedirectUri({
+        scheme: 'aguamovil',
+      });
+
+      const authUrl =
+        `https://accounts.google.com/o/oauth2/v2/auth?` +
+        `client_id=${encodeURIComponent(GOOGLE_CLIENT_ID)}` +
+        `&response_type=token` +
+        `&scope=${encodeURIComponent('openid email profile')}` +
+        `&prompt=select_account` +
+        `&redirect_uri=${encodeURIComponent(redirectUri)}`;
+
+      const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
+
+      if (result.type === 'success' && result.url) {
+        const hash = result.url.split('#')[1] || result.url.split('?')[1] || '';
+        const params: Record<string, string> = {};
+        hash.split('&').forEach((part) => {
+          const [k, v] = part.split('=');
+          if (k && v) params[k] = decodeURIComponent(v);
         });
-        const googleUser = await userInfoRes.json();
-        if (googleUser?.email) {
-          setEmail(googleUser.email);
-          await performLoginWithEmail(googleUser.email);
-          return;
+
+        if (params.access_token) {
+          const userInfoRes = await fetch('https://www.googleapis.com/userinfo/v2/me', {
+            headers: { Authorization: `Bearer ${params.access_token}` },
+          });
+          const googleUser = await userInfoRes.json();
+          if (googleUser?.email) {
+            setEmail(googleUser.email);
+            await performLoginWithEmail(googleUser.email);
+            return;
+          }
         }
       }
     } catch (err: any) {
-      console.error('Google Auth prompt error:', err);
+      console.error('Google Auth error:', err);
     } finally {
       setLoading(false);
     }
   };
 
   const handleAppleLogin = async () => {
-    // Apple OAuth flow
     if (email) {
       performLoginWithEmail(email);
     } else {
-      Alert.prompt
-        ? Alert.prompt(
-            'Ingresar Apple ID / iCloud',
-            'Ingrese su correo registrado en Apple / EPS Moyobamba:',
-            (enteredEmail) => {
-              if (enteredEmail) {
-                setEmail(enteredEmail);
-                performLoginWithEmail(enteredEmail);
-              }
-            }
-          )
-        : Alert.alert('Ingresar Correo', 'Escriba su correo en el campo de texto y toque Iniciar Sesión.');
+      Alert.alert('Ingresar Correo', 'Escriba su correo en el campo de texto y presione Iniciar Sesión.');
     }
   };
 
@@ -254,7 +255,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
             <View style={styles.dividerLine} />
           </View>
 
-          {/* 2. BOTÓN GOOGLE (ABRE EL SELECTOR REAL DE CUENTAS DE GOOGLE) */}
+          {/* 2. BOTÓN GOOGLE */}
           <TouchableOpacity
             style={styles.googleBtn}
             onPress={handleGoogleLogin}
