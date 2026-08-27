@@ -8,14 +8,13 @@ const JWT_SECRET = process.env.JWT_SECRET || 'EPS_MOYOBAMBA_SECRET_KEY_2026';
 
 export const googleAuth = async (req: Request, res: Response) => {
   try {
-    const { idToken, email: bodyEmail, nombres: bodyName } = req.body;
+    const { idToken, email: bodyEmail } = req.body;
 
     if (!idToken && !bodyEmail) {
-      return res.status(400).json({ message: 'Token de Google (idToken) o Correo no proporcionado.' });
+      return res.status(400).json({ message: 'Token de Google o Correo no proporcionado.' });
     }
 
     let email = bodyEmail ? String(bodyEmail).trim().toLowerCase() : '';
-    let name = bodyName ? String(bodyName).trim() : '';
     let googleId = '';
 
     // 1. Try decoding with JWT if idToken is a real token
@@ -25,9 +24,6 @@ export const googleAuth = async (req: Request, res: Response) => {
         if (decoded) {
           if (!email && (decoded.email || decoded.user_id || decoded.sub)) {
             email = (decoded.email || '').toLowerCase();
-          }
-          if (!name) {
-            name = decoded.name || decoded.displayName || (email ? email.split('@')[0] : '');
           }
           googleId = decoded.sub || decoded.user_id || '';
         }
@@ -42,7 +38,6 @@ export const googleAuth = async (req: Request, res: Response) => {
           const payload = ticket.getPayload();
           if (payload && payload.email) {
             email = payload.email.toLowerCase();
-            name = payload.name || email.split('@')[0];
             googleId = payload.sub || '';
           }
         } catch (verifyErr) {
@@ -55,53 +50,40 @@ export const googleAuth = async (req: Request, res: Response) => {
       return res.status(401).json({ message: 'No se pudo obtener un correo válido de autenticación.' });
     }
 
-    // 3. Check if user exists in database
-    let userRes = await query(
+    // 3. STRICT CHECK: Check if user exists in database
+    const userRes = await query(
       'SELECT id, email, nombres, rol, estado FROM usuarios WHERE LOWER(email) = $1',
       [email]
     );
 
-    let user: any;
-
     if (userRes.rows.length === 0) {
-      // Auto-provision user so they can log in seamlessly
-      const countRes = await query('SELECT COUNT(*) as total FROM usuarios');
-      const totalUsers = parseInt(countRes.rows[0]?.total || '0', 10);
-      const assignedRole = totalUsers <= 3 || email.includes('admin') || email.includes('poolimix') || email.includes('valles') 
-        ? 'ADMIN' 
-        : 'OPERADOR_CAMPO';
-
-      const displayName = name || email.split('@')[0];
-      const insertRes = await query(
-        `INSERT INTO usuarios (email, nombres, rol, estado, google_id)
-         VALUES ($1, $2, $3, 'ACTIVO', $4)
-         RETURNING id, email, nombres, rol, estado`,
-        [email, displayName, assignedRole, googleId || null]
-      );
-      user = insertRes.rows[0];
-      console.log(`👤 Usuario registrado en EPS Moyobamba: ${email} [${assignedRole}]`);
-    } else {
-      user = userRes.rows[0];
-
-      if (user.estado !== 'ACTIVO') {
-        return res.status(403).json({
-          message: 'Su cuenta se encuentra INACTIVA. Contacte a la administración de EPS Moyobamba.',
-        });
-      }
-
-      // Update google_id if empty
-      if (googleId) {
-        await query('UPDATE usuarios SET google_id = $1 WHERE id = $2', [googleId, user.id]);
-      }
+      // STRICT SECURITY: Reject any unregistered email with 403
+      return res.status(403).json({
+        message: `Acceso Denegado: El correo (${email}) no está registrado en EPS Moyobamba. Solicite al Administrador que dé de alta su cuenta con su rol correspondiente.`,
+        unauthorizedEmail: email,
+      });
     }
 
-    // 4. Generate JWT signed session token
+    const user = userRes.rows[0];
+
+    if (user.estado !== 'ACTIVO') {
+      return res.status(403).json({
+        message: `Acceso Denegado: Su cuenta (${email}) se encuentra INACTIVA. Contacte a la administración de EPS Moyobamba.`,
+      });
+    }
+
+    // Update google_id if empty
+    if (googleId) {
+      await query('UPDATE usuarios SET google_id = $1 WHERE id = $2', [googleId, user.id]);
+    }
+
+    // 4. Generate JWT signed session token with strictly assigned database role
     const token = jwt.sign(
       {
         id: user.id,
         email: user.email,
         nombres: user.nombres,
-        rol: user.rol, // 'ADMIN', 'SUPERVISOR', 'OPERADOR_CAMPO', 'CONDUCTOR'
+        rol: user.rol, // STRICT ROLE: 'ADMIN', 'SUPERVISOR', 'OPERADOR_CAMPO', 'CONDUCTOR'
       },
       JWT_SECRET,
       { expiresIn: '7d' }
