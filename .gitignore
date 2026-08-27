@@ -1,0 +1,63 @@
+# Dependencies
+node_modules/
+*/node_modules/
+backend/node_modules/
+frontend/node_modules/
+mobile-app/node_modules/
+
+# Environment variables & secrets
+.env
+.env.local
+.env.*.local
+*.env
+backend/.env
+backend/.env.local
+frontend/.env
+frontend/.env.local
+mobile-app/.env
+
+# Allow .env.example
+!.env.example
+!backend/.env.example
+!frontend/.env.example
+!mobile-app/.env.example
+
+# Build Outputs & Bundles
+dist/
+build/
+*/dist/
+*/build/
+.output/
+
+# Expo / React Native
+.expo/
+.expo-shared/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+*.log
+
+# Editor & OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Uploaded field media
+backend/uploads/*
+!backend/uploads/.gitkeep
