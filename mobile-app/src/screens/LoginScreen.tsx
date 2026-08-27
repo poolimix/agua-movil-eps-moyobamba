@@ -132,17 +132,23 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
       Alert.alert('Bienvenido', `Sesión iniciada como: ${data.user.nombres} (${data.user.rol})`);
       onLoginSuccess(data.user);
     } catch (err: any) {
-      // Offline fallback: check if session already exists in local SQLite
+      // Offline fallback: ONLY allow offline access if this exact user was previously verified and stored in local SQLite
       try {
         const db = await getDatabase();
-        await db.runAsync('DELETE FROM sesion_usuario');
-        await db.runAsync(
-          `INSERT INTO sesion_usuario (id, email, nombres, rol, token, created_at)
-           VALUES (1, ?, ?, ?, ?, ?)`,
-          [cleanEmail, cleanEmail.split('@')[0], 'OPERADOR_CAMPO', 'offline_token', new Date().toISOString()]
-        );
-        Alert.alert('Modo Offline Activo', 'Iniciando en modo sin conexión como Operador de Campo.');
-        onLoginSuccess({ email: cleanEmail, nombres: cleanEmail.split('@')[0], rol: 'OPERADOR_CAMPO' });
+        const existingSession = await db.getFirstAsync(
+          `SELECT * FROM sesion_usuario WHERE LOWER(email) = ? LIMIT 1`,
+          [cleanEmail]
+        ) as any;
+
+        if (existingSession && existingSession.email) {
+          Alert.alert('Modo Offline', `Iniciando sesión previamente autorizada como ${existingSession.nombres} (${existingSession.rol}).`);
+          onLoginSuccess(existingSession);
+        } else {
+          Alert.alert(
+            'Verificación Requerida',
+            `No se pudo validar el acceso con el servidor de EPS Moyobamba para "${cleanEmail}".\n\nPor favor verifique su conexión a internet para validar sus credenciales.`
+          );
+        }
       } catch (offlineErr: any) {
         Alert.alert('Error de conexión', 'No se pudo conectar con el servidor: ' + err.message);
       }
