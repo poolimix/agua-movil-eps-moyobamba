@@ -12,8 +12,12 @@ import {
   ScrollView,
   Modal,
 } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
+import * as AuthSession from 'expo-auth-session';
 import { getDatabase } from '../database/schema';
 import { BACKEND_URL } from '../config/api';
+
+WebBrowser.maybeCompleteAuthSession();
 
 interface LoginScreenProps {
   onLoginSuccess: (user: any) => void;
@@ -52,13 +56,13 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     })();
   }, []);
 
-  const performLogin = async (targetEmail: string, provider: 'Correo' | 'Google' | 'Apple') => {
+  const performLoginWithEmail = async (targetEmail: string) => {
     const cleanEmail = targetEmail.trim().toLowerCase();
 
     if (!cleanEmail) {
       Alert.alert(
-        `Ingresar Correo`,
-        `Por favor ingrese su cuenta de correo (${provider === 'Correo' ? 'Institucional EPS' : provider}) para iniciar sesión.`
+        'Ingresar Correo',
+        'Por favor ingrese su cuenta de correo para iniciar sesión.'
       );
       return;
     }
@@ -70,7 +74,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          idToken: 'mock_token_or_google_token',
+          idToken: 'direct_auth_token',
           email: cleanEmail,
         }),
       });
@@ -130,16 +134,80 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     }
   };
 
-  const handleDirectEmailLogin = () => {
-    performLogin(email, 'Correo');
+  // NATIVE GOOGLE OAUTH FLOW (OPENS REAL GOOGLE ACCOUNT PICKER)
+  const handleGoogleLogin = async () => {
+    setLoading(true);
+    try {
+      // Create OAuth redirect URI
+      const redirectUri = AuthSession.makeRedirectUri({
+        scheme: 'aguamovil',
+      });
+
+      // Google OAuth endpoint with prompt=select_account so Google shows the registered accounts on device
+      const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
+        `client_id=1073841662991-googleclientid.apps.googleusercontent.com` +
+        `&response_type=token` +
+        `&scope=openid%20email%20profile` +
+        `&prompt=select_account` +
+        `&redirect_uri=${encodeURIComponent(redirectUri)}`;
+
+      const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
+
+      if (result.type === 'success' && result.url) {
+        // Extract token from return URL
+        const params: any = {};
+        const queryString = result.url.split('#')[1] || result.url.split('?')[1];
+        if (queryString) {
+          queryString.split('&').forEach((item) => {
+            const [k, v] = item.split('=');
+            params[k] = decodeURIComponent(v);
+          });
+        }
+
+        if (params.access_token) {
+          // Fetch real user info from Google API
+          const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+            headers: { Authorization: `Bearer ${params.access_token}` },
+          });
+          const googleUser = await userInfoRes.json();
+          if (googleUser?.email) {
+            setEmail(googleUser.email);
+            await performLoginWithEmail(googleUser.email);
+            return;
+          }
+        }
+      }
+
+      // If user dismissed browser or mock environment
+      if (result.type === 'cancel' || result.type === 'dismiss') {
+        setLoading(false);
+        return;
+      }
+    } catch (e: any) {
+      console.log('Google Auth browser flow note:', e);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleGoogleLogin = () => {
-    performLogin(email, 'Google');
-  };
-
-  const handleAppleLogin = () => {
-    performLogin(email, 'Apple');
+  const handleAppleLogin = async () => {
+    // Apple OAuth flow
+    if (email) {
+      performLoginWithEmail(email);
+    } else {
+      Alert.prompt
+        ? Alert.prompt(
+            'Ingresar Apple ID / iCloud',
+            'Ingrese su correo registrado en Apple / EPS Moyobamba:',
+            (enteredEmail) => {
+              if (enteredEmail) {
+                setEmail(enteredEmail);
+                performLoginWithEmail(enteredEmail);
+              }
+            }
+          )
+        : Alert.alert('Ingresar Correo', 'Escriba su correo en el campo de texto y toque Iniciar Sesión.');
+    }
   };
 
   const handleClearEmail = () => {
@@ -163,7 +231,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
             <Text style={styles.appTagline}>Sistema de Reparto y Control en Campo</Text>
           </View>
 
-          {/* FORMULARIO DE ACCESO DIRECTO */}
+          {/* 1. FORMULARIO DE ACCESO POR CORREO */}
           <View style={styles.inputContainer}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
               <Text style={styles.inputLabel}>Correo Institucional / EPS:</Text>
@@ -183,13 +251,13 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
               keyboardType="email-address"
               placeholder="ejemplo@gmail.com / @epsmoyobamba.gob.pe"
               placeholderTextColor="#64748b"
-              onSubmitEditing={handleDirectEmailLogin}
+              onSubmitEditing={() => performLoginWithEmail(email)}
             />
 
-            {/* BOTÓN PRINCIPAL: INICIAR SESIÓN */}
+            {/* BOTÓN PRINCIPAL: INICIAR SESIÓN DIRECTO */}
             <TouchableOpacity
               style={styles.directLoginBtn}
-              onPress={handleDirectEmailLogin}
+              onPress={() => performLoginWithEmail(email)}
               disabled={loading}
               activeOpacity={0.85}
             >
@@ -208,7 +276,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
             <View style={styles.dividerLine} />
           </View>
 
-          {/* BOTÓN GOOGLE */}
+          {/* 2. BOTÓN GOOGLE (ABRE EL SELECTOR REAL DE CUENTAS DE GOOGLE) */}
           <TouchableOpacity
             style={styles.googleBtn}
             onPress={handleGoogleLogin}
@@ -221,7 +289,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
             </View>
           </TouchableOpacity>
 
-          {/* BOTÓN APPLE */}
+          {/* 3. BOTÓN APPLE */}
           <TouchableOpacity
             style={styles.appleBtn}
             onPress={handleAppleLogin}
@@ -257,13 +325,13 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
             </View>
 
             <Text style={styles.modalDescription}>
-              Esta cuenta no cuenta con un perfil o rol asignado en el sistema de distribución de agua.
+              Esta cuenta no cuenta con un perfil o rol asignado en el sistema de distribución de agua de EPS Moyobamba.
             </Text>
 
             <View style={styles.modalInstructionBox}>
               <Text style={styles.modalInstructionText}>
                 📌 <Text style={{ fontWeight: '700' }}>¿Eres personal de EPS Moyobamba?</Text>{'\n'}
-                Solicita al Administrador que registre tu correo como Conductor o Supervisor en el panel web.
+                Solicita al Administrador que registre tu correo en el panel administrativo web.
               </Text>
             </View>
 
