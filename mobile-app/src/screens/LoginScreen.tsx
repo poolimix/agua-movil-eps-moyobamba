@@ -19,35 +19,9 @@ interface LoginScreenProps {
   onLoginSuccess: (user: any) => void;
 }
 
-interface GoogleAccount {
-  name: string;
-  email: string;
-  avatarLetter: string;
-  color: string;
-}
-
 export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
-  const [googleModalVisible, setGoogleModalVisible] = useState(false);
-  const [newGoogleEmail, setNewGoogleEmail] = useState('');
-  const [showAddGoogleInput, setShowAddGoogleInput] = useState(false);
-
-  // Known / saved Google accounts for the picker
-  const [googleAccounts, setGoogleAccounts] = useState<GoogleAccount[]>([
-    {
-      name: 'POOL ANTONY VALLES SAAVEDRA',
-      email: 'vallessaavedrapa@gmail.com',
-      avatarLetter: 'P',
-      color: '#0284c7',
-    },
-    {
-      name: 'POOL ANTONY VALLES SAAVEDRA',
-      email: 'pavalless@alumno.unsm.edu.pe',
-      avatarLetter: 'A',
-      color: '#10b981',
-    },
-  ]);
 
   const [unauthorizedModal, setUnauthorizedModal] = useState<{ visible: boolean; email: string; message: string }>({
     visible: false,
@@ -90,7 +64,6 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     }
 
     setLoading(true);
-    setGoogleModalVisible(false);
 
     try {
       const response = await fetch(`${BACKEND_URL}/auth/google`, {
@@ -161,27 +134,8 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     performLogin(email, 'Correo');
   };
 
-  const handleSelectGoogleAccount = (accEmail: string) => {
-    setEmail(accEmail);
-    performLogin(accEmail, 'Google');
-  };
-
-  const handleAddCustomGoogleAccount = () => {
-    if (!newGoogleEmail.trim()) {
-      Alert.alert('Atención', 'Ingrese el correo de Google a agregar.');
-      return;
-    }
-    const clean = newGoogleEmail.trim().toLowerCase();
-    const newAcc: GoogleAccount = {
-      name: clean.split('@')[0].toUpperCase(),
-      email: clean,
-      avatarLetter: clean.charAt(0).toUpperCase(),
-      color: '#8b5cf6',
-    };
-    setGoogleAccounts((prev) => [newAcc, ...prev.filter((a) => a.email !== clean)]);
-    setShowAddGoogleInput(false);
-    setNewGoogleEmail('');
-    handleSelectGoogleAccount(clean);
+  const handleGoogleLogin = () => {
+    performLogin(email, 'Google');
   };
 
   const handleAppleLogin = () => {
@@ -199,7 +153,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     >
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
         <View style={styles.card}>
-          {/* LOGO */}
+          {/* LOGO INSTITUCIONAL */}
           <View style={styles.logoContainer}>
             <View style={styles.iconCircle}>
               <Text style={styles.logoIcon}>💧</Text>
@@ -209,7 +163,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
             <Text style={styles.appTagline}>Sistema de Reparto y Control en Campo</Text>
           </View>
 
-          {/* 1. DIRECT EMAIL LOGIN FORM */}
+          {/* FORMULARIO DE ACCESO DIRECTO */}
           <View style={styles.inputContainer}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
               <Text style={styles.inputLabel}>Correo Institucional / EPS:</Text>
@@ -232,7 +186,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
               onSubmitEditing={handleDirectEmailLogin}
             />
 
-            {/* DIRECT "INICIAR SESIÓN" BUTTON */}
+            {/* BOTÓN PRINCIPAL: INICIAR SESIÓN */}
             <TouchableOpacity
               style={styles.directLoginBtn}
               onPress={handleDirectEmailLogin}
@@ -242,25 +196,22 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
               {loading ? (
                 <ActivityIndicator color="#ffffff" size="small" />
               ) : (
-                <View style={styles.btnRow}>
-                  <Text style={{ fontSize: 16, color: '#fff', marginRight: 6 }}>🚀</Text>
-                  <Text style={styles.directLoginBtnText}>Iniciar Sesión</Text>
-                </View>
+                <Text style={styles.directLoginBtnText}>Iniciar Sesión</Text>
               )}
             </TouchableOpacity>
           </View>
 
-          {/* DIVIDER */}
+          {/* SEPARADOR */}
           <View style={styles.dividerRow}>
             <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>o también puedes</Text>
+            <Text style={styles.dividerText}>o ingresar con</Text>
             <View style={styles.dividerLine} />
           </View>
 
-          {/* 2. GOOGLE SIGN IN BUTTON (OPENS ACCOUNT PICKER) */}
+          {/* BOTÓN GOOGLE */}
           <TouchableOpacity
             style={styles.googleBtn}
-            onPress={() => setGoogleModalVisible(true)}
+            onPress={handleGoogleLogin}
             disabled={loading}
             activeOpacity={0.85}
           >
@@ -270,7 +221,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
             </View>
           </TouchableOpacity>
 
-          {/* 3. APPLE SIGN IN BUTTON */}
+          {/* BOTÓN APPLE */}
           <TouchableOpacity
             style={styles.appleBtn}
             onPress={handleAppleLogin}
@@ -288,104 +239,6 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
           </Text>
         </View>
       </ScrollView>
-
-      {/* GOOGLE ACCOUNT SELECTOR MODAL / SHEET */}
-      <Modal
-        visible={googleModalVisible}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setGoogleModalVisible(false)}
-      >
-        <View style={styles.googleSheetOverlay}>
-          <View style={styles.googleSheetCard}>
-            {/* GOOGLE HEADER */}
-            <View style={styles.googleSheetHeader}>
-              <View style={styles.googleSheetAvatarBorder}>
-                <View style={styles.googleSheetAvatarInner}>
-                  <Text style={{ fontSize: 26, fontWeight: '800', color: '#ffffff' }}>P</Text>
-                </View>
-              </View>
-              
-              <Text style={styles.googleGreeting}>¡Hola, POOL ANTONY!</Text>
-              <Text style={styles.googleSubText}>Elige una cuenta para continuar a Agua Móvil</Text>
-            </View>
-
-            {/* ACCOUNTS LIST */}
-            <View style={styles.googleAccountsList}>
-              {googleAccounts.map((acc, idx) => (
-                <TouchableOpacity
-                  key={idx}
-                  style={styles.googleAccountItem}
-                  onPress={() => handleSelectGoogleAccount(acc.email)}
-                  activeOpacity={0.7}
-                >
-                  <View style={[styles.accountAvatar, { backgroundColor: acc.color }]}>
-                    <Text style={styles.accountAvatarText}>{acc.avatarLetter}</Text>
-                  </View>
-                  <View style={{ flex: 1, marginLeft: 12 }}>
-                    <Text style={styles.accountName} numberOfLines={1}>{acc.name}</Text>
-                    <Text style={styles.accountEmail} numberOfLines={1}>{acc.email}</Text>
-                  </View>
-                  <Text style={{ color: '#64748b', fontSize: 16 }}>›</Text>
-                </TouchableOpacity>
-              ))}
-
-              {/* ADD ANOTHER ACCOUNT */}
-              {showAddGoogleInput ? (
-                <View style={{ marginTop: 8, paddingHorizontal: 12 }}>
-                  <TextInput
-                    style={styles.googleAddInput}
-                    placeholder="Ingresa el correo de Google"
-                    placeholderTextColor="#64748b"
-                    value={newGoogleEmail}
-                    onChangeText={setNewGoogleEmail}
-                    autoCapitalize="none"
-                    keyboardType="email-address"
-                    autoFocus
-                  />
-                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
-                    <TouchableOpacity
-                      style={styles.googleAddSubmitBtn}
-                      onPress={handleAddCustomGoogleAccount}
-                    >
-                      <Text style={{ color: '#ffffff', fontWeight: '800', fontSize: 13 }}>Continuar</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.googleAddCancelBtn}
-                      onPress={() => setShowAddGoogleInput(false)}
-                    >
-                      <Text style={{ color: '#94a3b8', fontSize: 13 }}>Cancelar</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ) : (
-                <TouchableOpacity
-                  style={styles.googleAddAccountBtn}
-                  onPress={() => setShowAddGoogleInput(true)}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.addIconCircle}>
-                    <Text style={{ color: '#38bdf8', fontSize: 18, fontWeight: '700' }}>+</Text>
-                  </View>
-                  <Text style={styles.googleAddAccountText}>Agregar otra cuenta de Google</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-
-            {/* CLOSE SHEET BUTTON */}
-            <TouchableOpacity
-              style={styles.googleCloseBtn}
-              onPress={() => {
-                setGoogleModalVisible(false);
-                setShowAddGoogleInput(false);
-              }}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.googleCloseBtnText}>Cerrar</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
 
       {/* MODAL ACCESO NO AUTORIZADO */}
       <Modal
@@ -516,25 +369,25 @@ const styles = StyleSheet.create({
     borderColor: '#334155',
     borderRadius: 12,
     paddingHorizontal: 14,
-    paddingVertical: 11,
-    fontSize: 13.5,
+    paddingVertical: 12,
+    fontSize: 14,
     color: '#ffffff',
-    marginBottom: 10,
+    marginBottom: 12,
   },
   directLoginBtn: {
     backgroundColor: '#0284c7',
     borderRadius: 12,
-    paddingVertical: 13,
+    paddingVertical: 14,
     alignItems: 'center',
     shadowColor: '#0284c7',
     shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.3,
-    shadowRadius: 5,
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
     elevation: 3,
   },
   directLoginBtnText: {
     color: '#ffffff',
-    fontSize: 15,
+    fontSize: 15.5,
     fontWeight: '900',
     letterSpacing: 0.3,
   },
@@ -606,139 +459,6 @@ const styles = StyleSheet.create({
     color: '#64748b',
     textAlign: 'center',
     lineHeight: 16,
-  },
-
-  // GOOGLE ACCOUNT SELECTOR MODAL / SHEET (DARK THEMED)
-  googleSheetOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.8)',
-    justifyContent: 'flex-end',
-  },
-  googleSheetCard: {
-    backgroundColor: '#1f1f1f',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    padding: 22,
-    maxHeight: '85%',
-  },
-  googleSheetHeader: {
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  googleSheetAvatarBorder: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    borderWidth: 2.5,
-    borderColor: '#4285F4',
-    padding: 2,
-    marginBottom: 8,
-  },
-  googleSheetAvatarInner: {
-    flex: 1,
-    borderRadius: 30,
-    backgroundColor: '#0284c7',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  googleGreeting: {
-    color: '#ffffff',
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  googleSubText: {
-    color: '#9aa0a6',
-    fontSize: 12,
-    marginTop: 3,
-  },
-  googleAccountsList: {
-    backgroundColor: '#2d2e30',
-    borderRadius: 16,
-    overflow: 'hidden',
-    marginBottom: 16,
-  },
-  googleAccountItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#3c4043',
-  },
-  accountAvatar: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  accountAvatarText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  accountName: {
-    color: '#ffffff',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  accountEmail: {
-    color: '#9aa0a6',
-    fontSize: 11.5,
-    marginTop: 2,
-  },
-  googleAddAccountBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-  },
-  addIconCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(56, 189, 248, 0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  googleAddAccountText: {
-    color: '#38bdf8',
-    fontSize: 13,
-    fontWeight: '700',
-    marginLeft: 12,
-  },
-  googleAddInput: {
-    backgroundColor: '#1f1f1f',
-    borderWidth: 1,
-    borderColor: '#4b5563',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    color: '#ffffff',
-    fontSize: 13,
-  },
-  googleAddSubmitBtn: {
-    backgroundColor: '#0284c7',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  googleAddCancelBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    alignItems: 'center',
-  },
-  googleCloseBtn: {
-    backgroundColor: '#3c4043',
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  googleCloseBtnText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '700',
   },
 
   // MODAL ACCESO NO AUTORIZADO
