@@ -134,33 +134,56 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     }
   };
 
-  // GOOGLE LOGIN HANDLER
-  const handleGoogleLogin = async () => {
-    // If the input already has an email or last saved email, use it directly
-    if (email && email.includes('@')) {
-      await performLoginWithEmail(email);
-      return;
-    }
+const GOOGLE_CLIENT_ID = '764046725831-mhk7ojia6n283cpo75dtq1sptn24hj71.apps.googleusercontent.com';
 
-    // Otherwise prompt for the Google email
-    if (Alert.prompt) {
-      Alert.prompt(
-        'Continuar con Google',
-        'Ingrese su cuenta de Google (Gmail):',
-        (enteredEmail) => {
-          if (enteredEmail && enteredEmail.trim()) {
-            setEmail(enteredEmail.trim());
-            performLoginWithEmail(enteredEmail.trim());
+  // GOOGLE LOGIN HANDLER (OPENS REAL GOOGLE ACCOUNT SELECTOR BROWSER)
+  const handleGoogleLogin = async () => {
+    setLoading(true);
+    try {
+      // 1. Create native OAuth redirect URI
+      const redirectUri = AuthSession.makeRedirectUri({
+        scheme: 'aguamovil',
+      });
+
+      // 2. Build official Google OAuth 2.0 Auth URL with prompt=select_account
+      const authUrl =
+        `https://accounts.google.com/o/oauth2/v2/auth?` +
+        `client_id=${encodeURIComponent(GOOGLE_CLIENT_ID)}` +
+        `&response_type=token` +
+        `&scope=${encodeURIComponent('openid email profile')}` +
+        `&prompt=select_account` +
+        `&redirect_uri=${encodeURIComponent(redirectUri)}`;
+
+      // 3. Open native browser session with real Google Accounts
+      const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
+
+      if (result.type === 'success' && result.url) {
+        // Extract token from return URL hash or query params
+        const hash = result.url.split('#')[1] || result.url.split('?')[1] || '';
+        const params: Record<string, string> = {};
+        hash.split('&').forEach((part) => {
+          const [k, v] = part.split('=');
+          if (k && v) params[k] = decodeURIComponent(v);
+        });
+
+        if (params.access_token) {
+          // 4. Fetch real account info from Google
+          const userInfoRes = await fetch('https://www.googleapis.com/userinfo/v2/me', {
+            headers: { Authorization: `Bearer ${params.access_token}` },
+          });
+          const googleUser = await userInfoRes.json();
+          if (googleUser?.email) {
+            setEmail(googleUser.email);
+            await performLoginWithEmail(googleUser.email);
+            return;
           }
-        },
-        'plain-text',
-        'vallessaavedrapa@gmail.com'
-      );
-    } else {
-      Alert.alert(
-        'Cuenta de Google',
-        'Ingrese su correo de Gmail en el campo de texto y presione Iniciar Sesión.'
-      );
+        }
+      }
+    } catch (err: any) {
+      console.log('Google OAuth error:', err);
+      Alert.alert('Error con Google', 'No se pudo completar el acceso con Google: ' + err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
