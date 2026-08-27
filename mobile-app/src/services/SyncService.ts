@@ -16,7 +16,7 @@ export const syncData = async (): Promise<{ success: boolean; syncedCount: numbe
     
     // Fetch deliveries pending synchronization
     const pendingEntregas = await db.getAllAsync(
-      `SELECT * FROM entregas_agua WHERE (sincronizado = 0 OR sync_status = 'PENDING') AND sync_status != 'SYNCING'`
+      `SELECT * FROM entregas_agua WHERE sincronizado = 0 OR sync_status != 'SYNCED'`
     ) as any[];
 
     if (pendingEntregas.length === 0) {
