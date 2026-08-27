@@ -477,41 +477,49 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
 
   return (
     <ScrollView scrollEnabled={scrollEnabled} contentContainerStyle={styles.container}>
-      {/* HEADER WITH CELESTIAL WATER THEME */}
+      {/* HEADER WITH CELESTIAL WATER THEME (2-ROW CLEAN LAYOUT) */}
       <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <View style={styles.headerIconCircle}>
-            <Text style={{ fontSize: 20 }}>💧</Text>
+        {/* ROW 1: BRAND + ACTION BUTTONS */}
+        <View style={styles.headerTopRow}>
+          <View style={styles.headerBrand}>
+            <View style={styles.headerIconCircle}>
+              <Text style={{ fontSize: 18 }}>💧</Text>
+            </View>
+            <View>
+              <Text style={styles.title}>Agua Móvil</Text>
+              <Text style={styles.subtitle}>EPS MOYOBAMBA S.A.</Text>
+            </View>
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.title} numberOfLines={1}>Agua Móvil</Text>
-            <Text style={styles.subtitle} numberOfLines={1}>EPS MOYOBAMBA S.A.</Text>
-            {user?.nombres ? (
-              <View style={styles.userBadge}>
-                <Text style={styles.userBadgeText} numberOfLines={1}>👤 {user.nombres}</Text>
-              </View>
-            ) : null}
-          </View>
-        </View>
 
-        <View style={styles.headerActions}>
-          <TouchableOpacity style={styles.syncBtn} onPress={handleManualSync} disabled={isSyncing} activeOpacity={0.85}>
-            {isSyncing ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-                <Text style={{ fontSize: 11, color: '#fff' }}>🔄</Text>
-                <Text style={styles.btnText}>Sync</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-
-          {onLogout && (
-            <TouchableOpacity style={styles.logoutBtn} onPress={handleLogoutConfirm} activeOpacity={0.85}>
-              <Text style={{ color: '#ef4444', fontSize: 14, fontWeight: '900' }}>⏻</Text>
+          <View style={styles.headerActions}>
+            <TouchableOpacity style={styles.syncBtn} onPress={handleManualSync} disabled={isSyncing} activeOpacity={0.85}>
+              {isSyncing ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <Text style={{ fontSize: 11, color: '#fff' }}>🔄</Text>
+                  <Text style={styles.btnText}>Sync</Text>
+                </View>
+              )}
             </TouchableOpacity>
-          )}
+
+            {onLogout && (
+              <TouchableOpacity style={styles.logoutBtn} onPress={handleLogoutConfirm} activeOpacity={0.85}>
+                <Text style={{ color: '#ef4444', fontSize: 12, fontWeight: '900', marginRight: 2 }}>⏻</Text>
+                <Text style={styles.logoutBtnText}>Salir</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
+
+        {/* ROW 2: USER PROFILE PILL */}
+        {user?.nombres ? (
+          <View style={styles.userBadgeRow}>
+            <View style={styles.userBadge}>
+              <Text style={styles.userBadgeText}>👤 {user.nombres} • {user?.rol || 'OPERADOR'}</Text>
+            </View>
+          </View>
+        ) : null}
       </View>
 
       {/* GPS RADAR BANNER */}
@@ -817,33 +825,32 @@ const styles = StyleSheet.create({
   },
   // HEADER
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
     backgroundColor: '#ffffff',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    padding: 12,
     borderRadius: 18,
     borderWidth: 1,
     borderColor: '#e0f2fe',
+    marginBottom: 12,
     shadowColor: '#0284c7',
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.08,
     shadowRadius: 8,
     elevation: 3,
   },
-  headerLeft: {
+  headerTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  headerBrand: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    flex: 1,
-    marginRight: 6,
   },
   headerIconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: '#e0f2fe',
     justifyContent: 'center',
     alignItems: 'center',
@@ -852,43 +859,27 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   title: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '900',
     color: '#0369a1',
     letterSpacing: 0.2,
   },
   subtitle: {
-    fontSize: 10,
+    fontSize: 9.5,
     color: '#0ea5e9',
     fontWeight: '800',
     letterSpacing: 0.8,
-  },
-  userBadge: {
-    backgroundColor: '#f0f9ff',
-    paddingHorizontal: 6,
-    paddingVertical: 1.5,
-    borderRadius: 8,
-    marginTop: 2,
-    alignSelf: 'flex-start',
-    borderWidth: 1,
-    borderColor: '#bae6fd',
-  },
-  userBadgeText: {
-    fontSize: 10,
-    color: '#0284c7',
-    fontWeight: '700',
   },
   headerActions: {
     flexDirection: 'row',
     gap: 6,
     alignItems: 'center',
-    flexShrink: 0,
   },
   syncBtn: {
     backgroundColor: '#0284c7',
-    paddingVertical: 7,
-    paddingHorizontal: 11,
-    borderRadius: 16,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 14,
     shadowColor: '#0284c7',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
@@ -897,13 +888,38 @@ const styles = StyleSheet.create({
   },
   logoutBtn: {
     backgroundColor: '#fef2f2',
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    paddingVertical: 5,
+    paddingHorizontal: 8,
+    borderRadius: 14,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#fecaca',
+    borderColor: '#fca5a5',
+  },
+  logoutBtnText: {
+    color: '#ef4444',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  userBadgeRow: {
+    marginTop: 8,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+  },
+  userBadge: {
+    backgroundColor: '#f0f9ff',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: '#bae6fd',
+  },
+  userBadgeText: {
+    fontSize: 10.5,
+    color: '#0284c7',
+    fontWeight: '700',
   },
   // GPS RADAR BANNER
   gpsBanner: {

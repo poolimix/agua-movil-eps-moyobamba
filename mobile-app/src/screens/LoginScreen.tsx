@@ -29,15 +29,23 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   });
 
   useEffect(() => {
-    // Load last session email if available
+    // Load last successfully authorized email from app_config
     (async () => {
       try {
         const db = await getDatabase();
-        const lastSession = await db.getFirstAsync(
-          `SELECT email FROM sesion_usuario ORDER BY id DESC LIMIT 1`
+        const config = await db.getFirstAsync(
+          `SELECT valor FROM app_config WHERE clave = 'ultimo_correo_login' LIMIT 1`
         ) as any;
-        if (lastSession?.email) {
-          setEmail(lastSession.email);
+        if (config?.valor) {
+          setEmail(config.valor);
+        } else {
+          // Fallback to sesion_usuario if available
+          const lastSession = await db.getFirstAsync(
+            `SELECT email FROM sesion_usuario ORDER BY id DESC LIMIT 1`
+          ) as any;
+          if (lastSession?.email) {
+            setEmail(lastSession.email);
+          }
         }
       } catch (_) {}
     })();
@@ -78,13 +86,19 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         return;
       }
 
-      // Save session in SQLite
+      // Save session and remember authorized email in SQLite
       const db = await getDatabase();
       await db.runAsync('DELETE FROM sesion_usuario');
       await db.runAsync(
         `INSERT INTO sesion_usuario (id, email, nombres, rol, token, created_at)
          VALUES (1, ?, ?, ?, ?, ?)`,
         [data.user.email, data.user.nombres, data.user.rol, data.token, new Date().toISOString()]
+      );
+
+      // Persist authorized email in app_config so it stays pre-filled on next logins
+      await db.runAsync(
+        `INSERT OR REPLACE INTO app_config (clave, valor) VALUES ('ultimo_correo_login', ?)`,
+        [data.user.email]
       );
 
       Alert.alert('Bienvenido', `Sesión iniciada como: ${data.user.nombres} (${data.user.rol})`);

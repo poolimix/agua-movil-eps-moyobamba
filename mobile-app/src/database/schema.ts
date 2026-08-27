@@ -23,6 +23,11 @@ export const initDatabase = async () => {
       created_at TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS app_config (
+      clave TEXT PRIMARY KEY,
+      valor TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS beneficiarios (
       id INTEGER PRIMARY KEY NOT NULL,
       dni TEXT UNIQUE NOT NULL,
