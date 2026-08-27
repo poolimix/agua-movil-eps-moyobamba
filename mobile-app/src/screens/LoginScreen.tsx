@@ -29,11 +29,13 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Official PKCE Compliant Google OAuth Request Hook
+  // Official PKCE Compliant Google OAuth Request Hook with Expo Auth Proxy
   const [request, response, promptAsync] = Google.useAuthRequest({
+    clientId: GOOGLE_CLIENT_ID,
     webClientId: GOOGLE_CLIENT_ID,
     iosClientId: GOOGLE_CLIENT_ID,
     androidClientId: GOOGLE_CLIENT_ID,
+    redirectUri: 'https://auth.expo.io/@poolimix/mobile-app',
   });
 
   const [unauthorizedModal, setUnauthorizedModal] = useState<{ visible: boolean; email: string; message: string }>({
