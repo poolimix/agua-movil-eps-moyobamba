@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import Pagination from '../components/Pagination';
 import DaysOfWeekSelector from '../components/DaysOfWeekSelector';
-import MultiSectorSelector, { SectorItem } from '../components/MultiSectorSelector';
+import MultiSectorSelector, { type SectorItem } from '../components/MultiSectorSelector';
 import axios from 'axios';
 import './Modules.css';
 
