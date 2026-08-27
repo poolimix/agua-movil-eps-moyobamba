@@ -411,6 +411,21 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
     Alert.alert(res.success ? 'Sincronización Exitosa' : 'Aviso', res.message);
   };
 
+  const handleLogoutConfirm = () => {
+    Alert.alert(
+      'Cerrar Sesión',
+      '¿Está seguro de que desea cerrar su sesión en Agua Móvil?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Sí, Cerrar Sesión',
+          style: 'destructive',
+          onPress: onLogout,
+        },
+      ]
+    );
+  };
+
   if (qrScannerVisible) {
     return (
       <View style={styles.scannerFullscreen}>
@@ -464,36 +479,36 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
     <ScrollView scrollEnabled={scrollEnabled} contentContainerStyle={styles.container}>
       {/* HEADER WITH CELESTIAL WATER THEME */}
       <View style={styles.header}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <View style={styles.headerLeft}>
           <View style={styles.headerIconCircle}>
-            <Text style={{ fontSize: 24 }}>💧</Text>
+            <Text style={{ fontSize: 20 }}>💧</Text>
           </View>
-          <View>
-            <Text style={styles.title}>Agua Móvil</Text>
-            <Text style={styles.subtitle}>EPS MOYOBAMBA S.A.</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.title} numberOfLines={1}>Agua Móvil</Text>
+            <Text style={styles.subtitle} numberOfLines={1}>EPS MOYOBAMBA S.A.</Text>
             {user?.nombres ? (
               <View style={styles.userBadge}>
-                <Text style={styles.userBadgeText}>👤 {user.nombres} • {user?.rol || 'OPERADOR'}</Text>
+                <Text style={styles.userBadgeText} numberOfLines={1}>👤 {user.nombres}</Text>
               </View>
             ) : null}
           </View>
         </View>
 
-        <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+        <View style={styles.headerActions}>
           <TouchableOpacity style={styles.syncBtn} onPress={handleManualSync} disabled={isSyncing} activeOpacity={0.85}>
             {isSyncing ? (
               <ActivityIndicator color="#fff" size="small" />
             ) : (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Text style={{ fontSize: 13, color: '#fff' }}>🔄</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                <Text style={{ fontSize: 11, color: '#fff' }}>🔄</Text>
                 <Text style={styles.btnText}>Sync</Text>
               </View>
             )}
           </TouchableOpacity>
 
           {onLogout && (
-            <TouchableOpacity style={styles.logoutBtn} onPress={onLogout} activeOpacity={0.85}>
-              <Text style={{ color: '#ef4444', fontSize: 14, fontWeight: '800' }}>⏻</Text>
+            <TouchableOpacity style={styles.logoutBtn} onPress={handleLogoutConfirm} activeOpacity={0.85}>
+              <Text style={{ color: '#ef4444', fontSize: 14, fontWeight: '900' }}>⏻</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -501,10 +516,10 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
 
       {/* GPS RADAR BANNER */}
       <View style={styles.gpsBanner}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, marginRight: 6 }}>
           <View style={styles.gpsPulseDot} />
           <Text style={styles.gpsText} numberOfLines={1}>
-            <Text style={{ fontWeight: '800', color: '#0369a1' }}>GPS Satelital: </Text>
+            <Text style={{ fontWeight: '800', color: '#0369a1' }}>GPS: </Text>
             {location ? (
               <Text style={{ fontWeight: '700', color: '#0c4a6e' }}>
                 {location.coords.latitude.toFixed(5)}, {location.coords.longitude.toFixed(5)} (±{Math.round(location.coords.accuracy || 0)}m)
@@ -571,7 +586,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
 
         {/* LOGISTICS TRIP INFO BAR */}
         <View style={styles.logisticsStrip}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, flexWrap: 'wrap' }}>
             <Text style={{ fontSize: 13 }}>💧</Text>
             <Text style={{ fontSize: 11.5, color: '#0369a1', fontWeight: '800' }}>
               Capacidad: {activeCisterna?.capacidad_m3 || 15} m³ ({Number(activeCisterna?.capacidad_litros || 15000).toLocaleString()} Lts)
@@ -586,7 +601,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
       {/* SEARCH BAR & SCANNER ROW */}
       <View style={styles.searchRow}>
         <View style={styles.searchInputWrapper}>
-          <Text style={{ fontSize: 14, color: '#0284c7', marginRight: 6 }}>🔍</Text>
+          <Text style={{ fontSize: 13, color: '#0284c7', marginRight: 6 }}>🔍</Text>
           <TextInput
             style={styles.input}
             placeholder="DNI o Código de Vale (VALE-...)"
@@ -663,7 +678,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
             </View>
 
             <Text style={styles.waterCalcSub}>
-              Cálculo sugerido: <strong>{(beneficiario.num_miembros || 1) * DOTACION_POR_HABITANTE} Litros</strong>
+              Cálculo sugerido: {(beneficiario.num_miembros || 1) * DOTACION_POR_HABITANTE} Litros
             </Text>
 
             <View style={styles.litersInputRow}>
@@ -797,7 +812,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
 const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
-    padding: 16,
+    padding: 14,
     backgroundColor: '#f0f8ff', // Celestial Aqua Tinted Background
   },
   // HEADER
@@ -807,69 +822,84 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
     backgroundColor: '#ffffff',
-    padding: 14,
-    borderRadius: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: '#e0f2fe',
     shadowColor: '#0284c7',
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.08,
-    shadowRadius: 10,
+    shadowRadius: 8,
     elevation: 3,
   },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+    marginRight: 6,
+  },
   headerIconCircle: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: '#e0f2fe',
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#bae6fd',
+    flexShrink: 0,
   },
   title: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '900',
     color: '#0369a1',
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
   },
   subtitle: {
-    fontSize: 10.5,
+    fontSize: 10,
     color: '#0ea5e9',
     fontWeight: '800',
-    letterSpacing: 1,
+    letterSpacing: 0.8,
   },
   userBadge: {
     backgroundColor: '#f0f9ff',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
-    marginTop: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: 8,
+    marginTop: 2,
     alignSelf: 'flex-start',
     borderWidth: 1,
     borderColor: '#bae6fd',
   },
   userBadgeText: {
-    fontSize: 10.5,
+    fontSize: 10,
     color: '#0284c7',
     fontWeight: '700',
   },
+  headerActions: {
+    flexDirection: 'row',
+    gap: 6,
+    alignItems: 'center',
+    flexShrink: 0,
+  },
   syncBtn: {
     backgroundColor: '#0284c7',
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 20,
+    paddingVertical: 7,
+    paddingHorizontal: 11,
+    borderRadius: 16,
     shadowColor: '#0284c7',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
+    shadowOpacity: 0.25,
+    shadowRadius: 3,
     elevation: 2,
   },
   logoutBtn: {
     backgroundColor: '#fef2f2',
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
@@ -881,21 +911,21 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#bae6fd',
     borderRadius: 14,
-    paddingVertical: 9,
+    paddingVertical: 8,
     paddingHorizontal: 12,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
     shadowColor: '#0284c7',
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.04,
     shadowRadius: 4,
     elevation: 1,
   },
   gpsPulseDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
     backgroundColor: '#10b981',
   },
   gpsText: {
@@ -903,47 +933,47 @@ const styles = StyleSheet.create({
     color: '#334155',
   },
   gpsRefreshBtn: {
-    padding: 4,
+    padding: 3,
   },
   gpsRefreshText: {
-    fontSize: 14,
+    fontSize: 13,
   },
   // FLOTA & LOGISTICS CARD
   flotaCard: {
     backgroundColor: '#ffffff',
-    padding: 14,
-    borderRadius: 18,
+    padding: 13,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: '#bae6fd',
-    marginBottom: 14,
+    marginBottom: 12,
     shadowColor: '#0284c7',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
     elevation: 2,
   },
   flotaCardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginBottom: 10,
+    marginBottom: 8,
   },
   flotaCardIcon: {
-    fontSize: 15,
+    fontSize: 14,
   },
   flotaCardTitle: {
-    fontSize: 12,
+    fontSize: 11.5,
     fontWeight: '800',
     color: '#0369a1',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.4,
   },
   flotaRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
   flotaLabel: {
-    fontSize: 11,
+    fontSize: 10.5,
     fontWeight: '700',
     color: '#64748b',
     marginBottom: 4,
@@ -956,8 +986,8 @@ const styles = StyleSheet.create({
   chipBtn: {
     backgroundColor: '#f0f9ff',
     paddingVertical: 5,
-    paddingHorizontal: 9,
-    borderRadius: 10,
+    paddingHorizontal: 8,
+    borderRadius: 9,
     borderWidth: 1,
     borderColor: '#bae6fd',
   },
@@ -965,12 +995,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#0284c7',
     borderColor: '#0284c7',
     shadowColor: '#0284c7',
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
+    shadowOpacity: 0.25,
+    shadowRadius: 3,
     elevation: 2,
   },
   chipText: {
-    fontSize: 11,
+    fontSize: 10.5,
     color: '#0369a1',
     fontWeight: '700',
   },
@@ -979,7 +1009,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   logisticsStrip: {
-    marginTop: 10,
+    marginTop: 8,
     paddingTop: 8,
     borderTopWidth: 1,
     borderTopColor: '#e0f2fe',
@@ -989,22 +1019,22 @@ const styles = StyleSheet.create({
   },
   tripBadge: {
     backgroundColor: '#ecfdf5',
-    paddingHorizontal: 9,
-    paddingVertical: 3,
-    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 2.5,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: '#a7f3d0',
   },
   tripBadgeText: {
-    fontSize: 11,
+    fontSize: 10.5,
     color: '#059669',
     fontWeight: '800',
   },
   // SEARCH ROW
   searchRow: {
     flexDirection: 'row',
-    gap: 8,
-    marginBottom: 16,
+    gap: 6,
+    marginBottom: 14,
   },
   searchInputWrapper: {
     flex: 1,
@@ -1013,67 +1043,67 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     borderWidth: 1,
     borderColor: '#bae6fd',
-    borderRadius: 14,
-    paddingHorizontal: 12,
+    borderRadius: 13,
+    paddingHorizontal: 10,
     shadowColor: '#0284c7',
     shadowOpacity: 0.04,
-    shadowRadius: 4,
+    shadowRadius: 3,
     elevation: 1,
   },
   input: {
     flex: 1,
-    paddingVertical: 11,
-    fontSize: 13,
+    paddingVertical: 9,
+    fontSize: 12.5,
     color: '#0f172a',
   },
   searchBtn: {
     backgroundColor: '#0d9488',
     justifyContent: 'center',
-    paddingHorizontal: 15,
-    borderRadius: 14,
+    paddingHorizontal: 13,
+    borderRadius: 13,
     shadowColor: '#0d9488',
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
     elevation: 2,
   },
   scanBtn: {
     backgroundColor: '#0f172a',
     justifyContent: 'center',
-    paddingHorizontal: 14,
-    borderRadius: 14,
+    paddingHorizontal: 12,
+    borderRadius: 13,
     shadowColor: '#0f172a',
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
     elevation: 2,
   },
   btnText: {
     color: '#ffffff',
     fontWeight: '800',
-    fontSize: 13,
+    fontSize: 12.5,
   },
   btnTextBlack: {
     color: '#334155',
     fontWeight: '700',
-    fontSize: 13,
+    fontSize: 12.5,
   },
   // BENEFICIARY CARD
   card: {
     backgroundColor: '#ffffff',
-    padding: 18,
-    borderRadius: 22,
+    padding: 16,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: '#bae6fd',
     shadowColor: '#0284c7',
     shadowOpacity: 0.08,
-    shadowRadius: 12,
+    shadowRadius: 10,
     elevation: 3,
-    marginBottom: 24,
+    marginBottom: 20,
   },
   cardHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   cardBadges: {
     flexDirection: 'row',
@@ -1084,35 +1114,35 @@ const styles = StyleSheet.create({
   },
   badgeSector: {
     backgroundColor: '#e0f2fe',
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderRadius: 12,
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: '#bae6fd',
   },
   badgeSectorText: {
     color: '#0284c7',
-    fontSize: 11.5,
+    fontSize: 11,
     fontWeight: '800',
   },
   badgeVale: {
     backgroundColor: '#ecfdf5',
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderRadius: 12,
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: '#a7f3d0',
   },
   badgeValeText: {
     color: '#059669',
-    fontSize: 11.5,
+    fontSize: 11,
     fontWeight: '800',
   },
   closeCardBtn: {
     backgroundColor: '#fee2e2',
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
@@ -1121,15 +1151,14 @@ const styles = StyleSheet.create({
   closeCardBtnText: {
     color: '#dc2626',
     fontWeight: '800',
-    fontSize: 14,
-    lineHeight: 16,
+    fontSize: 13,
+    lineHeight: 15,
   },
   cardTitle: {
-    fontSize: 19,
+    fontSize: 17,
     fontWeight: '900',
     color: '#0f172a',
-    marginBottom: 10,
-    letterSpacing: 0.2,
+    marginBottom: 8,
   },
   infoRow: {
     flexDirection: 'row',
@@ -1138,44 +1167,44 @@ const styles = StyleSheet.create({
   infoLabel: {
     fontWeight: '700',
     color: '#64748b',
-    width: 130,
-    fontSize: 13,
+    width: 120,
+    fontSize: 12.5,
   },
   infoValue: {
     flex: 1,
     fontWeight: '600',
     color: '#0f172a',
-    fontSize: 13,
+    fontSize: 12.5,
   },
   // WATER CALC BOX
   waterCalcBox: {
     backgroundColor: '#f0f9ff',
     borderWidth: 1.5,
     borderColor: '#bae6fd',
-    padding: 14,
-    borderRadius: 16,
-    marginVertical: 14,
+    padding: 12,
+    borderRadius: 14,
+    marginVertical: 12,
   },
   waterCalcTitle: {
-    fontSize: 12,
+    fontSize: 11.5,
     color: '#0369a1',
     fontWeight: '800',
     textTransform: 'uppercase',
   },
   dotacionPill: {
-    fontSize: 10.5,
+    fontSize: 10,
     color: '#0284c7',
     fontWeight: '800',
     backgroundColor: '#e0f2fe',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 8,
+    paddingHorizontal: 7,
+    paddingVertical: 1.5,
+    borderRadius: 6,
   },
   waterCalcSub: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#0284c7',
-    marginTop: 4,
-    marginBottom: 10,
+    marginTop: 3,
+    marginBottom: 8,
   },
   litersInputRow: {
     flexDirection: 'row',
@@ -1183,7 +1212,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   litersInputLabel: {
-    fontSize: 14,
+    fontSize: 13.5,
     fontWeight: '800',
     color: '#0f172a',
   },
@@ -1191,95 +1220,95 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#ffffff',
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderColor: '#0284c7',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
   },
   litersInput: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '900',
     color: '#0284c7',
-    minWidth: 60,
+    minWidth: 50,
     textAlign: 'center',
   },
   litersSuffix: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
     color: '#64748b',
-    marginLeft: 4,
+    marginLeft: 3,
   },
   partialNote: {
-    fontSize: 11,
+    fontSize: 10.5,
     color: '#64748b',
     fontStyle: 'italic',
-    marginTop: 6,
+    marginTop: 4,
   },
   // PHOTO & SIGNATURE SECTIONS
   photoSection: {
-    marginVertical: 8,
-    padding: 12,
+    marginVertical: 6,
+    padding: 10,
     backgroundColor: '#f8fafc',
-    borderRadius: 16,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: '#e2e8f0',
   },
   sigSection: {
-    marginVertical: 8,
+    marginVertical: 6,
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   label: {
-    fontSize: 13.5,
+    fontSize: 12.5,
     fontWeight: '800',
     color: '#0f172a',
   },
   statusPillOk: {
     backgroundColor: '#ecfdf5',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 8,
+    paddingHorizontal: 7,
+    paddingVertical: 1.5,
+    borderRadius: 6,
     borderWidth: 1,
     borderColor: '#a7f3d0',
   },
   statusPillOkText: {
     color: '#059669',
-    fontSize: 11,
+    fontSize: 10.5,
     fontWeight: '800',
   },
   statusPillPending: {
     backgroundColor: '#fffbeb',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 8,
+    paddingHorizontal: 7,
+    paddingVertical: 1.5,
+    borderRadius: 6,
     borderWidth: 1,
     borderColor: '#fde68a',
   },
   statusPillPendingText: {
     color: '#d97706',
-    fontSize: 11,
+    fontSize: 10.5,
     fontWeight: '800',
   },
   takePhotoBtn: {
     backgroundColor: '#0284c7',
-    padding: 12,
-    borderRadius: 12,
+    padding: 11,
+    borderRadius: 10,
     alignItems: 'center',
     marginTop: 4,
     shadowColor: '#0284c7',
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
     elevation: 2,
   },
   takePhotoBtnText: {
     color: '#fff',
     fontWeight: '800',
-    fontSize: 13.5,
+    fontSize: 13,
   },
   photoPreviewRow: {
     flexDirection: 'row',
@@ -1287,76 +1316,76 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   photoThumbnail: {
-    width: 72,
-    height: 72,
-    borderRadius: 12,
+    width: 65,
+    height: 65,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: '#cbd5e1',
   },
   photoSavedText: {
-    fontSize: 12,
+    fontSize: 11.5,
     color: '#059669',
     fontWeight: '800',
   },
   retakeBtn: {
-    marginTop: 6,
+    marginTop: 4,
     backgroundColor: '#f1f5f9',
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 8,
+    paddingVertical: 5,
+    paddingHorizontal: 9,
+    borderRadius: 7,
     alignSelf: 'flex-start',
     borderWidth: 1,
     borderColor: '#cbd5e1',
   },
   retakeBtnText: {
-    fontSize: 11.5,
+    fontSize: 11,
     color: '#334155',
     fontWeight: '700',
   },
   signatureContainer: {
-    height: 180,
+    height: 170,
     borderColor: '#bae6fd',
     borderWidth: 1.5,
-    borderRadius: 14,
+    borderRadius: 12,
     overflow: 'hidden',
     backgroundColor: '#fff',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   sigButtonsRow: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   clearSigBtn: {
     backgroundColor: '#f1f5f9',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 8,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 7,
     borderWidth: 1,
     borderColor: '#cbd5e1',
   },
   clearSigBtnText: {
     color: '#475569',
-    fontSize: 12,
+    fontSize: 11.5,
     fontWeight: '700',
   },
   saveBtn: {
     backgroundColor: '#0284c7',
-    paddingVertical: 14,
-    borderRadius: 14,
+    paddingVertical: 13,
+    borderRadius: 12,
     alignItems: 'center',
     shadowColor: '#0284c7',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 5,
     elevation: 3,
     marginTop: 4,
   },
   saveBtnText: {
     color: '#ffffff',
-    fontSize: 15,
+    fontSize: 14.5,
     fontWeight: '900',
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
   },
   // MODAL
   modalOverlay: {
@@ -1368,35 +1397,35 @@ const styles = StyleSheet.create({
   },
   modalCard: {
     backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 20,
+    borderRadius: 18,
+    padding: 18,
     width: '100%',
     maxWidth: 360,
     alignItems: 'center',
   },
   modalTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800',
     color: '#0f172a',
-    marginBottom: 14,
+    marginBottom: 12,
   },
   modalImage: {
     width: '100%',
-    height: 260,
-    borderRadius: 14,
-    marginBottom: 16,
+    height: 240,
+    borderRadius: 12,
+    marginBottom: 14,
   },
   modalBtnRow: {
     flexDirection: 'row',
-    gap: 10,
+    gap: 8,
     width: '100%',
     justifyContent: 'space-between',
   },
   modalRetakeBtn: {
     flex: 1,
     backgroundColor: '#f1f5f9',
-    padding: 12,
-    borderRadius: 10,
+    padding: 11,
+    borderRadius: 9,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#cbd5e1',
@@ -1404,8 +1433,8 @@ const styles = StyleSheet.create({
   modalConfirmBtn: {
     flex: 1,
     backgroundColor: '#0284c7',
-    padding: 12,
-    borderRadius: 10,
+    padding: 11,
+    borderRadius: 9,
     alignItems: 'center',
   },
   // SCANNER VIEWFINDER

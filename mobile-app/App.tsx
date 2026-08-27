@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { StyleSheet, View, Text, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, Text, ActivityIndicator, SafeAreaView, Platform } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import RepartoScreen from './src/screens/RepartoScreen';
 import LoginScreen from './src/screens/LoginScreen';
@@ -47,22 +47,28 @@ export default function App() {
   }
 
   return (
-    <View style={styles.container}>
-      {user ? (
-        <RepartoScreen user={user} onLogout={handleLogout} />
-      ) : (
-        <LoginScreen onLoginSuccess={(loggedInUser) => setUser(loggedInUser)} />
-      )}
-      <StatusBar style="auto" />
-    </View>
+    <SafeAreaView style={styles.safeContainer}>
+      <View style={styles.container}>
+        {user ? (
+          <RepartoScreen user={user} onLogout={handleLogout} />
+        ) : (
+          <LoginScreen onLoginSuccess={(loggedInUser) => setUser(loggedInUser)} />
+        )}
+      </View>
+      <StatusBar style={user ? 'dark' : 'light'} />
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeContainer: {
+    flex: 1,
+    backgroundColor: '#0b1329',
+    paddingTop: Platform.OS === 'android' ? 30 : 0,
+  },
   container: {
     flex: 1,
-    backgroundColor: '#fff',
-    paddingTop: 44,
+    backgroundColor: '#f0f8ff',
   },
   loadingContainer: {
     flex: 1,
