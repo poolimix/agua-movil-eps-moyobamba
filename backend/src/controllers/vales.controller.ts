@@ -347,3 +347,86 @@ export const reintentarValesFallidos = async (req: Request, res: Response) => {
     res.status(500).json({ message: 'Error al reintentar envío de vales', error: error.message });
   }
 };
+
+export const getAllVales = async (req: Request, res: Response) => {
+  try {
+    const { estado, search, limit = 100, offset = 0 } = req.query;
+
+    let sql = `
+      SELECT 
+        v.*,
+        b.dni as beneficiario_dni,
+        b.nombres_apellidos as beneficiario_nombre,
+        COALESCE(b.sector_aahh, b.sector, '') as sector,
+        b.telefono as beneficiario_telefono,
+        p.fecha as programacion_fecha,
+        p.zona as programacion_zona
+      FROM vales_entrega v
+      LEFT JOIN beneficiarios b ON v.beneficiario_id = b.id
+      LEFT JOIN programaciones p ON v.programacion_id = p.id
+      WHERE 1=1
+    `;
+    const params: any[] = [];
+    let pIdx = 1;
+
+    if (estado) {
+      sql += ` AND v.estado = $${pIdx++}`;
+      params.push(estado);
+    }
+    if (search) {
+      sql += ` AND (v.codigo_unico ILIKE $${pIdx} OR b.dni ILIKE $${pIdx} OR b.nombres_apellidos ILIKE $${pIdx})`;
+      params.push(`%${search}%`);
+      pIdx++;
+    }
+
+    sql += ` ORDER BY v.id DESC LIMIT $${pIdx++} OFFSET $${pIdx++}`;
+    params.push(limit, offset);
+
+    const result = await query(sql, params);
+
+    const statsRes = await query(`
+      SELECT 
+        COUNT(*) as total_vales,
+        COUNT(CASE WHEN estado = 'Emitido' OR estado = 'Pendiente' THEN 1 END) as pendientes,
+        COUNT(CASE WHEN estado = 'Entregado' OR estado = 'Canjeado' THEN 1 END) as entregados,
+        COUNT(CASE WHEN estado = 'Vencido' THEN 1 END) as vencidos,
+        COUNT(CASE WHEN estado = 'Anulado' THEN 1 END) as anulados,
+        COALESCE(SUM(litros_sugeridos), 0) as total_litros
+      FROM vales_entrega
+    `);
+
+    res.json({
+      vales: result.rows,
+      stats: statsRes.rows[0] || {}
+    });
+  } catch (error: any) {
+    console.error('Error al listar todos los vales:', error);
+    res.status(500).json({ message: 'Error interno al consultar vales', error: error.message });
+  }
+};
+
+export const cambiarEstadoVale = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { estado } = req.body;
+
+    if (!estado) {
+      return res.status(400).json({ message: 'El campo estado es requerido' });
+    }
+
+    const result = await query(
+      `UPDATE vales_entrega SET estado = $1 WHERE id = $2 RETURNING *`,
+      [estado, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Vale no encontrado' });
+    }
+
+    res.json({ message: 'Estado del vale actualizado con éxito', vale: result.rows[0] });
+  } catch (error: any) {
+    console.error('Error al cambiar estado del vale:', error);
+    res.status(500).json({ message: 'Error al cambiar estado del vale', error: error.message });
+  }
+};
+

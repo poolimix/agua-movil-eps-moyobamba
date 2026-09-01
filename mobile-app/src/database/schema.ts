@@ -70,6 +70,21 @@ export const initDatabase = async () => {
       estado TEXT DEFAULT 'Activa'
     );
 
+    CREATE TABLE IF NOT EXISTS control_calidad (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      cisterna_id INTEGER,
+      conductor_id INTEGER,
+      cloro_residual_ppm REAL NOT NULL,
+      turbiedad_ntu REAL NOT NULL,
+      aspecto_organoleptico TEXT DEFAULT 'Límpido / Incoloro',
+      conforme_sanitario INTEGER DEFAULT 1,
+      observaciones TEXT,
+      latitud REAL,
+      longitud REAL,
+      fecha_hora TEXT,
+      sincronizado INTEGER DEFAULT 0
+    );
+
     CREATE TABLE IF NOT EXISTS entregas_agua (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       local_id TEXT UNIQUE,

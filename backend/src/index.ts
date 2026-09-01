@@ -12,6 +12,7 @@ import personalRoutes from './routes/personal.routes';
 import syncRoutes from './routes/sync.routes';
 import valesRoutes from './routes/vales.routes';
 import sectoresRoutes from './routes/sectores.routes';
+import calidadRoutes from './routes/calidad.routes';
 
 dotenv.config();
 
@@ -35,7 +36,9 @@ app.use('/api/v1/cisternas', cisternasRoutes);
 app.use('/api/v1/personal', personalRoutes);
 app.use('/api/v1/sectores', sectoresRoutes);
 app.use('/api/v1/sync', syncRoutes);
+app.use('/api/v1/calidad', calidadRoutes);
 app.use('/api/v1', valesRoutes);
+
 
 app.get('/', (req, res) => {
   res.send('Agua Móvil API is running - EPS Moyobamba');

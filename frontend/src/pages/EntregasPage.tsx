@@ -230,13 +230,35 @@ export default function EntregasPage() {
                     )}
                   </td>
                   <td>
-                    <button
-                      className="btn-danger"
-                      onClick={() => handleDeleteEntrega(e.id)}
-                      title="Eliminar entrega"
-                    >
-                      🗑️
-                    </button>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <a
+                        href={`http://localhost:3000/api/v1/entregas/${e.id}/pdf`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn-secondary"
+                        style={{
+                          textDecoration: 'none',
+                          padding: '4px 8px',
+                          fontSize: 12,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          color: '#0284c7',
+                          fontWeight: 600
+                        }}
+                        title="Ver / Descargar Acta Oficial de Conformidad en PDF"
+                      >
+                        📄 Acta PDF
+                      </a>
+                      <button
+                        className="btn-danger"
+                        onClick={() => handleDeleteEntrega(e.id)}
+                        title="Eliminar entrega"
+                        style={{ padding: '4px 8px' }}
+                      >
+                        🗑️
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))

@@ -56,6 +56,12 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
   const [selectedCisternaId, setSelectedCisternaId] = useState<number | null>(null);
   const [selectedConductorId, setSelectedConductorId] = useState<number | null>(null);
 
+  // Quality Control State (Cloro & Turbiedad)
+  const [calidadModalVisible, setCalidadModalVisible] = useState(false);
+  const [cloroPpm, setCloroPpm] = useState('1.20');
+  const [turbiedadNtu, setTurbiedadNtu] = useState('1.40');
+  const [aspectoCalidad, setAspectoCalidad] = useState('Límpido / Incoloro');
+
   // Scroll lock for signature pad
   const [scrollEnabled, setScrollEnabled] = useState(true);
 
@@ -123,6 +129,58 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
       }
     } catch (e) {
       console.error('Error loading cisternas/conductores:', e);
+    }
+  };
+
+  const handleSaveCalidad = async () => {
+    const c = parseFloat(cloroPpm);
+    const t = parseFloat(turbiedadNtu);
+    if (isNaN(c) || isNaN(t)) {
+      Alert.alert('Error', 'Ingrese valores numéricos válidos para Cloro y Turbiedad.');
+      return;
+    }
+    const conforme = c >= 0.5 && c <= 2.0 && t <= 5.0;
+    try {
+      const db = await getDatabase();
+      await db.runAsync(`
+        INSERT INTO control_calidad (cisterna_id, conductor_id, cloro_residual_ppm, turbiedad_ntu, aspecto_organoleptico, conforme_sanitario, latitud, longitud, fecha_hora)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
+      `, [
+        selectedCisternaId || 1,
+        selectedConductorId || 1,
+        c,
+        t,
+        aspectoCalidad,
+        conforme ? 1 : 0,
+        location?.coords?.latitude || null,
+        location?.coords?.longitude || null,
+      ]);
+
+      // If online, also send to backend
+      fetch(`${BACKEND_URL}/calidad/calidad`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cisterna_id: selectedCisternaId || 1,
+          cloro_residual_ppm: c,
+          turbiedad_ntu: t,
+          aspecto_organoleptico: aspectoCalidad,
+          latitud: location?.coords?.latitude || null,
+          longitud: location?.coords?.longitude || null,
+          registrado_por: user?.nombres || 'Operador Móvil',
+        })
+      }).catch(() => {});
+
+      Alert.alert(
+        conforme ? '✓ Calidad Conforme' : '⚠ Alerta Sanitaria',
+        conforme 
+          ? `Parámetros registrados con éxito:\n• Cloro Residual: ${c.toFixed(2)} ppm (0.5-2.0)\n• Turbiedad: ${t.toFixed(2)} NTU (<5.0)\nAgua 100% Apta para Reparto.`
+          : `¡ATENCIÓN! Parámetros fuera de norma sanitaria:\n• Cloro: ${c.toFixed(2)} ppm\n• Turbiedad: ${t.toFixed(2)} NTU\nNotifique a la jefatura de planta.`
+      );
+      setCalidadModalVisible(false);
+    } catch (e) {
+      console.error('Error guardando control calidad:', e);
+      Alert.alert('Error', 'No se pudo guardar el registro de calidad');
     }
   };
 
@@ -604,6 +662,34 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
             <Text style={styles.tripBadgeText}>🏁 2 Viajes Prog.</Text>
           </View>
         </View>
+
+        {/* WATER QUALITY TEST BUTTON (CLORO / TURBIEDAD) */}
+        <TouchableOpacity
+          style={{
+            marginTop: 8,
+            backgroundColor: (parseFloat(cloroPpm) >= 0.5 && parseFloat(cloroPpm) <= 2.0 && parseFloat(turbiedadNtu) <= 5.0) ? '#e0f2fe' : '#fee2e2',
+            borderWidth: 1,
+            borderColor: (parseFloat(cloroPpm) >= 0.5 && parseFloat(cloroPpm) <= 2.0 && parseFloat(turbiedadNtu) <= 5.0) ? '#7dd3fc' : '#fca5a5',
+            borderRadius: 8,
+            paddingVertical: 7,
+            paddingHorizontal: 10,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+          onPress={() => setCalidadModalVisible(true)}
+          activeOpacity={0.8}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={{ fontSize: 13 }}>🧪</Text>
+            <Text style={{ fontSize: 11.5, fontWeight: '700', color: '#0369a1' }}>
+              Control Calidad: Cloro {cloroPpm} ppm • Turb. {turbiedadNtu} NTU
+            </Text>
+          </View>
+          <Text style={{ fontSize: 11, fontWeight: '800', color: '#0284c7' }}>
+            ✏️ Registrar Test &gt;
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {/* SEARCH BAR & SCANNER ROW */}
@@ -808,6 +894,77 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
               </TouchableOpacity>
               <TouchableOpacity style={styles.modalConfirmBtn} onPress={handleConfirmPhoto} activeOpacity={0.85}>
                 <Text style={styles.btnText}>✅ Confirmar Foto</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* WATER QUALITY TEST MODAL */}
+      <Modal visible={calidadModalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { padding: 18, maxHeight: 520 }]}>
+            <Text style={{ fontSize: 16, fontWeight: '800', color: '#0369a1', marginBottom: 4 }}>
+              🧪 Control de Calidad del Agua
+            </Text>
+            <Text style={{ fontSize: 11.5, color: '#64748b', marginBottom: 14 }}>
+              Medición in situ previa al reparto (D.S. 031-2010-SA)
+            </Text>
+
+            <View style={{ marginBottom: 10 }}>
+              <Text style={{ fontSize: 11.5, fontWeight: '700', color: '#334155', marginBottom: 4 }}>
+                CLORO RESIDUAL LIBRE (ppm):
+              </Text>
+              <TextInput
+                style={{ borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 8, padding: 8, fontSize: 14, backgroundColor: '#f8fafc', color: '#0f172a' }}
+                value={cloroPpm}
+                onChangeText={setCloroPpm}
+                keyboardType="numeric"
+                placeholder="1.20"
+              />
+              <Text style={{ fontSize: 10, color: '#64748b', marginTop: 2 }}>Rango Sanitario Óptimo: 0.5 a 2.0 ppm</Text>
+            </View>
+
+            <View style={{ marginBottom: 10 }}>
+              <Text style={{ fontSize: 11.5, fontWeight: '700', color: '#334155', marginBottom: 4 }}>
+                TURBIEDAD DEL AGUA (NTU):
+              </Text>
+              <TextInput
+                style={{ borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 8, padding: 8, fontSize: 14, backgroundColor: '#f8fafc', color: '#0f172a' }}
+                value={turbiedadNtu}
+                onChangeText={setTurbiedadNtu}
+                keyboardType="numeric"
+                placeholder="1.40"
+              />
+              <Text style={{ fontSize: 10, color: '#64748b', marginTop: 2 }}>Límite Máximo Permitido: &lt; 5.0 NTU</Text>
+            </View>
+
+            <View style={{ marginBottom: 16 }}>
+              <Text style={{ fontSize: 11.5, fontWeight: '700', color: '#334155', marginBottom: 4 }}>
+                ASPECTO ORGANOLÉPTICO:
+              </Text>
+              <TextInput
+                style={{ borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 8, padding: 8, fontSize: 13, backgroundColor: '#f8fafc', color: '#0f172a' }}
+                value={aspectoCalidad}
+                onChangeText={setAspectoCalidad}
+                placeholder="Límpido / Incoloro"
+              />
+            </View>
+
+            <View style={styles.modalBtnRow}>
+              <TouchableOpacity
+                style={[styles.modalRetakeBtn, { flex: 1 }]}
+                onPress={() => setCalidadModalVisible(false)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.btnTextBlack}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalConfirmBtn, { flex: 1.4, backgroundColor: '#0284c7' }]}
+                onPress={handleSaveCalidad}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.btnText}>💾 Guardar Test</Text>
               </TouchableOpacity>
             </View>
           </View>

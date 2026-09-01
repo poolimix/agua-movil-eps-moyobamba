@@ -82,6 +82,31 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
           <span>Beneficiarios (Padrón)</span>
         </NavLink>
 
+        {/* VALES DE CONSUMO */}
+        <NavLink to="/vales" onClick={handleNavClick} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+          <span className="nav-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/>
+              <path d="M13 5v2"/>
+              <path d="M13 17v2"/>
+              <path d="M13 11v2"/>
+            </svg>
+          </span>
+          <span>Vales de Consumo</span>
+        </NavLink>
+
+        {/* CONTROL DE CALIDAD */}
+        <NavLink to="/calidad" onClick={handleNavClick} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+          <span className="nav-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M10 2v7.31L4.65 17.5a2 2 0 0 0 1.68 2.5h11.34a2 2 0 0 0 1.68-2.5L14 9.31V2"/>
+              <path d="M8.5 2h7"/>
+              <path d="M7 16h10"/>
+            </svg>
+          </span>
+          <span>Control de Calidad (Cloro)</span>
+        </NavLink>
+
         {/* PROGRAMACIONES */}
         <NavLink to="/programaciones" onClick={handleNavClick} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
           <span className="nav-icon">

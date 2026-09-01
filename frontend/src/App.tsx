@@ -8,6 +8,8 @@ import EntregasPage from './pages/EntregasPage';
 import CisternasPage from './pages/CisternasPage';
 import PersonalPage from './pages/PersonalPage';
 import MetasPage from './pages/MetasPage';
+import CalidadPage from './pages/CalidadPage';
+import ValesPage from './pages/ValesPage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
@@ -22,6 +24,8 @@ function AppRoutes() {
       <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
       <Route path="/metas" element={<ProtectedRoute><MetasPage /></ProtectedRoute>} />
       <Route path="/beneficiarios" element={<ProtectedRoute><BeneficiariosPage /></ProtectedRoute>} />
+      <Route path="/vales" element={<ProtectedRoute><ValesPage /></ProtectedRoute>} />
+      <Route path="/calidad" element={<ProtectedRoute><CalidadPage /></ProtectedRoute>} />
       <Route path="/programaciones" element={<ProtectedRoute><ProgramacionesPage /></ProtectedRoute>} />
       <Route path="/entregas" element={<ProtectedRoute><EntregasPage /></ProtectedRoute>} />
       <Route path="/cisternas" element={<ProtectedRoute><CisternasPage /></ProtectedRoute>} />
