@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import DaysOfWeekSelector from '../components/DaysOfWeekSelector';
+import Pagination from '../components/Pagination';
 import axios from 'axios';
 import './Modules.css';
 
@@ -31,6 +32,10 @@ export default function MetasPage() {
     dias_entrega: 'Lunes, Miércoles, Viernes',
     descripcion: '',
   });
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   useEffect(() => {
     fetchMetas();
@@ -96,6 +101,8 @@ export default function MetasPage() {
     const matchesEstado = filterEstado ? s.estado_cumplimiento === filterEstado : true;
     return matchesSearch && matchesEstado;
   });
+
+  const paginatedSectores = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   const getStatusBadge = (estado: string) => {
     switch (estado) {
@@ -197,7 +204,10 @@ export default function MetasPage() {
           type="text"
           placeholder="🔍 Buscar sector o días de reparto..."
           value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
+          onChange={(e) => {
+            setSearchTerm(e.target.value);
+            setCurrentPage(1);
+          }}
           className="search-input"
           style={{ width: 340 }}
         />
@@ -205,7 +215,10 @@ export default function MetasPage() {
           <select
             className="pagination-select"
             value={filterEstado}
-            onChange={(e) => setFilterEstado(e.target.value)}
+            onChange={(e) => {
+              setFilterEstado(e.target.value);
+              setCurrentPage(1);
+            }}
           >
             <option value="">Todos los Estados</option>
             <option value="CUMPLIDO">🟢 Cumplidos</option>
@@ -245,7 +258,7 @@ export default function MetasPage() {
                 </td>
               </tr>
             ) : (
-              filtered.map((s) => (
+              paginatedSectores.map((s) => (
                 <tr key={s.id}>
                   <td>
                     <strong>{s.nombre}</strong>
@@ -302,6 +315,16 @@ export default function MetasPage() {
             )}
           </tbody>
         </table>
+
+        {/* PAGINATION */}
+        <Pagination
+          currentPage={currentPage}
+          totalItems={filtered.length}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={setPageSize}
+          pageSizeOptions={[5, 10, 20, 50]}
+        />
       </div>
 
       {/* MODAL CONFIGURAR META Y DÍAS */}

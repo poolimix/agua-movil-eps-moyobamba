@@ -212,20 +212,28 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
 
       // 1. Search in Local SQLite Database
       if (codigoVale) {
-        result = await db.getFirstAsync(
-          `SELECT b.*, v.codigo_unico as vale_codigo, v.litros_sugeridos as vale_litros 
-           FROM vales_consumo v 
-           JOIN beneficiarios b ON v.beneficiario_id = b.id 
-           WHERE v.codigo_unico = ?`,
-          [codigoVale]
-        );
+        try {
+          result = await db.getFirstAsync(
+            `SELECT b.*, v.codigo_unico as vale_codigo, v.litros_sugeridos as vale_litros 
+             FROM vales_consumo v 
+             JOIN beneficiarios b ON v.beneficiario_id = b.id 
+             WHERE v.codigo_unico = ?`,
+            [codigoVale]
+          );
+        } catch (dbErr) {
+          console.warn('Error en consulta local de vales:', dbErr);
+        }
       }
 
       if (!result && queryDni) {
-        result = await db.getFirstAsync(
-          `SELECT * FROM beneficiarios WHERE dni = ?`,
-          [queryDni]
-        );
+        try {
+          result = await db.getFirstAsync(
+            `SELECT * FROM beneficiarios WHERE dni = ?`,
+            [queryDni]
+          );
+        } catch (dbDniErr) {
+          console.warn('Error en consulta local de beneficiarios:', dbDniErr);
+        }
       }
 
       // 2. If not found locally, fetch from Backend API
@@ -662,34 +670,41 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
             <Text style={styles.tripBadgeText}>🏁 2 Viajes Prog.</Text>
           </View>
         </View>
+      </View>
 
-        {/* WATER QUALITY TEST BUTTON (CLORO / TURBIEDAD) */}
-        <TouchableOpacity
-          style={{
-            marginTop: 8,
-            backgroundColor: (parseFloat(cloroPpm) >= 0.5 && parseFloat(cloroPpm) <= 2.0 && parseFloat(turbiedadNtu) <= 5.0) ? '#e0f2fe' : '#fee2e2',
-            borderWidth: 1,
-            borderColor: (parseFloat(cloroPpm) >= 0.5 && parseFloat(cloroPpm) <= 2.0 && parseFloat(turbiedadNtu) <= 5.0) ? '#7dd3fc' : '#fca5a5',
-            borderRadius: 8,
-            paddingVertical: 7,
-            paddingHorizontal: 10,
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-          onPress={() => setCalidadModalVisible(true)}
-          activeOpacity={0.8}
-        >
+      {/* DEDICATED WATER QUALITY CONTROL CARD */}
+      <View style={styles.calidadCard}>
+        <View style={styles.calidadCardTopRow}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Text style={{ fontSize: 13 }}>🧪</Text>
-            <Text style={{ fontSize: 11.5, fontWeight: '700', color: '#0369a1' }}>
-              Control Calidad: Cloro {cloroPpm} ppm • Turb. {turbiedadNtu} NTU
+            <Text style={{ fontSize: 14 }}>🧪</Text>
+            <Text style={styles.calidadCardTitle}>Control de Calidad (D.S. 031-2010)</Text>
+          </View>
+          <View style={(parseFloat(cloroPpm) >= 0.5 && parseFloat(cloroPpm) <= 2.0 && parseFloat(turbiedadNtu) <= 5.0) ? styles.calidadStatusPillOk : styles.calidadStatusPillWarn}>
+            <Text style={(parseFloat(cloroPpm) >= 0.5 && parseFloat(cloroPpm) <= 2.0 && parseFloat(turbiedadNtu) <= 5.0) ? styles.calidadStatusTextOk : styles.calidadStatusTextWarn}>
+              {(parseFloat(cloroPpm) >= 0.5 && parseFloat(cloroPpm) <= 2.0 && parseFloat(turbiedadNtu) <= 5.0) ? '✓ Apto' : '⚠ No Apto'}
             </Text>
           </View>
-          <Text style={{ fontSize: 11, fontWeight: '800', color: '#0284c7' }}>
-            ✏️ Registrar Test &gt;
-          </Text>
-        </TouchableOpacity>
+        </View>
+
+        <View style={styles.calidadParamsRow}>
+          <View style={styles.calidadMetricBox}>
+            <Text style={styles.calidadMetricLabel}>CLORO RESIDUAL</Text>
+            <Text style={styles.calidadMetricValue}>{cloroPpm} ppm</Text>
+          </View>
+
+          <View style={styles.calidadMetricBox}>
+            <Text style={styles.calidadMetricLabel}>TURBIEDAD</Text>
+            <Text style={styles.calidadMetricValue}>{turbiedadNtu} NTU</Text>
+          </View>
+
+          <TouchableOpacity
+            style={styles.calidadActionBtn}
+            onPress={() => setCalidadModalVisible(true)}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.calidadActionBtnText}>✏️ Medir Test</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* SEARCH BAR & SCANNER ROW */}
@@ -1201,6 +1216,99 @@ const styles = StyleSheet.create({
   tripBadgeText: {
     fontSize: 10.5,
     color: '#059669',
+    fontWeight: '800',
+  },
+  // CALIDAD SANITARIA CARD
+  calidadCard: {
+    backgroundColor: '#ffffff',
+    padding: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#bae6fd',
+    marginBottom: 12,
+    shadowColor: '#0284c7',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  calidadCardTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  calidadCardTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#0369a1',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  calidadStatusPillOk: {
+    backgroundColor: '#dcfce7',
+    paddingVertical: 2.5,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#86efac',
+  },
+  calidadStatusTextOk: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#15803d',
+  },
+  calidadStatusPillWarn: {
+    backgroundColor: '#fee2e2',
+    paddingVertical: 2.5,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#fca5a5',
+  },
+  calidadStatusTextWarn: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#b91c1c',
+  },
+  calidadParamsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  calidadMetricBox: {
+    flex: 1,
+    backgroundColor: '#f8fafc',
+    borderRadius: 8,
+    paddingVertical: 5,
+    paddingHorizontal: 6,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    alignItems: 'center',
+  },
+  calidadMetricLabel: {
+    fontSize: 8.5,
+    fontWeight: '700',
+    color: '#64748b',
+    textTransform: 'uppercase',
+  },
+  calidadMetricValue: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#0284c7',
+    marginTop: 1,
+  },
+  calidadActionBtn: {
+    backgroundColor: '#0284c7',
+    borderRadius: 8,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  calidadActionBtnText: {
+    color: '#ffffff',
+    fontSize: 11,
     fontWeight: '800',
   },
   // SEARCH ROW

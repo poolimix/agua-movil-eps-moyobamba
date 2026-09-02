@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
+import Pagination from '../components/Pagination';
 import './Modules.css';
 
 interface ControlCalidad {
@@ -35,6 +36,10 @@ export default function CalidadPage() {
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -129,6 +134,8 @@ export default function CalidadPage() {
     return <span style={{ background: '#fee2e2', color: '#b91c1c', padding: '4px 8px', borderRadius: 4, fontWeight: 700 }}>{val.toFixed(2)} NTU (No Apto)</span>;
   };
 
+  const paginatedControles = controles.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
   return (
     <Layout>
       <div className="module-container">
@@ -196,7 +203,10 @@ export default function CalidadPage() {
         <div style={{ display: 'flex', gap: 12, marginBottom: 16, background: '#fff', padding: 12, borderRadius: 8, border: '1px solid #e2e8f0' }}>
           <select 
             value={filtroCisterna} 
-            onChange={(e) => setFiltroCisterna(e.target.value)}
+            onChange={(e) => {
+              setFiltroCisterna(e.target.value);
+              setCurrentPage(1);
+            }}
             style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: 13 }}
           >
             <option value="">Todas las Cisternas</option>
@@ -204,7 +214,7 @@ export default function CalidadPage() {
               <option key={c.id} value={c.id}>Cisterna: {c.placa} ({c.capacidad_m3} m³)</option>
             ))}
           </select>
-          <button className="btn-secondary" onClick={fetchData} style={{ padding: '8px 14px', fontSize: 13 }}>
+          <button className="btn-secondary" onClick={() => { setCurrentPage(1); fetchData(); }} style={{ padding: '8px 14px', fontSize: 13 }}>
             🔄 Actualizar
           </button>
         </div>
@@ -216,49 +226,61 @@ export default function CalidadPage() {
           ) : controles.length === 0 ? (
             <div style={{ padding: 40, textAlign: 'center', color: '#64748b' }}>No se encontraron registros de calidad.</div>
           ) : (
-            <table className="data-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead>
-                <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left', color: '#475569' }}>
-                  <th style={{ padding: '12px 16px' }}>FECHA Y HORA</th>
-                  <th style={{ padding: '12px 16px' }}>CISTERNA / CHOFER</th>
-                  <th style={{ padding: '12px 16px' }}>CLORO RESIDUAL</th>
-                  <th style={{ padding: '12px 16px' }}>TURBIEDAD</th>
-                  <th style={{ padding: '12px 16px' }}>ASPECTO ORGANOLÉPTICO</th>
-                  <th style={{ padding: '12px 16px' }}>ESTADO SANITARIO</th>
-                  <th style={{ padding: '12px 16px' }}>SUPERVISOR</th>
-                </tr>
-              </thead>
-              <tbody>
-                {controles.map((c) => (
-                  <tr key={c.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                    <td style={{ padding: '12px 16px', fontWeight: 600 }}>
-                      {new Date(c.fecha_hora).toLocaleString('es-PE')}
-                    </td>
-                    <td style={{ padding: '12px 16px' }}>
-                      <div style={{ fontWeight: 600, color: '#0284c7' }}>{c.cisterna_placa || 'Cisterna General'}</div>
-                      <div style={{ fontSize: 11, color: '#64748b' }}>{c.conductor_nombre || 'Conductor asignado'}</div>
-                    </td>
-                    <td style={{ padding: '12px 16px' }}>{getCloroBadge(c.cloro_residual_ppm)}</td>
-                    <td style={{ padding: '12px 16px' }}>{getTurbiedadBadge(c.turbiedad_ntu)}</td>
-                    <td style={{ padding: '12px 16px', color: '#475569' }}>{c.aspecto_organoleptico}</td>
-                    <td style={{ padding: '12px 16px' }}>
-                      {c.conforme_sanitario ? (
-                        <span style={{ background: '#dcfce7', color: '#15803d', padding: '4px 8px', borderRadius: 4, fontWeight: 700 }}>
-                          ✓ CONFORME
-                        </span>
-                      ) : (
-                        <span style={{ background: '#fee2e2', color: '#b91c1c', padding: '4px 8px', borderRadius: 4, fontWeight: 700 }}>
-                          ✕ NO CONFORME
-                        </span>
-                      )}
-                    </td>
-                    <td style={{ padding: '12px 16px', fontSize: 11, color: '#64748b' }}>
-                      {c.registrado_por}
-                    </td>
+            <>
+              <table className="data-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left', color: '#475569' }}>
+                    <th style={{ padding: '12px 16px' }}>FECHA Y HORA</th>
+                    <th style={{ padding: '12px 16px' }}>CISTERNA / CHOFER</th>
+                    <th style={{ padding: '12px 16px' }}>CLORO RESIDUAL</th>
+                    <th style={{ padding: '12px 16px' }}>TURBIEDAD</th>
+                    <th style={{ padding: '12px 16px' }}>ASPECTO ORGANOLÉPTICO</th>
+                    <th style={{ padding: '12px 16px' }}>ESTADO SANITARIO</th>
+                    <th style={{ padding: '12px 16px' }}>SUPERVISOR</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {paginatedControles.map((c) => (
+                    <tr key={c.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '12px 16px', fontWeight: 600 }}>
+                        {new Date(c.fecha_hora).toLocaleString('es-PE')}
+                      </td>
+                      <td style={{ padding: '12px 16px' }}>
+                        <div style={{ fontWeight: 600, color: '#0284c7' }}>{c.cisterna_placa || 'Cisterna General'}</div>
+                        <div style={{ fontSize: 11, color: '#64748b' }}>{c.conductor_nombre || 'Conductor asignado'}</div>
+                      </td>
+                      <td style={{ padding: '12px 16px' }}>{getCloroBadge(c.cloro_residual_ppm)}</td>
+                      <td style={{ padding: '12px 16px' }}>{getTurbiedadBadge(c.turbiedad_ntu)}</td>
+                      <td style={{ padding: '12px 16px', color: '#475569' }}>{c.aspecto_organoleptico}</td>
+                      <td style={{ padding: '12px 16px' }}>
+                        {c.conforme_sanitario ? (
+                          <span style={{ background: '#dcfce7', color: '#15803d', padding: '4px 8px', borderRadius: 4, fontWeight: 700 }}>
+                            ✓ CONFORME
+                          </span>
+                        ) : (
+                          <span style={{ background: '#fee2e2', color: '#b91c1c', padding: '4px 8px', borderRadius: 4, fontWeight: 700 }}>
+                            ✕ NO CONFORME
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ padding: '12px 16px', fontSize: 11, color: '#64748b' }}>
+                        {c.registrado_por}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {/* PAGINATION */}
+              <Pagination
+                currentPage={currentPage}
+                totalItems={controles.length}
+                pageSize={pageSize}
+                onPageChange={setCurrentPage}
+                onPageSizeChange={setPageSize}
+                pageSizeOptions={[5, 10, 20, 50]}
+              />
+            </>
           )}
         </div>
 

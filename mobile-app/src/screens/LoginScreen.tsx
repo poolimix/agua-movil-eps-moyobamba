@@ -249,6 +249,47 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
                 <Text style={styles.directLoginBtnText}>Iniciar Sesión</Text>
               )}
             </TouchableOpacity>
+
+            {/* ACCESOS RÁPIDOS DE CUENTAS AUTORIZADAS */}
+            <View style={{ marginTop: 12 }}>
+              <Text style={{ fontSize: 11, color: '#94a3b8', marginBottom: 6, fontWeight: '600' }}>
+                Acceso Rápido Cuadrillas:
+              </Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                <TouchableOpacity
+                  style={styles.quickChip}
+                  onPress={() => {
+                    setEmail('operador@epsmoyobamba.gob.pe');
+                    performLoginWithEmail('operador@epsmoyobamba.gob.pe');
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.quickChipText}>⚡ Operador</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.quickChip}
+                  onPress={() => {
+                    setEmail('admin@epsmoyobamba.gob.pe');
+                    performLoginWithEmail('admin@epsmoyobamba.gob.pe');
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.quickChipText}>⚡ Admin EPS</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.quickChip}
+                  onPress={() => {
+                    setEmail('vallessaavedrapa@gmail.com');
+                    performLoginWithEmail('vallessaavedrapa@gmail.com');
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.quickChipText}>⚡ Valles</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
           </View>
 
           {/* SEPARADOR */}
@@ -595,5 +636,18 @@ const styles = StyleSheet.create({
     color: '#94a3b8',
     fontWeight: '600',
     fontSize: 13,
+  },
+  quickChip: {
+    backgroundColor: '#1e293b',
+    borderWidth: 1,
+    borderColor: '#334155',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+  },
+  quickChipText: {
+    color: '#38bdf8',
+    fontSize: 11,
+    fontWeight: '700',
   },
 });

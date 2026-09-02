@@ -70,6 +70,17 @@ export const initDatabase = async () => {
       estado TEXT DEFAULT 'Activa'
     );
 
+    CREATE TABLE IF NOT EXISTS vales_consumo (
+      id INTEGER PRIMARY KEY NOT NULL,
+      codigo_unico TEXT UNIQUE NOT NULL,
+      beneficiario_id INTEGER NOT NULL,
+      programacion_id INTEGER,
+      litros_sugeridos REAL NOT NULL,
+      estado TEXT DEFAULT 'Emitido',
+      fecha_emision TEXT,
+      FOREIGN KEY (beneficiario_id) REFERENCES beneficiarios (id)
+    );
+
     CREATE TABLE IF NOT EXISTS control_calidad (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       cisterna_id INTEGER,
@@ -112,6 +123,30 @@ export const initDatabase = async () => {
 
   // Safe migrations for existing SQLite databases on device
   const migrations = [
+    `CREATE TABLE IF NOT EXISTS vales_consumo (
+      id INTEGER PRIMARY KEY NOT NULL,
+      codigo_unico TEXT UNIQUE NOT NULL,
+      beneficiario_id INTEGER NOT NULL,
+      programacion_id INTEGER,
+      litros_sugeridos REAL NOT NULL,
+      estado TEXT DEFAULT 'Emitido',
+      fecha_emision TEXT,
+      FOREIGN KEY (beneficiario_id) REFERENCES beneficiarios (id)
+    );`,
+    `CREATE TABLE IF NOT EXISTS control_calidad (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      cisterna_id INTEGER,
+      conductor_id INTEGER,
+      cloro_residual_ppm REAL NOT NULL,
+      turbiedad_ntu REAL NOT NULL,
+      aspecto_organoleptico TEXT DEFAULT 'Límpido / Incoloro',
+      conforme_sanitario INTEGER DEFAULT 1,
+      observaciones TEXT,
+      latitud REAL,
+      longitud REAL,
+      fecha_hora TEXT,
+      sincronizado INTEGER DEFAULT 0
+    );`,
     'ALTER TABLE beneficiarios ADD COLUMN sector_aahh TEXT;',
     'ALTER TABLE beneficiarios ADD COLUMN calle_direccion TEXT;',
     'ALTER TABLE entregas_agua ADD COLUMN cisterna_id INTEGER;',
@@ -130,7 +165,7 @@ export const initDatabase = async () => {
     try {
       await database.execAsync(sql);
     } catch (_) {
-      // Column already exists, ignore
+      // Column/table already exists, ignore
     }
   }
 
@@ -164,7 +199,17 @@ export const initDatabase = async () => {
       (5, '72345678', 'Víctor Raúl Chávez Rengifo', 'Moyobamba', 'Santiago 8 Valles', 'Santiago 8 Valles', '15', 4, 'C', '09', 'Calle Los Laureles 210', 'Calle Los Laureles 210', '942999000'),
       (6, '41234567', 'Carmen Rosa Alarcón Díaz', 'Moyobamba', 'San Borja', 'San Borja', '05', 2, 'D', '03', 'Jr. Amazonas 450', 'Jr. Amazonas 450', '942123789'),
       (7, '43890123', 'Manuel Antonio Ríos Gómez', 'Moyobamba', 'San Lorenzo', 'San Lorenzo', '08', 5, 'E', '11', 'Sector Cococho s/n', 'Sector Cococho s/n', '942987654');
+
+    INSERT OR REPLACE INTO vales_consumo (id, codigo_unico, beneficiario_id, programacion_id, litros_sugeridos, estado, fecha_emision)
+    VALUES 
+      (1, 'VALE-20260826-001', 1, 1, 200.0, 'Emitido', '2026-08-26'),
+      (2, 'VALE-20260826-002', 2, 1, 250.0, 'Emitido', '2026-08-26'),
+      (3, 'VALE-20260826-003', 3, 1, 150.0, 'Emitido', '2026-08-26'),
+      (4, 'VALE-20260826-004', 4, 2, 300.0, 'Emitido', '2026-08-26'),
+      (5, 'VALE-20260826-005', 5, 2, 200.0, 'Emitido', '2026-08-26'),
+      (6, 'VALE-20260826-006', 6, 3, 100.0, 'Emitido', '2026-08-27'),
+      (7, 'VALE-20260825-007', 7, 4, 250.0, 'Emitido', '2026-08-25');
   `);
   
-  console.log('✅ SQLite Database Initialized with Photo Evidence, GPS & Sync status');
+  console.log('✅ SQLite Database Initialized with Vales, Calidad, Photo Evidence & GPS');
 };
