@@ -50,16 +50,30 @@ export const googleAuth = async (req: Request, res: Response) => {
       return res.status(401).json({ message: 'No se pudo obtener un correo válido de autenticación.' });
     }
 
-    // 3. STRICT CHECK: Check if user exists in database
-    const userRes = await query(
-      'SELECT id, email, nombres, rol, estado FROM usuarios WHERE LOWER(email) = $1',
-      [email]
-    );
+    // 3. STRICT CHECK: Check if user exists in personal_operativo or usuarios
+    const userRes = await query(`
+      SELECT 
+        COALESCE(u.id, p.id) as id,
+        p.id as personal_id,
+        COALESCE(u.email, p.email) as email,
+        CASE 
+          WHEN p.id IS NOT NULL THEN CONCAT(p.nombres, ' ', p.apellidos)
+          ELSE u.nombres
+        END as nombres,
+        COALESCE(u.rol, p.tipo_personal) as rol,
+        COALESCE(u.estado, p.estado) as estado,
+        p.dni,
+        p.telefono,
+        p.licencia_conducir as licencia
+      FROM usuarios u
+      FULL OUTER JOIN personal_operativo p ON LOWER(TRIM(p.email)) = LOWER(TRIM(u.email))
+      WHERE LOWER(TRIM(COALESCE(u.email, p.email))) = $1
+    `, [email]);
 
     if (userRes.rows.length === 0) {
       // STRICT SECURITY: Reject any unregistered email with 403
       return res.status(403).json({
-        message: `Acceso Denegado: El correo (${email}) no está registrado en EPS Moyobamba. Solicite al Administrador que dé de alta su cuenta con su rol correspondiente.`,
+        message: `Acceso Denegado: El correo (${email}) no está registrado en la base de datos de EPS Moyobamba. Debe estar registrado en el Personal Operativo o Administradores del sistema.`,
         unauthorizedEmail: email,
       });
     }
@@ -68,22 +82,23 @@ export const googleAuth = async (req: Request, res: Response) => {
 
     if (user.estado !== 'ACTIVO') {
       return res.status(403).json({
-        message: `Acceso Denegado: Su cuenta (${email}) se encuentra INACTIVA. Contacte a la administración de EPS Moyobamba.`,
+        message: `Acceso Denegado: Su cuenta (${email}) se encuentra INACTIVA en la base de datos. Contacte a la administración de EPS Moyobamba.`,
       });
     }
 
-    // Update google_id if empty
+    // Update google_id if empty in usuarios table
     if (googleId) {
-      await query('UPDATE usuarios SET google_id = $1 WHERE id = $2', [googleId, user.id]);
+      await query('UPDATE usuarios SET google_id = $1 WHERE LOWER(email) = $2', [googleId, email]).catch(() => {});
     }
 
     // 4. Generate JWT signed session token with strictly assigned database role
     const token = jwt.sign(
       {
         id: user.id,
+        personal_id: user.personal_id,
         email: user.email,
         nombres: user.nombres,
-        rol: user.rol, // STRICT ROLE: 'ADMIN', 'SUPERVISOR', 'OPERADOR_CAMPO', 'CONDUCTOR'
+        rol: user.rol, // STRICT ROLE FROM DB: 'ADMIN', 'SUPERVISOR', 'CONDUCTOR', 'AYUDANTE', 'COORDINADOR'
       },
       JWT_SECRET,
       { expiresIn: '7d' }
@@ -94,10 +109,14 @@ export const googleAuth = async (req: Request, res: Response) => {
       token,
       user: {
         id: user.id,
+        personal_id: user.personal_id,
         email: user.email,
         nombres: user.nombres,
         rol: user.rol,
         estado: user.estado,
+        dni: user.dni,
+        telefono: user.telefono,
+        licencia: user.licencia,
       },
     });
   } catch (error: any) {

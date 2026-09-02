@@ -13,6 +13,8 @@ interface ControlCalidad {
   turbiedad_ntu: number;
   aspecto_organoleptico: string;
   conforme_sanitario: boolean;
+  etapa_control?: string; // 'CARGA', 'RUTA', 'ADICIONAL'
+  punto_muestreo?: string;
   observaciones?: string;
   foto_muestra_url?: string;
   registrado_por: string;
@@ -48,6 +50,8 @@ export default function CalidadPage() {
     cloro_residual_ppm: '1.20',
     turbiedad_ntu: '1.50',
     aspecto_organoleptico: 'Límpido / Incoloro',
+    etapa_control: 'CARGA', // 'CARGA', 'RUTA', 'ADICIONAL'
+    punto_muestreo: 'Surtidor / Planta de Carga EPS Moyobamba',
     observaciones: '',
     registrado_por: 'Ing. Supervisor de Calidad'
   });
@@ -107,6 +111,8 @@ export default function CalidadPage() {
         cloro_residual_ppm: '1.20',
         turbiedad_ntu: '1.50',
         aspecto_organoleptico: 'Límpido / Incoloro',
+        etapa_control: 'CARGA',
+        punto_muestreo: 'Surtidor / Planta de Carga EPS Moyobamba',
         observaciones: '',
         registrado_por: 'Ing. Supervisor de Calidad'
       });
@@ -134,6 +140,35 @@ export default function CalidadPage() {
     return <span style={{ background: '#fee2e2', color: '#b91c1c', padding: '4px 8px', borderRadius: 4, fontWeight: 700 }}>{val.toFixed(2)} NTU (No Apto)</span>;
   };
 
+  const getEtapaBadge = (etapa?: string) => {
+    switch (etapa) {
+      case 'CARGA':
+        return (
+          <span style={{ background: '#e0f2fe', color: '#0369a1', padding: '3px 8px', borderRadius: 6, fontWeight: 800, fontSize: 11 }}>
+            💧 1. Al Cargar (Surtidor)
+          </span>
+        );
+      case 'RUTA':
+        return (
+          <span style={{ background: '#dcfce7', color: '#15803d', padding: '3px 8px', borderRadius: 6, fontWeight: 800, fontSize: 11 }}>
+            🚚 2. En Ruta (Entrega)
+          </span>
+        );
+      case 'ADICIONAL':
+        return (
+          <span style={{ background: '#f3e8ff', color: '#7e22ce', padding: '3px 8px', borderRadius: 6, fontWeight: 800, fontSize: 11 }}>
+            ➕ Control Adicional
+          </span>
+        );
+      default:
+        return (
+          <span style={{ background: '#f1f5f9', color: '#475569', padding: '3px 8px', borderRadius: 6, fontWeight: 700, fontSize: 11 }}>
+            Punto General
+          </span>
+        );
+    }
+  };
+
   const paginatedControles = controles.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   return (
@@ -143,7 +178,7 @@ export default function CalidadPage() {
         <div className="module-header">
           <div>
             <h1 className="module-title">🧪 Control de Calidad del Agua (Cloro Residual y Turbiedad)</h1>
-            <p className="module-subtitle">Monitoreo organoléptico y fisicoquímico en camiones cisterna previo al reparto (D.S. 031-2010-SA y PNSU)</p>
+            <p className="module-subtitle">Monitoreo organoléptico y fisicoquímico según TDR EPS Moyobamba y D.S. 031-2010-SA</p>
           </div>
           <div style={{ display: 'flex', gap: 10 }}>
             <button className="btn-primary" onClick={() => setModalOpen(true)}>
@@ -152,22 +187,31 @@ export default function CalidadPage() {
           </div>
         </div>
 
-        {/* Normative Alert */}
+        {/* Normative Alert con Regla TDR */}
         <div style={{
           background: 'linear-gradient(135deg, #e0f2fe 0%, #f0fdf4 100%)',
-          border: '1px solid #7dd3fc',
-          padding: '12px 16px',
-          borderRadius: 8,
+          border: '1.5px solid #38bdf8',
+          padding: '14px 18px',
+          borderRadius: 10,
           marginBottom: 20,
           display: 'flex',
           alignItems: 'center',
-          gap: 12,
+          gap: 14,
           fontSize: 13,
           color: '#0369a1'
         }}>
-          <span style={{ fontSize: 22 }}>📋</span>
+          <span style={{ fontSize: 26 }}>📋</span>
           <div>
-            <strong>Estándar Sanitario Oficial:</strong> El agua para consumo humano debe mantener un <strong>Cloro Residual Libre entre 0.5 y 2.0 ppm</strong> y una <strong>Turbiedad menor a 5.0 NTU</strong> al momento de la salida de la cisterna y en el punto de entrega.
+            <strong style={{ color: '#0c4a6e', fontSize: 13.5 }}>REGLA SANITARIA OBLIGATORIA DEL TDR (MÍNIMO 2 CONTROLES POR VIAJE):</strong>
+            <div style={{ color: '#334155', marginTop: 3, lineHeight: 1.4 }}>
+              Cada programación y reparto de cisterna exige como mínimo <strong>2 mediciones obligatorias</strong>: 
+              <br />
+              <strong>1. Al momento de cargar la cisterna</strong> en el punto de captación/surtidor (verificar $\ge$ 0.5 ppm antes de salir).
+              <br />
+              <strong>2. En el transcurso de la entrega en ruta</strong> en el grifo de distribución del sector.
+              <br />
+              <em>Asimismo, el operador o supervisor puede registrar <strong>controles adicionales ilimitados</strong> en cualquier momento del recorrido.</em>
+            </div>
           </div>
         </div>
 
@@ -231,6 +275,7 @@ export default function CalidadPage() {
                 <thead>
                   <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left', color: '#475569' }}>
                     <th style={{ padding: '12px 16px' }}>FECHA Y HORA</th>
+                    <th style={{ padding: '12px 16px' }}>ETAPA (TDR) / PUNTO</th>
                     <th style={{ padding: '12px 16px' }}>CISTERNA / CHOFER</th>
                     <th style={{ padding: '12px 16px' }}>CLORO RESIDUAL</th>
                     <th style={{ padding: '12px 16px' }}>TURBIEDAD</th>
@@ -244,6 +289,12 @@ export default function CalidadPage() {
                     <tr key={c.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                       <td style={{ padding: '12px 16px', fontWeight: 600 }}>
                         {new Date(c.fecha_hora).toLocaleString('es-PE')}
+                      </td>
+                      <td style={{ padding: '12px 16px' }}>
+                        {getEtapaBadge(c.etapa_control)}
+                        <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
+                          📍 {c.punto_muestreo || 'Punto de entrega'}
+                        </div>
                       </td>
                       <td style={{ padding: '12px 16px' }}>
                         <div style={{ fontWeight: 600, color: '#0284c7' }}>{c.cisterna_placa || 'Cisterna General'}</div>
@@ -287,13 +338,50 @@ export default function CalidadPage() {
         {/* Modal Nuevo Test */}
         {modalOpen && (
           <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-            <div style={{ background: '#fff', borderRadius: 12, padding: 24, width: '100%', maxWidth: 500, boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+            <div style={{ background: '#fff', borderRadius: 12, padding: 24, width: '100%', maxWidth: 520, boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                 <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>🧪 Nuevo Registro de Control de Calidad</h2>
                 <button onClick={() => setModalOpen(false)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer' }}>✕</button>
               </div>
 
               <form onSubmit={handleSubmit}>
+                <div style={{ marginBottom: 14 }}>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>
+                    ETAPA DEL CONTROL SANITARIO (TDR):
+                  </label>
+                  <select 
+                    value={formData.etapa_control} 
+                    onChange={(e) => {
+                      const etapa = e.target.value;
+                      setFormData({ 
+                        ...formData, 
+                        etapa_control: etapa,
+                        punto_muestreo: etapa === 'CARGA' 
+                          ? 'Surtidor / Planta de Carga EPS Moyobamba' 
+                          : (etapa === 'RUTA' ? 'En Ruta - Grifo Cisterna en Sector' : 'Control Adicional / Muestreo Libre')
+                      });
+                    }}
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1.5px solid #0284c7', fontWeight: 600 }}
+                  >
+                    <option value="CARGA">💧 1. Al Cargar Cisterna (Surtidor / Planta) [MÍNIMO OBLIGATORIO 1]</option>
+                    <option value="RUTA">🚚 2. En el Transcurso de la Entrega (En Ruta) [MÍNIMO OBLIGATORIO 2]</option>
+                    <option value="ADICIONAL">➕ 3. Control Adicional / Muestreo Libre [OPCIONAL TDR]</option>
+                  </select>
+                </div>
+
+                <div style={{ marginBottom: 14 }}>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
+                    LUGAR O PUNTO EXACTO DE MUESTREO:
+                  </label>
+                  <input 
+                    type="text"
+                    value={formData.punto_muestreo}
+                    onChange={(e) => setFormData({ ...formData, punto_muestreo: e.target.value })}
+                    placeholder="Ej: Surtidor Central o Grifo Cisterna en Sector Sol de Indañe"
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid #cbd5e1' }}
+                  />
+                </div>
+
                 <div style={{ marginBottom: 14 }}>
                   <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 }}>CISTERNA EVALUADA:</label>
                   <select 
@@ -303,7 +391,7 @@ export default function CalidadPage() {
                   >
                     <option value="">Seleccionar Cisterna</option>
                     {cisternas.map((c) => (
-                      <option key={c.id} value={c.id}>{c.placa} - {c.marca} ({c.capacidad_m3} m³)</option>
+                      <option key={c.id} value={c.id}>{c.placa} ({c.capacidad_m3} m³)</option>
                     ))}
                   </select>
                 </div>

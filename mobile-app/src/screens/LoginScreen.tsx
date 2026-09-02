@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import * as Google from 'expo-auth-session/providers/google';
+import { Ionicons } from '@expo/vector-icons';
 import { getDatabase } from '../database/schema';
 import { BACKEND_URL } from '../config/api';
 
@@ -110,14 +111,39 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     setLoading(true);
 
     try {
-      const response = await fetch(`${BACKEND_URL}/auth/google`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          idToken: 'direct_auth_token',
-          email: cleanEmail,
-        }),
-      });
+      const candidateUrls = [
+        `${BACKEND_URL}/auth/google`,
+        'http://192.168.161.226:3000/api/v1/auth/google',
+        'http://localhost:3000/api/v1/auth/google',
+        'http://10.0.2.2:3000/api/v1/auth/google',
+      ];
+      const uniqueUrls = Array.from(new Set(candidateUrls));
+
+      let response: Response | null = null;
+      let lastNetworkErr: any = null;
+
+      for (const url of uniqueUrls) {
+        try {
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              idToken: 'direct_auth_token',
+              email: cleanEmail,
+            }),
+          });
+          if (res) {
+            response = res;
+            break;
+          }
+        } catch (e) {
+          lastNetworkErr = e;
+        }
+      }
+
+      if (!response) {
+        throw lastNetworkErr || new Error('No se pudo establecer conexión con el servidor.');
+      }
 
       const data = await response.json();
 
@@ -206,7 +232,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
           {/* LOGO INSTITUCIONAL */}
           <View style={styles.logoContainer}>
             <View style={styles.iconCircle}>
-              <Text style={styles.logoIcon}>💧</Text>
+              <Ionicons name="water" size={32} color="#0284c7" />
             </View>
             <Text style={styles.appTitle}>Agua Móvil</Text>
             <Text style={styles.appSubtitle}>EPS MOYOBAMBA S.A.</Text>
@@ -218,8 +244,9 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
               <Text style={styles.inputLabel}>Correo Institucional / EPS:</Text>
               {email ? (
-                <TouchableOpacity onPress={handleClearEmail} activeOpacity={0.7}>
-                  <Text style={styles.clearText}>✕ Limpiar</Text>
+                <TouchableOpacity onPress={handleClearEmail} activeOpacity={0.7} style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                  <Ionicons name="close-circle-outline" size={13} color="#38bdf8" />
+                  <Text style={styles.clearText}>Limpiar</Text>
                 </TouchableOpacity>
               ) : null}
             </View>
@@ -246,50 +273,12 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
               {loading ? (
                 <ActivityIndicator color="#ffffff" size="small" />
               ) : (
-                <Text style={styles.directLoginBtnText}>Iniciar Sesión</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                  <Ionicons name="log-in-outline" size={18} color="#ffffff" />
+                  <Text style={styles.directLoginBtnText}>Iniciar Sesión</Text>
+                </View>
               )}
             </TouchableOpacity>
-
-            {/* ACCESOS RÁPIDOS DE CUENTAS AUTORIZADAS */}
-            <View style={{ marginTop: 12 }}>
-              <Text style={{ fontSize: 11, color: '#94a3b8', marginBottom: 6, fontWeight: '600' }}>
-                Acceso Rápido Cuadrillas:
-              </Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                <TouchableOpacity
-                  style={styles.quickChip}
-                  onPress={() => {
-                    setEmail('operador@epsmoyobamba.gob.pe');
-                    performLoginWithEmail('operador@epsmoyobamba.gob.pe');
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.quickChipText}>⚡ Operador</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.quickChip}
-                  onPress={() => {
-                    setEmail('admin@epsmoyobamba.gob.pe');
-                    performLoginWithEmail('admin@epsmoyobamba.gob.pe');
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.quickChipText}>⚡ Admin EPS</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.quickChip}
-                  onPress={() => {
-                    setEmail('vallessaavedrapa@gmail.com');
-                    performLoginWithEmail('vallessaavedrapa@gmail.com');
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.quickChipText}>⚡ Valles</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
           </View>
 
           {/* SEPARADOR */}
@@ -307,7 +296,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
             activeOpacity={0.85}
           >
             <View style={styles.btnRow}>
-              <Text style={styles.googleIconText}>G</Text>
+              <Ionicons name="logo-google" size={18} color="#ea4335" style={{ marginRight: 8 }} />
               <Text style={styles.googleBtnText}>Continuar con Google</Text>
             </View>
           </TouchableOpacity>
@@ -320,7 +309,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
             activeOpacity={0.85}
           >
             <View style={styles.btnRow}>
-              <Text style={styles.appleLogoIcon}></Text>
+              <Ionicons name="logo-apple" size={18} color="#ffffff" style={{ marginRight: 8 }} />
               <Text style={styles.appleBtnText}>Continuar con Apple / iCloud</Text>
             </View>
           </TouchableOpacity>
@@ -340,7 +329,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={{ fontSize: 36, marginBottom: 8 }}>🔒</Text>
+            <Ionicons name="lock-closed-outline" size={36} color="#ef4444" style={{ marginBottom: 8 }} />
             <Text style={styles.modalTitle}>Acceso No Autorizado</Text>
             
             <View style={styles.emailBadge}>
@@ -353,7 +342,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
 
             <View style={styles.modalInstructionBox}>
               <Text style={styles.modalInstructionText}>
-                📌 <Text style={{ fontWeight: '700' }}>¿Eres personal de EPS Moyobamba?</Text>{'\n'}
+                <Ionicons name="information-circle-outline" size={13} color="#0284c7" /> <Text style={{ fontWeight: '700' }}>¿Eres personal de EPS Moyobamba?</Text>{'\n'}
                 Solicita al Administrador que registre tu correo en el panel administrativo web.
               </Text>
             </View>
@@ -395,13 +384,13 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: '#131f3d',
-    borderRadius: 24,
-    padding: 24,
-    borderWidth: 1,
+    borderRadius: 32,
+    padding: 26,
+    borderWidth: 1.5,
     borderColor: '#1e293b',
-    shadowColor: '#000',
+    shadowColor: '#0284c7',
     shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.35,
+    shadowOpacity: 0.25,
     shadowRadius: 20,
     elevation: 8,
   },
@@ -456,36 +445,36 @@ const styles = StyleSheet.create({
   },
   input: {
     backgroundColor: '#0f172a',
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: '#334155',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    borderRadius: 24,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     fontSize: 14,
     color: '#ffffff',
-    marginBottom: 12,
+    marginBottom: 14,
   },
   directLoginBtn: {
     backgroundColor: '#0284c7',
-    borderRadius: 12,
-    paddingVertical: 14,
+    borderRadius: 28,
+    paddingVertical: 15,
     alignItems: 'center',
     shadowColor: '#0284c7',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.35,
-    shadowRadius: 6,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    elevation: 5,
   },
   directLoginBtnText: {
     color: '#ffffff',
     fontSize: 15.5,
     fontWeight: '900',
-    letterSpacing: 0.3,
+    letterSpacing: 0.4,
   },
   dividerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 14,
+    marginVertical: 16,
   },
   dividerLine: {
     flex: 1,
@@ -500,22 +489,22 @@ const styles = StyleSheet.create({
   },
   googleBtn: {
     backgroundColor: '#ffffff',
-    borderRadius: 13,
-    paddingVertical: 13,
+    borderRadius: 28,
+    paddingVertical: 14,
     alignItems: 'center',
     marginBottom: 10,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowRadius: 6,
+    elevation: 3,
   },
   appleBtn: {
     backgroundColor: '#000000',
-    borderRadius: 13,
-    paddingVertical: 13,
+    borderRadius: 28,
+    paddingVertical: 14,
     alignItems: 'center',
-    marginBottom: 14,
+    marginBottom: 16,
     borderWidth: 1,
     borderColor: '#334155',
   },

@@ -3,13 +3,13 @@ import { query } from '../db';
 
 export const getControlesCalidad = async (req: Request, res: Response) => {
   try {
-    const { cisterna_id, fecha_inicio, fecha_fin, limit = 50, offset = 0 } = req.query;
+    const { cisterna_id, programacion_id, fecha_inicio, fecha_fin, limit = 50, offset = 0 } = req.query;
 
     let sql = `
       SELECT 
         cc.*,
         c.placa as cisterna_placa,
-        c.marca as cisterna_marca,
+        c.marca_modelo as cisterna_marca,
         c.capacidad_m3 as cisterna_capacidad,
         p.fecha as programacion_fecha,
         p.zona as programacion_zona
@@ -24,6 +24,10 @@ export const getControlesCalidad = async (req: Request, res: Response) => {
     if (cisterna_id) {
       sql += ` AND cc.cisterna_id = $${pIdx++}`;
       params.push(cisterna_id);
+    }
+    if (programacion_id) {
+      sql += ` AND cc.programacion_id = $${pIdx++}`;
+      params.push(programacion_id);
     }
     if (fecha_inicio) {
       sql += ` AND cc.fecha_hora >= $${pIdx++}`;
@@ -54,6 +58,8 @@ export const createControlCalidad = async (req: Request, res: Response) => {
       cloro_residual_ppm,
       turbiedad_ntu,
       aspecto_organoleptico = 'Aceptable',
+      etapa_control = 'CARGA', // 'CARGA', 'RUTA', 'ADICIONAL'
+      punto_muestreo = 'Surtidor / Planta de Carga',
       observaciones = '',
       foto_muestra_url = null,
       latitud = null,
@@ -77,9 +83,9 @@ export const createControlCalidad = async (req: Request, res: Response) => {
       INSERT INTO control_calidad (
         programacion_id, cisterna_id, conductor_nombre, cloro_residual_ppm, 
         turbiedad_ntu, aspecto_organoleptico, conforme_sanitario, observaciones, 
-        foto_muestra_url, latitud, longitud, registrado_por
+        foto_muestra_url, latitud, longitud, registrado_por, etapa_control, punto_muestreo
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       RETURNING *
     `, [
       programacion_id || null,
@@ -93,7 +99,9 @@ export const createControlCalidad = async (req: Request, res: Response) => {
       foto_muestra_url,
       latitud,
       longitud,
-      registrado_por
+      registrado_por,
+      etapa_control,
+      punto_muestreo
     ]);
 
     res.status(201).json({

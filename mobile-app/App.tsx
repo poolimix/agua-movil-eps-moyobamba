@@ -63,12 +63,12 @@ export default function App() {
 const styles = StyleSheet.create({
   safeContainer: {
     flex: 1,
-    backgroundColor: '#0b1329',
+    backgroundColor: '#0284c7',
     paddingTop: Platform.OS === 'android' ? 30 : 0,
   },
   container: {
     flex: 1,
-    backgroundColor: '#f0f8ff',
+    backgroundColor: '#f1f5f9',
   },
   loadingContainer: {
     flex: 1,

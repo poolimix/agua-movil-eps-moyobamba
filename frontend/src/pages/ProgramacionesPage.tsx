@@ -21,11 +21,19 @@ interface Programacion {
   conductor_nombre?: string;
   conductor_telefono?: string;
   conductor_licencia?: string;
+  ayudante_id?: number | string;
+  ayudante_nombre?: string;
+  ayudante_telefono?: string;
+  ayudante_dni?: string;
   litros_programados?: number;
   viajes_estimados?: number;
   dias_semana?: string;
   total_entregas: string | number;
   total_litros: string | number;
+  total_calidad?: string | number;
+  calidad_carga?: string | number;
+  calidad_ruta?: string | number;
+  calidad_adicional?: string | number;
 }
 
 interface Cisterna {
@@ -91,10 +99,13 @@ export default function ProgramacionesPage() {
     estado: 'Activa',
     cisterna_id: '' as string | number,
     conductor_id: '' as string | number,
+    ayudante_id: '' as string | number,
     litros_programados: 15000,
     viajes_estimados: 1,
     dias_semana: 'Lunes, Miércoles, Viernes',
   });
+
+  const [ayudantes, setAyudantes] = useState<any[]>([]);
 
   // Vales & Dispatch State
   const [selectedProgForVales, setSelectedProgForVales] = useState<Programacion | null>(null);
@@ -110,6 +121,7 @@ export default function ProgramacionesPage() {
     fetchSectores();
     fetchCisternas();
     fetchConductores();
+    fetchAyudantes();
   }, []);
 
   const fetchProgramaciones = async () => {
@@ -148,6 +160,15 @@ export default function ProgramacionesPage() {
       setConductores(res.data);
     } catch (error) {
       console.error('Error fetching conductores:', error);
+    }
+  };
+
+  const fetchAyudantes = async () => {
+    try {
+      const res = await axios.get('http://localhost:3000/api/v1/personal?tipo=AYUDANTE');
+      setAyudantes(res.data);
+    } catch (error) {
+      console.error('Error fetching ayudantes:', error);
     }
   };
 
@@ -201,6 +222,7 @@ export default function ProgramacionesPage() {
       estado: 'Activa',
       cisterna_id: defaultCis?.id || '',
       conductor_id: defaultDriverId,
+      ayudante_id: ayudantes[0]?.id || '',
       litros_programados: demandLitros,
       viajes_estimados: trips,
       dias_semana: defaultSec?.dias_entrega || 'Lunes, Miércoles, Viernes',
@@ -222,6 +244,7 @@ export default function ProgramacionesPage() {
       estado: p.estado,
       cisterna_id: p.cisterna_id || (cisternas[0]?.id || ''),
       conductor_id: p.conductor_id || (conductores[0]?.id || ''),
+      ayudante_id: p.ayudante_id || '',
       litros_programados: p.litros_programados || 15000,
       viajes_estimados: p.viajes_estimados || 1,
       dias_semana: p.dias_semana || 'Lunes, Miércoles, Viernes',
@@ -291,6 +314,7 @@ export default function ProgramacionesPage() {
       estado: formData.estado,
       cisterna_id: formData.cisterna_id,
       conductor_id: formData.conductor_id,
+      ayudante_id: formData.ayudante_id ? formData.ayudante_id : null,
       litros_programados: formData.litros_programados,
       viajes_estimados: formData.viajes_estimados,
       dias_semana: formData.dias_semana,
@@ -377,26 +401,24 @@ export default function ProgramacionesPage() {
             <tr>
               <th>ID / Fecha</th>
               <th>Sectores Asignados</th>
-              <th>Cisterna Asignada</th>
-              <th>Conductor</th>
+              <th>Cisterna y Cuadrilla</th>
               <th>Viajes Programados</th>
               <th>Estado</th>
               <th>Avance Entregas</th>
-              <th>Vales</th>
-              <th>ANEXO 2</th>
-              <th>Acciones</th>
+              <th>Control Sanitario (TDR)</th>
+              <th style={{ textAlign: 'center', minWidth: 230 }}>Acciones y Gestión</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={10} className="empty-state">
+                <td colSpan={8} className="empty-state">
                   <span>⏳</span> Cargando programaciones...
                 </td>
               </tr>
             ) : filtered.length === 0 ? (
               <tr>
-                <td colSpan={10} className="empty-state">
+                <td colSpan={8} className="empty-state">
                   <span>📋</span> No hay programaciones registradas.
                 </td>
               </tr>
@@ -430,21 +452,23 @@ export default function ProgramacionesPage() {
                         <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
                           Cap: {p.cisterna_capacidad_m3} m³ ({Number(p.cisterna_capacidad_litros || 15000).toLocaleString()} Lts)
                         </div>
-                      </div>
-                    ) : (
-                      <span style={{ color: '#94a3b8', fontSize: 12 }}>Sin cisterna</span>
-                    )}
-                  </td>
-                  <td>
-                    {p.conductor_nombre ? (
-                      <div>
-                        <strong>👤 {p.conductor_nombre}</strong>
-                        {p.conductor_telefono && (
-                          <div style={{ fontSize: 11, color: '#64748b' }}>📞 {p.conductor_telefono}</div>
+                        {p.conductor_nombre && (
+                          <div style={{ fontSize: 11.5, color: '#1e293b', fontWeight: 700, marginTop: 4 }}>
+                            👤 Chofer: {p.conductor_nombre}
+                          </div>
+                        )}
+                        {p.ayudante_nombre ? (
+                          <div style={{ fontSize: 11, color: '#15803d', fontWeight: 600, marginTop: 1 }}>
+                            👷 Ayudante: {p.ayudante_nombre}
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: 10.5, color: '#94a3b8', fontStyle: 'italic', marginTop: 1 }}>
+                            (Sin ayudante)
+                          </div>
                         )}
                       </div>
                     ) : (
-                      <span style={{ color: '#94a3b8', fontSize: 12 }}>Sin conductor</span>
+                      <span style={{ color: '#94a3b8', fontSize: 12 }}>Sin asignar</span>
                     )}
                   </td>
                   <td>
@@ -465,43 +489,113 @@ export default function ProgramacionesPage() {
                     <div style={{ fontSize: 11, color: '#15803d', fontWeight: 600 }}>{p.total_litros} Lts</div>
                   </td>
                   <td>
-                    <button
-                      className="btn-secondary"
-                      style={{ padding: '5px 10px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4, borderColor: '#0284c7', color: '#0284c7' }}
-                      onClick={() => handleOpenDespachoModal(p)}
-                    >
-                      📨 Vales
-                    </button>
+                    {Number(p.calidad_carga || 0) >= 1 && Number(p.calidad_ruta || 0) >= 1 ? (
+                      <div>
+                        <span className="badge-count" style={{ background: '#dcfce7', color: '#15803d', fontWeight: 800, fontSize: 11 }}>
+                          ✅ 2/2 Conforme
+                        </span>
+                        <div style={{ fontSize: 10.5, color: '#166534', marginTop: 2 }}>
+                          💧 Carga + 🚚 Ruta
+                          {Number(p.calidad_adicional || 0) > 0 ? ` (+${p.calidad_adicional})` : ''}
+                        </div>
+                      </div>
+                    ) : Number(p.calidad_carga || 0) >= 1 ? (
+                      <div>
+                        <span className="badge-count" style={{ background: '#fef3c7', color: '#b45309', fontWeight: 800, fontSize: 11 }}>
+                          ⏳ 1/2 Falta en Ruta
+                        </span>
+                        <div style={{ fontSize: 10.5, color: '#92400e', marginTop: 2 }}>
+                          💧 Carga Ok • Pendiente sector
+                        </div>
+                      </div>
+                    ) : (
+                      <div>
+                        <span className="badge-count" style={{ background: '#fee2e2', color: '#b91c1c', fontWeight: 800, fontSize: 11 }}>
+                          🔴 0/2 Sin Control
+                        </span>
+                        <div style={{ fontSize: 10.5, color: '#991b1b', marginTop: 2 }}>
+                          Exigido por TDR
+                        </div>
+                      </div>
+                    )}
                   </td>
                   <td>
-                    <a
-                      href={`http://localhost:3000/api/v1/programaciones/${p.id}/pdf`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="btn-pdf"
-                      style={{ padding: '5px 10px', fontSize: 11.5 }}
-                    >
-                      📄 PDF
-                    </a>
-                  </td>
-                  <td>
-                    <div style={{ display: 'flex', gap: 4 }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, justifyContent: 'center', alignItems: 'center' }}>
+                      <button
+                        style={{
+                          background: '#eff6ff',
+                          color: '#1d4ed8',
+                          border: '1.5px solid #bfdbfe',
+                          padding: '6px 10px',
+                          borderRadius: 6,
+                          fontSize: 12,
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4
+                        }}
+                        onClick={() => handleOpenEditModal(p)}
+                        title="Editar los datos de esta Programación"
+                      >
+                        ✏️ Editar
+                      </button>
+
+                      <button
+                        style={{
+                          background: '#fef2f2',
+                          color: '#dc2626',
+                          border: '1.5px solid #fecaca',
+                          padding: '6px 10px',
+                          borderRadius: 6,
+                          fontSize: 12,
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4
+                        }}
+                        onClick={() => handleDelete(p.id)}
+                        title="Eliminar esta Programación"
+                      >
+                        🗑️ Eliminar
+                      </button>
+
                       <button
                         className="btn-secondary"
-                        style={{ padding: '5px 8px', fontSize: 11 }}
-                        onClick={() => handleOpenEditModal(p)}
-                        title="Editar Programación"
+                        style={{
+                          padding: '5px 9px',
+                          fontSize: 11.5,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 3,
+                          borderColor: '#0284c7',
+                          color: '#0284c7',
+                          borderRadius: 6,
+                          fontWeight: 700
+                        }}
+                        onClick={() => handleOpenDespachoModal(p)}
+                        title="Gestionar Vales y Notificaciones"
                       >
-                        ✏️
+                        📨 Vales
                       </button>
-                      <button
-                        className="btn-danger"
-                        style={{ padding: '5px 8px', fontSize: 11 }}
-                        onClick={() => handleDelete(p.id)}
-                        title="Eliminar Programación"
+
+                      <a
+                        href={`http://localhost:3000/api/v1/programaciones/${p.id}/pdf`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn-pdf"
+                        style={{
+                          padding: '5px 9px',
+                          fontSize: 11.5,
+                          borderRadius: 6,
+                          fontWeight: 700,
+                          textDecoration: 'none'
+                        }}
+                        title="Descargar Hoja de Ruta ANEXO 2 (PDF)"
                       >
-                        🗑️
-                      </button>
+                        📄 PDF
+                      </a>
                     </div>
                   </td>
                 </tr>
@@ -771,16 +865,34 @@ export default function ProgramacionesPage() {
                 </div>
               </div>
 
-              {/* DATE OF DISPATCH */}
-              <div className="form-group">
-                <label>Fecha de Inicio / Reparto *</label>
-                <input
-                  type="date"
-                  required
-                  className="form-input"
-                  value={formData.fecha}
-                  onChange={(e) => setFormData({ ...formData, fecha: e.target.value })}
-                />
+              {/* CUADRILLA: AYUDANTE DE CAMPO */}
+              <div className="form-row">
+                <div className="form-group">
+                  <label>👷 Ayudante de Campo (Cuadrilla / Reparto):</label>
+                  <select
+                    className="form-input"
+                    value={formData.ayudante_id}
+                    onChange={(e) => setFormData({ ...formData, ayudante_id: e.target.value })}
+                  >
+                    <option value="">-- Sin Ayudante (Operación Unipersonal) --</option>
+                    {ayudantes.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.nombres} {a.apellidos} {a.telefono ? `(📞 ${a.telefono})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label>Fecha de Inicio / Reparto *</label>
+                  <input
+                    type="date"
+                    required
+                    className="form-input"
+                    value={formData.fecha}
+                    onChange={(e) => setFormData({ ...formData, fecha: e.target.value })}
+                  />
+                </div>
               </div>
 
               {/* INTERACTIVE DAYS OF THE WEEK SELECTOR */}

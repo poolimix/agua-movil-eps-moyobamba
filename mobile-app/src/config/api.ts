@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 
 // IP actual de la máquina en la red local Wi-Fi
-export const BACKEND_HOST = '192.168.1.8';
+export const BACKEND_HOST = '192.168.161.226';
 export const BACKEND_PORT = 3000;
 
 const getBackendUrl = () => {
@@ -15,3 +15,4 @@ const getBackendUrl = () => {
 };
 
 export const BACKEND_URL = getBackendUrl();
+

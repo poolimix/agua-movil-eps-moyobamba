@@ -15,11 +15,21 @@ export const getAllProgramaciones = async (req: Request, res: Response) => {
         pers.dni as conductor_dni,
         pers.licencia_conducir as conductor_licencia,
         pers.telefono as conductor_telefono,
+        pers.email as conductor_email,
+        CONCAT(ayud.nombres, ' ', ayud.apellidos) as ayudante_nombre,
+        ayud.dni as ayudante_dni,
+        ayud.telefono as ayudante_telefono,
+        ayud.email as ayudante_email,
         (SELECT COUNT(*) FROM entregas_agua e WHERE e.programacion_id = p.id) as total_entregas,
-        (SELECT COALESCE(SUM(litros_entregados), 0) FROM entregas_agua e WHERE e.programacion_id = p.id) as total_litros
+        (SELECT COALESCE(SUM(litros_entregados), 0) FROM entregas_agua e WHERE e.programacion_id = p.id) as total_litros,
+        (SELECT COUNT(*) FROM control_calidad cc WHERE cc.programacion_id = p.id) as total_calidad,
+        (SELECT COUNT(*) FROM control_calidad cc WHERE cc.programacion_id = p.id AND cc.etapa_control = 'CARGA') as calidad_carga,
+        (SELECT COUNT(*) FROM control_calidad cc WHERE cc.programacion_id = p.id AND cc.etapa_control = 'RUTA') as calidad_ruta,
+        (SELECT COUNT(*) FROM control_calidad cc WHERE cc.programacion_id = p.id AND cc.etapa_control = 'ADICIONAL') as calidad_adicional
       FROM programaciones p 
       LEFT JOIN cisternas c ON p.cisterna_id = c.id
       LEFT JOIN personal_operativo pers ON p.conductor_id = pers.id
+      LEFT JOIN personal_operativo ayud ON p.ayudante_id = ayud.id
       ORDER BY p.id DESC
     `);
     res.json(result.rows);
@@ -37,6 +47,7 @@ export const createProgramacion = async (req: Request, res: Response) => {
       estado = 'Activa',
       cisterna_id,
       conductor_id,
+      ayudante_id,
       litros_programados,
       viajes_estimados,
       dias_semana = 'Lunes, Miércoles, Viernes',
@@ -56,8 +67,8 @@ export const createProgramacion = async (req: Request, res: Response) => {
     }
 
     const insertQuery = `
-      INSERT INTO programaciones (fecha, zona, estado, cisterna_id, conductor_id, litros_programados, viajes_estimados, dias_semana)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      INSERT INTO programaciones (fecha, zona, estado, cisterna_id, conductor_id, ayudante_id, litros_programados, viajes_estimados, dias_semana)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING *;
     `;
 
@@ -67,6 +78,7 @@ export const createProgramacion = async (req: Request, res: Response) => {
       estado,
       cisterna_id ? parseInt(cisterna_id, 10) : null,
       conductor_id ? parseInt(conductor_id, 10) : null,
+      ayudante_id ? parseInt(ayudante_id, 10) : null,
       parseInt(litros_programados, 10) || 0,
       viajes,
       dias_semana,
@@ -88,6 +100,7 @@ export const updateProgramacion = async (req: Request, res: Response) => {
       estado,
       cisterna_id,
       conductor_id,
+      ayudante_id,
       litros_programados,
       viajes_estimados,
       dias_semana,
@@ -112,10 +125,11 @@ export const updateProgramacion = async (req: Request, res: Response) => {
           estado = $3,
           cisterna_id = $4,
           conductor_id = $5,
-          litros_programados = $6,
-          viajes_estimados = $7,
-          dias_semana = $8
-      WHERE id = $9
+          ayudante_id = $6,
+          litros_programados = $7,
+          viajes_estimados = $8,
+          dias_semana = $9
+      WHERE id = $10
       RETURNING *;
     `;
 
@@ -125,6 +139,7 @@ export const updateProgramacion = async (req: Request, res: Response) => {
       estado,
       cisterna_id ? parseInt(cisterna_id, 10) : null,
       conductor_id ? parseInt(conductor_id, 10) : null,
+      ayudante_id ? parseInt(ayudante_id, 10) : null,
       parseInt(litros_programados, 10) || 0,
       viajes,
       dias_semana || 'Lunes, Miércoles, Viernes',
@@ -145,10 +160,12 @@ export const updateProgramacion = async (req: Request, res: Response) => {
 export const deleteProgramacion = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    await query('DELETE FROM vales_entrega WHERE programacion_id = $1', [id]);
-    await query('DELETE FROM entregas_agua WHERE programacion_id = $1', [id]);
+    await query('DELETE FROM vales_consumo WHERE programacion_id = $1', [id]).catch(() => {});
+    await query('DELETE FROM vales_entrega WHERE programacion_id = $1', [id]).catch(() => {});
+    await query('DELETE FROM entregas_agua WHERE programacion_id = $1', [id]).catch(() => {});
+    await query('UPDATE control_calidad SET programacion_id = NULL WHERE programacion_id = $1', [id]).catch(() => {});
     await query('DELETE FROM programaciones WHERE id = $1', [id]);
-    res.json({ message: 'Programacion eliminada correctamente' });
+    res.json({ message: 'Programación eliminada correctamente' });
   } catch (error: any) {
     console.error('Error deleting programacion:', error);
     res.status(500).json({ message: 'Error deleting programacion', error: error.message });
