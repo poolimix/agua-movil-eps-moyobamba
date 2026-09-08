@@ -568,7 +568,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
     return (
       <View style={styles.scannerContainer}>
         <CameraView
-          style={StyleSheet.absoluteFillObject}
+          style={StyleSheet.absoluteFill}
           barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
           onBarcodeScanned={handleBarCodeScanned}
         />
@@ -3009,7 +3009,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
   },
   scannerOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute', top: 0, left: 0, bottom: 0, right: 0,
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 50,

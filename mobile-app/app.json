@@ -27,7 +27,8 @@
     },
     "plugins": [
       "expo-sqlite",
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-status-bar"
     ],
     "extra": {
       "eas": {
