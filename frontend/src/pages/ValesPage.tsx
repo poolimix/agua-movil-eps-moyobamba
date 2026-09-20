@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import QRCode from 'qrcode';
 import Layout from '../components/Layout';
 import Pagination from '../components/Pagination';
+import api from '../config/api';
 import './Modules.css';
 
 interface Vale {
@@ -51,12 +52,9 @@ export default function ValesPage() {
       if (filtroEstado) params.append('estado', filtroEstado);
       if (search) params.append('search', search);
 
-      const res = await fetch(`http://localhost:3000/api/v1/vales?${params.toString()}`);
-      if (res.ok) {
-        const data = await res.json();
-        setVales(data.vales || []);
-        setStats(data.stats || null);
-      }
+      const res = await api.get(`/vales?${params.toString()}`);
+      setVales(res.data.vales || []);
+      setStats(res.data.stats || null);
     } catch (error) {
       console.error('Error al cargar vales:', error);
     } finally {
@@ -76,16 +74,10 @@ export default function ValesPage() {
   const handleCambiarEstado = async (id: number, nuevoEstado: string) => {
     if (!confirm(`¿Está seguro de cambiar el estado del vale a "${nuevoEstado}"?`)) return;
     try {
-      const res = await fetch(`http://localhost:3000/api/v1/vales/${id}/estado`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ estado: nuevoEstado })
-      });
-      if (res.ok) {
-        alert('Estado actualizado correctamente');
-        fetchVales();
-        if (selectedVale) setSelectedVale(null);
-      }
+      await api.patch(`/vales/${id}/estado`, { estado: nuevoEstado });
+      alert('Estado actualizado correctamente');
+      fetchVales();
+      if (selectedVale) setSelectedVale(null);
     } catch (err) {
       alert('Error al actualizar estado');
     }

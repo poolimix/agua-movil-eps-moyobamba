@@ -2,7 +2,6 @@
   "expo": {
     "name": "mobile-app",
     "slug": "mobile-app",
-    "owner": "poolimix",
     "scheme": "aguamovil",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -10,10 +9,10 @@
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "host.exp.Exponent"
+      "bundleIdentifier": "com.epsmoyobamba.aguamovil"
     },
     "android": {
-      "package": "host.exp.Exponent",
+      "package": "com.epsmoyobamba.aguamovil",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -29,11 +28,6 @@
       "expo-sqlite",
       "expo-web-browser",
       "expo-status-bar"
-    ],
-    "extra": {
-      "eas": {
-        "projectId": "e89e378e-57f9-4927-a560-ddf4616cb38b"
-      }
-    }
+    ]
   }
 }

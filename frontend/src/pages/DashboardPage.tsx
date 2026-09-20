@@ -1,7 +1,8 @@
 import { useEffect, useState, useId } from 'react';
 import { Link } from 'react-router-dom';
 import Layout from '../components/Layout';
-import axios from 'axios';
+import api from '../config/api';
+import FleetLiveMap from '../components/FleetLiveMap';
 import './DashboardPage.css';
 
 interface SectorItem {
@@ -75,15 +76,15 @@ export default function DashboardPage() {
       const sDate = overrideStart !== undefined ? overrideStart : startDate;
       const eDate = overrideEnd !== undefined ? overrideEnd : endDate;
 
-      let url = 'http://localhost:3000/api/v1/dashboard/stats';
+      let endpoint = '/dashboard/stats';
       const params = new URLSearchParams();
       if (sDate) params.append('fecha_inicio', sDate);
       if (eDate) params.append('fecha_fin', eDate);
       if (params.toString()) {
-        url += `?${params.toString()}`;
+        endpoint += `?${params.toString()}`;
       }
 
-      const res = await axios.get(url);
+      const res = await api.get(endpoint);
       setData(res.data);
       setLastUpdated(new Date());
     } catch (err) {
@@ -245,7 +246,8 @@ export default function DashboardPage() {
     total_controles: 5,
     cumplimiento_pct: 80
   };
-  const flota = data?.flota || { total: 3, operativas: 2, capacidad_total_litros: 45000 };
+  const flota = data?.flota || { total: 3, operativas: 2, capacidad_total_litros: 45000, cisternas: [] };
+  const cisternasUbicaciones = data?.cisternas_ubicaciones || flota.cisternas || [];
   const sectores: SectorItem[] = data?.sectores || [];
   const tendencia: TendenciaItem[] = data?.tendencia || [];
   const calidadHistorico: CalidadHistoricoItem[] = data?.calidadHistorico || [];
@@ -853,6 +855,12 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {/* LIVE FLEET MAP MONITOREO SATELITAL GPS */}
+        <FleetLiveMap 
+          cisternas={cisternasUbicaciones} 
+          onRefresh={() => fetchStats(false)} 
+        />
+
         {/* LIVE RECENT ACTIVITY: ULTIMAS ENTREGAS */}
         <div className="chart-panel full-width-panel">
           <div className="panel-header">
@@ -965,6 +973,24 @@ export default function DashboardPage() {
               <div className="mod-content">
                 <h3>Fiscalización y Actas</h3>
                 <p>Generación de PDF con firma del beneficiario y geolocalización.</p>
+              </div>
+              <span className="mod-arrow">&rarr;</span>
+            </Link>
+
+            <Link to="/informes" className="mod-card">
+              <div className="mod-icon-bg" style={{ background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)', color: '#fff' }}>📑</div>
+              <div className="mod-content">
+                <h3>Informes Oficiales</h3>
+                <p>Generación de Anexo 2 PNSU, Cuadros 1, 6, 7, 8 y panel de 18 fotos.</p>
+              </div>
+              <span className="mod-arrow">&rarr;</span>
+            </Link>
+
+            <Link to="/balance" className="mod-card">
+              <div className="mod-icon-bg" style={{ background: 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)', color: '#fff' }}>⚖️</div>
+              <div className="mod-content">
+                <h3>Balance Hídrico</h3>
+                <p>Conciliación de cargas en surtidor vs. reparto y control de mermas.</p>
               </div>
               <span className="mod-arrow">&rarr;</span>
             </Link>

@@ -10,6 +10,8 @@ import PersonalPage from './pages/PersonalPage';
 import MetasPage from './pages/MetasPage';
 import CalidadPage from './pages/CalidadPage';
 import ValesPage from './pages/ValesPage';
+import InformesOficialesPage from './pages/InformesOficialesPage';
+import BalanceHidricoPage from './pages/BalanceHidricoPage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
@@ -28,6 +30,8 @@ function AppRoutes() {
       <Route path="/calidad" element={<ProtectedRoute><CalidadPage /></ProtectedRoute>} />
       <Route path="/programaciones" element={<ProtectedRoute><ProgramacionesPage /></ProtectedRoute>} />
       <Route path="/entregas" element={<ProtectedRoute><EntregasPage /></ProtectedRoute>} />
+      <Route path="/informes" element={<ProtectedRoute><InformesOficialesPage /></ProtectedRoute>} />
+      <Route path="/balance" element={<ProtectedRoute><BalanceHidricoPage /></ProtectedRoute>} />
       <Route path="/cisternas" element={<ProtectedRoute><CisternasPage /></ProtectedRoute>} />
       <Route path="/personal" element={<ProtectedRoute><PersonalPage /></ProtectedRoute>} />
       <Route path="*" element={<Navigate to={user ? '/dashboard' : '/login'} replace />} />

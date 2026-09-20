@@ -53,6 +53,14 @@ export const uploadDelivery = async (req: Request, res: Response) => {
       conductor_id,
       litrosEntregados,
       litros_entregados,
+      cuotaProgramada,
+      cuota_programada,
+      saldoPendiente,
+      saldo_pendiente,
+      estadoEntrega,
+      estado_entrega,
+      observacionesEntrega,
+      observaciones_entrega,
       firmaBase64,
       firma_base64,
       latitud,
@@ -72,7 +80,11 @@ export const uploadDelivery = async (req: Request, res: Response) => {
     const finalCisternaId = cisternaId || cisterna_id || null;
     const finalConductorId = conductorId || conductor_id || null;
     const finalLitros = parseFloat(litrosEntregados || litros_entregados || '50');
-    const finalFirma = firmaBase64 || firma_base64 || '';
+    const finalCuota = parseFloat(cuotaProgramada || cuota_programada || finalLitros);
+    const finalSaldo = parseFloat(saldoPendiente !== undefined && saldoPendiente !== null ? saldoPendiente : (saldo_pendiente !== undefined && saldo_pendiente !== null ? saldo_pendiente : Math.max(0, finalCuota - finalLitros)));
+    const finalEstado = estadoEntrega || estado_entrega || (finalSaldo > 0 ? 'PARCIAL' : 'COMPLETA');
+    const finalObservaciones = observacionesEntrega || observaciones_entrega || null;
+    const finalFirma = firmaBase64 || firma_base64 || null;
     const finalLat = latitud ? parseFloat(latitud) : null;
     const finalLng = longitud ? parseFloat(longitud) : null;
     const finalPrecision = precisionGps || precision_gps ? parseFloat(precisionGps || precision_gps) : null;
@@ -104,7 +116,11 @@ export const uploadDelivery = async (req: Request, res: Response) => {
         programacion_id,
         cisterna_id,
         conductor_id,
+        cuota_programada,
         litros_entregados,
+        saldo_pendiente,
+        estado_entrega,
+        observaciones_entrega,
         firma_base64,
         foto_url,
         latitud,
@@ -116,7 +132,7 @@ export const uploadDelivery = async (req: Request, res: Response) => {
         fecha_hora,
         sincronizado
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $14, 1)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $18, 1)
       RETURNING *;
     `;
 
@@ -126,7 +142,11 @@ export const uploadDelivery = async (req: Request, res: Response) => {
       finalProgramacionId,
       finalCisternaId,
       finalConductorId,
+      finalCuota,
       finalLitros,
+      finalSaldo,
+      finalEstado,
+      finalObservaciones,
       finalFirma,
       fotoUrl,
       finalLat,
@@ -136,6 +156,15 @@ export const uploadDelivery = async (req: Request, res: Response) => {
       finalFechaUbicacion,
       finalFechaCaptura,
     ]);
+
+    // 4. Si viene con GPS y cisterna_id, actualizar la última ubicación de la cisterna en tiempo real
+    if (finalCisternaId && finalLat && finalLng) {
+      query(`
+        UPDATE cisternas 
+        SET latitud_actual = $1, longitud_actual = $2, ultima_actualizacion_gps = CURRENT_TIMESTAMP 
+        WHERE id = $3
+      `, [finalLat, finalLng, finalCisternaId]).catch(() => {});
+    }
 
     res.status(201).json({
       message: 'Entrega sincronizada exitosamente con evidencia y GPS.',

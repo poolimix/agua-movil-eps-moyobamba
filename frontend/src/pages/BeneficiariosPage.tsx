@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Layout from '../components/Layout';
 import Pagination from '../components/Pagination';
-import axios from 'axios';
+import api from '../config/api';
 import './Modules.css';
 
 interface Beneficiario {
@@ -80,7 +80,7 @@ export default function BeneficiariosPage() {
   const fetchBeneficiarios = async () => {
     try {
       setLoading(true);
-      const res = await axios.get('http://localhost:3000/api/v1/beneficiarios');
+      const res = await api.get('/beneficiarios');
       setBeneficiarios(res.data);
     } catch (error) {
       console.error('Error fetching beneficiarios:', error);
@@ -91,7 +91,7 @@ export default function BeneficiariosPage() {
 
   const fetchSectores = async () => {
     try {
-      const res = await axios.get('http://localhost:3000/api/v1/sectores');
+      const res = await api.get('/sectores');
       setSectores(res.data);
       if (res.data.length > 0 && !formData.sector_aahh) {
         setFormData((prev) => ({ ...prev, sector_aahh: res.data[0].nombre }));
@@ -160,10 +160,10 @@ export default function BeneficiariosPage() {
     e.preventDefault();
     try {
       if (editingBeneficiario) {
-        await axios.put(`http://localhost:3000/api/v1/beneficiarios/${editingBeneficiario.id}`, formData);
+        await api.put(`/beneficiarios/${editingBeneficiario.id}`, formData);
         alert('✅ Beneficiario actualizado exitosamente');
       } else {
-        await axios.post('http://localhost:3000/api/v1/beneficiarios', formData);
+        await api.post('/beneficiarios', formData);
         alert('✅ Beneficiario registrado exitosamente');
       }
       setModalOpen(false);
@@ -177,7 +177,7 @@ export default function BeneficiariosPage() {
   const handleDeleteBeneficiario = async (id: number) => {
     if (!window.confirm('¿Estás seguro de eliminar este beneficiario?')) return;
     try {
-      await axios.delete(`http://localhost:3000/api/v1/beneficiarios/${id}`);
+      await api.delete(`/beneficiarios/${id}`);
       fetchBeneficiarios();
       fetchSectores();
     } catch (error: any) {
@@ -188,7 +188,7 @@ export default function BeneficiariosPage() {
   const handleQuickAddSector = async () => {
     if (!quickSectorName.trim()) return;
     try {
-      const res = await axios.post('http://localhost:3000/api/v1/sectores', {
+      const res = await api.post('/sectores', {
         nombre: quickSectorName.trim(),
         distrito: 'Moyobamba',
       });
@@ -206,10 +206,10 @@ export default function BeneficiariosPage() {
     e.preventDefault();
     try {
       if (editingSector) {
-        await axios.put(`http://localhost:3000/api/v1/sectores/${editingSector.id}`, newSectorForm);
+        await api.put(`/sectores/${editingSector.id}`, newSectorForm);
         alert('✅ Sector actualizado correctamente');
       } else {
-        await axios.post('http://localhost:3000/api/v1/sectores', newSectorForm);
+        await api.post('/sectores', newSectorForm);
         alert('✅ Sector creado correctamente');
       }
       setNewSectorForm({ nombre: '', distrito: 'Moyobamba', descripcion: '' });
@@ -224,7 +224,7 @@ export default function BeneficiariosPage() {
   const handleDeleteSector = async (id: number, nombre: string) => {
     if (!window.confirm(`¿Estás seguro de eliminar el sector "${nombre}"?`)) return;
     try {
-      await axios.delete(`http://localhost:3000/api/v1/sectores/${id}`);
+      await api.delete(`/sectores/${id}`);
       fetchSectores();
     } catch (error: any) {
       alert('Error al eliminar sector');
@@ -240,7 +240,7 @@ export default function BeneficiariosPage() {
 
     try {
       setImporting(true);
-      const res = await axios.post('http://localhost:3000/api/v1/beneficiarios/import-excel', data, {
+      const res = await api.post('/beneficiarios/import-excel', data, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       setImportSummary(res.data);

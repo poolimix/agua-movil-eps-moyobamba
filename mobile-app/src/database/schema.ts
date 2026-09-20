@@ -103,8 +103,12 @@ export const initDatabase = async () => {
       programacion_id INTEGER NOT NULL,
       cisterna_id INTEGER,
       conductor_id INTEGER,
+      cuota_programada REAL,
       litros_entregados REAL NOT NULL,
-      firma_base64 TEXT NOT NULL,
+      saldo_pendiente REAL DEFAULT 0,
+      estado_entrega TEXT DEFAULT 'COMPLETA',
+      observaciones_entrega TEXT,
+      firma_base64 TEXT,
       foto_local_uri TEXT,
       latitud REAL,
       longitud REAL,
@@ -158,7 +162,16 @@ export const initDatabase = async () => {
     'ALTER TABLE entregas_agua ADD COLUMN fecha_ubicacion TEXT;',
     'ALTER TABLE entregas_agua ADD COLUMN fecha_captura TEXT;',
     'ALTER TABLE entregas_agua ADD COLUMN sync_status TEXT DEFAULT "PENDING";',
-    'ALTER TABLE entregas_agua ADD COLUMN retry_count INTEGER DEFAULT 0;'
+    'ALTER TABLE entregas_agua ADD COLUMN retry_count INTEGER DEFAULT 0;',
+    'ALTER TABLE entregas_agua ADD COLUMN cuota_programada REAL;',
+    'ALTER TABLE entregas_agua ADD COLUMN saldo_pendiente REAL DEFAULT 0;',
+    'ALTER TABLE entregas_agua ADD COLUMN estado_entrega TEXT DEFAULT "COMPLETA";',
+    'ALTER TABLE entregas_agua ADD COLUMN observaciones_entrega TEXT;',
+    'ALTER TABLE cisternas ADD COLUMN codigo_gps TEXT;',
+    'ALTER TABLE cisternas ADD COLUMN latitud_actual REAL;',
+    'ALTER TABLE cisternas ADD COLUMN longitud_actual REAL;',
+    'ALTER TABLE cisternas ADD COLUMN enlace_gps_tracking TEXT;',
+    'ALTER TABLE cisternas ADD COLUMN ultima_actualizacion_gps TEXT;'
   ];
 
   for (const sql of migrations) {

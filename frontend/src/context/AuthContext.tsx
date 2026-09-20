@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import type { User } from 'firebase/auth';
 import { auth } from '../firebase/firebase';
-import axios from 'axios';
+import api from '../config/api';
 
 export interface AppUser {
   id: number;
@@ -47,7 +47,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         try {
           const idToken = await currentUser.getIdToken();
           // Authenticate with backend
-          const res = await axios.post('http://localhost:3000/api/v1/auth/google', { idToken });
+          const res = await api.post('/auth/google', { idToken });
           const { token: jwtToken, user: dbUser } = res.data;
           
           setToken(jwtToken);

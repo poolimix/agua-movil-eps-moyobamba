@@ -3,7 +3,7 @@ import Layout from '../components/Layout';
 import Pagination from '../components/Pagination';
 import DaysOfWeekSelector from '../components/DaysOfWeekSelector';
 import MultiSectorSelector, { type SectorItem } from '../components/MultiSectorSelector';
-import axios from 'axios';
+import api, { API_BASE_URL } from '../config/api';
 import './Modules.css';
 
 interface Programacion {
@@ -127,7 +127,7 @@ export default function ProgramacionesPage() {
   const fetchProgramaciones = async () => {
     try {
       setLoading(true);
-      const res = await axios.get('http://localhost:3000/api/v1/programaciones');
+      const res = await api.get('/programaciones');
       setProgramaciones(res.data);
     } catch (error) {
       console.error('Error fetching programaciones:', error);
@@ -138,7 +138,7 @@ export default function ProgramacionesPage() {
 
   const fetchSectores = async () => {
     try {
-      const res = await axios.get('http://localhost:3000/api/v1/sectores');
+      const res = await api.get('/sectores');
       setSectores(res.data);
     } catch (error) {
       console.error('Error fetching sectores:', error);
@@ -147,7 +147,7 @@ export default function ProgramacionesPage() {
 
   const fetchCisternas = async () => {
     try {
-      const res = await axios.get('http://localhost:3000/api/v1/cisternas?estado=OPERATIVO');
+      const res = await api.get('/cisternas?estado=OPERATIVO');
       setCisternas(res.data);
     } catch (error) {
       console.error('Error fetching cisternas:', error);
@@ -156,7 +156,7 @@ export default function ProgramacionesPage() {
 
   const fetchConductores = async () => {
     try {
-      const res = await axios.get('http://localhost:3000/api/v1/personal?tipo=CONDUCTOR');
+      const res = await api.get('/personal?tipo=CONDUCTOR');
       setConductores(res.data);
     } catch (error) {
       console.error('Error fetching conductores:', error);
@@ -165,7 +165,7 @@ export default function ProgramacionesPage() {
 
   const fetchAyudantes = async () => {
     try {
-      const res = await axios.get('http://localhost:3000/api/v1/personal?tipo=AYUDANTE');
+      const res = await api.get('/personal?tipo=AYUDANTE');
       setAyudantes(res.data);
     } catch (error) {
       console.error('Error fetching ayudantes:', error);
@@ -260,7 +260,7 @@ export default function ProgramacionesPage() {
   const fetchVales = async (progId: number) => {
     try {
       setValesLoading(true);
-      const res = await axios.get(`http://localhost:3000/api/v1/programaciones/${progId}/vales`);
+      const res = await api.get(`/programaciones/${progId}/vales`);
       setValesList(res.data);
     } catch (error) {
       console.error('Error fetching vales:', error);
@@ -275,7 +275,7 @@ export default function ProgramacionesPage() {
 
     try {
       setDispatching(true);
-      const res = await axios.post(`http://localhost:3000/api/v1/programaciones/${selectedProgForVales.id}/despachar-vales`);
+      const res = await api.post(`/programaciones/${selectedProgForVales.id}/despachar-vales`);
       alert(`✅ ${res.data.message}\nResumen: WhatsApp: ${res.data.resumen.whatsappEnviados} | SMS: ${res.data.resumen.smsEnviados} | Correo: ${res.data.resumen.correoEnviados}`);
       fetchVales(selectedProgForVales.id);
     } catch (error: any) {
@@ -290,7 +290,7 @@ export default function ProgramacionesPage() {
 
     try {
       setRetrying(true);
-      const res = await axios.post(`http://localhost:3000/api/v1/programaciones/${selectedProgForVales.id}/reintentar-vales-fallidos`);
+      const res = await api.post(`/programaciones/${selectedProgForVales.id}/reintentar-vales-fallidos`);
       alert(`✅ ${res.data.message}`);
       fetchVales(selectedProgForVales.id);
     } catch (error: any) {
@@ -322,10 +322,10 @@ export default function ProgramacionesPage() {
 
     try {
       if (editingProg) {
-        await axios.put(`http://localhost:3000/api/v1/programaciones/${editingProg.id}`, payload);
+        await api.put(`/programaciones/${editingProg.id}`, payload);
         alert('✅ Programación actualizada exitosamente');
       } else {
-        await axios.post('http://localhost:3000/api/v1/programaciones', payload);
+        await api.post('/programaciones', payload);
         alert('✅ Programación creada exitosamente con los sectores seleccionados');
       }
       setModalOpen(false);
@@ -338,7 +338,7 @@ export default function ProgramacionesPage() {
   const handleDelete = async (id: number) => {
     if (!window.confirm('¿Estás seguro de eliminar esta programación?')) return;
     try {
-      await axios.delete(`http://localhost:3000/api/v1/programaciones/${id}`);
+      await api.delete(`/programaciones/${id}`);
       fetchProgramaciones();
     } catch (error: any) {
       alert('Error al eliminar');
@@ -581,7 +581,7 @@ export default function ProgramacionesPage() {
                       </button>
 
                       <a
-                        href={`http://localhost:3000/api/v1/programaciones/${p.id}/pdf`}
+                        href={`${API_BASE_URL}/api/v1/programaciones/${p.id}/pdf`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="btn-pdf"

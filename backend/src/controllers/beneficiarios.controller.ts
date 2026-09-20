@@ -5,6 +5,70 @@ import { DOTACION_POR_HABITANTE, LITROS_POR_M3 } from '../config/constants';
 
 export const getAllBeneficiarios = async (req: Request, res: Response) => {
   try {
+    const { page, limit, search, sector } = req.query;
+
+    if (page || limit) {
+      const pageNum = Math.max(1, parseInt(String(page), 10) || 1);
+      const limitNum = Math.max(1, parseInt(String(limit), 10) || 20);
+      const offset = (pageNum - 1) * limitNum;
+
+      let whereClauses: string[] = [];
+      let params: any[] = [];
+
+      if (search) {
+        params.push(`%${String(search).trim()}%`);
+        whereClauses.push(`(dni ILIKE $${params.length} OR nombres_apellidos ILIKE $${params.length} OR calle_direccion ILIKE $${params.length})`);
+      }
+
+      if (sector) {
+        params.push(String(sector).trim());
+        whereClauses.push(`COALESCE(sector_aahh, sector) = $${params.length}`);
+      }
+
+      const whereStr = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+
+      const countRes = await query(`SELECT COUNT(*) as total FROM beneficiarios ${whereStr}`, params);
+      const total = parseInt(countRes.rows[0]?.total || '0', 10);
+
+      const dataQuery = `
+        SELECT 
+          id,
+          dni,
+          COALESCE(nombres, SPLIT_PART(nombres_apellidos, ' ', 1), '') as nombres,
+          COALESCE(apellidos, SUBSTRING(nombres_apellidos FROM LENGTH(SPLIT_PART(nombres_apellidos, ' ', 1)) + 2), '') as apellidos,
+          nombres_apellidos,
+          COALESCE(distrito, 'Moyobamba') as distrito,
+          COALESCE(sector_aahh, sector, '') as sector_aahh,
+          COALESCE(sector_aahh, sector, '') as sector,
+          COALESCE(num_vivienda, '') as num_vivienda,
+          COALESCE(num_miembros, 1) as num_miembros,
+          COALESCE(mz, '') as mz,
+          COALESCE(lt, '') as lt,
+          COALESCE(calle_direccion, direccion, '') as calle_direccion,
+          COALESCE(calle_direccion, direccion, '') as direccion,
+          COALESCE(telefono, '') as telefono,
+          COALESCE(email, '') as email,
+          (COALESCE(num_miembros, 1) * ${DOTACION_POR_HABITANTE}) as litros_sugeridos
+        FROM beneficiarios 
+        ${whereStr}
+        ORDER BY id DESC
+        LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+      `;
+
+      const result = await query(dataQuery, [...params, limitNum, offset]);
+
+      return res.json({
+        data: result.rows,
+        pagination: {
+          total,
+          page: pageNum,
+          limit: limitNum,
+          totalPages: Math.ceil(total / limitNum),
+        }
+      });
+    }
+
+    // Retorno estándar completo sin paginación (para compatibilidad total)
     const result = await query(`
       SELECT 
         id,
@@ -37,6 +101,8 @@ export const getAllBeneficiarios = async (req: Request, res: Response) => {
 export const getBeneficiarioByDni = async (req: Request, res: Response) => {
   try {
     const { dni } = req.params;
+    const { programacion_id } = req.query;
+
     const result = await query(`
       SELECT 
         id,
@@ -65,7 +131,30 @@ export const getBeneficiarioByDni = async (req: Request, res: Response) => {
       return res.status(404).json({ message: `Beneficiario con DNI ${dni} no encontrado en el sistema.` });
     }
 
-    res.json(result.rows[0]);
+    const benef = result.rows[0];
+
+    // Si se pasa programacion_id, consultar entregas previas y calcular saldo
+    if (programacion_id) {
+      const progIdNum = parseInt(String(programacion_id), 10);
+      const prevEntregasRes = await query(`
+        SELECT 
+          COALESCE(SUM(litros_entregados), 0) as total_entregado,
+          COUNT(*) as num_entregas
+        FROM entregas_agua 
+        WHERE beneficiario_id = $1 AND programacion_id = $2
+      `, [benef.id, progIdNum]);
+
+      const totalEntregado = parseFloat(prevEntregasRes.rows[0]?.total_entregado || '0');
+      const cuotaTotal = parseFloat(benef.litros_sugeridos || '50');
+      const saldoRestante = Math.max(0, cuotaTotal - totalEntregado);
+
+      benef.total_entregado_programacion = totalEntregado;
+      benef.saldo_pendiente_programacion = saldoRestante;
+      benef.tiene_entrega_previa = totalEntregado > 0;
+      benef.es_parcial_previa = saldoRestante > 0 && totalEntregado > 0;
+    }
+
+    res.json(benef);
   } catch (error: any) {
     console.error('Error searching beneficiario by DNI:', error);
     res.status(500).json({ message: 'Error al buscar beneficiario', error: error.message });

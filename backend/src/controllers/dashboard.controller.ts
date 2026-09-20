@@ -68,9 +68,9 @@ export const getStats = async (req: Request, res: Response) => {
         SELECT 
           COUNT(*) as total_vales,
           COUNT(CASE WHEN estado = 'CANJEADO' THEN 1 END) as entregados,
-          COUNT(CASE WHEN estado = 'PENDIENTE' THEN 1 END) as pendientes,
+          COUNT(CASE WHEN estado IN ('PENDIENTE', 'EMITIDO') THEN 1 END) as pendientes,
           COUNT(CASE WHEN estado = 'ANULADO' THEN 1 END) as anulados
-        FROM vales_consumo
+        FROM vales_entrega
         ${valesWhere}
       `, paramsVales);
       if (valesRes.rows.length > 0) {
@@ -127,8 +127,8 @@ export const getStats = async (req: Request, res: Response) => {
       console.warn('Calidad table query skipped or empty:', e);
     }
 
-    // 6. Estado de la Flota de Cisternas
-    let flotaStats = { total: 0, operativas: 0, capacidad_total_litros: 0 };
+    // 6. Estado de la Flota de Cisternas con Ubicaciones GPS
+    let flotaStats = { total: 0, operativas: 0, capacidad_total_litros: 0, cisternas: [] as any[] };
     try {
       const cisRes = await query(`
         SELECT 
@@ -137,11 +137,31 @@ export const getStats = async (req: Request, res: Response) => {
           COALESCE(SUM(capacidad_litros), 0) as capacidad_total
         FROM cisternas
       `);
+      const cisListRes = await query(`
+        SELECT 
+          c.id,
+          c.placa,
+          c.marca_modelo,
+          c.capacidad_m3,
+          c.capacidad_litros,
+          c.estado,
+          c.codigo_gps,
+          c.latitud_actual,
+          c.longitud_actual,
+          c.enlace_gps_tracking,
+          c.ultima_actualizacion_gps,
+          CONCAT(p.nombres, ' ', p.apellidos) as conductor_habitual_nombre,
+          p.telefono as conductor_habitual_telefono
+        FROM cisternas c
+        LEFT JOIN personal_operativo p ON c.conductor_habitual_id = p.id
+        ORDER BY c.id ASC
+      `);
       if (cisRes.rows.length > 0) {
         flotaStats = {
           total: parseInt(cisRes.rows[0].total, 10) || 0,
           operativas: parseInt(cisRes.rows[0].operativas, 10) || 0,
-          capacidad_total_litros: parseFloat(cisRes.rows[0].capacidad_total) || 0
+          capacidad_total_litros: parseFloat(cisRes.rows[0].capacidad_total) || 0,
+          cisternas: cisListRes.rows
         };
       }
     } catch (e) {
@@ -295,6 +315,7 @@ export const getStats = async (req: Request, res: Response) => {
       vales: valesStats,
       calidad: calidadStats,
       flota: flotaStats,
+      cisternas_ubicaciones: flotaStats.cisternas,
       sectores: sectoresData,
       tendencia: tendenciaData,
       calidadHistorico: calidadHistorico,

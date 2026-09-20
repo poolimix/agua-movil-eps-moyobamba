@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import Pagination from '../components/Pagination';
-import axios from 'axios';
+import api from '../config/api';
 import './Modules.css';
 
 interface Personal {
@@ -53,7 +53,7 @@ export default function PersonalPage() {
       if (filterTipo) params.append('tipo', filterTipo);
       if (filterEstado) params.append('estado', filterEstado);
 
-      const res = await axios.get(`http://localhost:3000/api/v1/personal?${params.toString()}`);
+      const res = await api.get(`/personal?${params.toString()}`);
       setPersonalList(res.data);
     } catch (error) {
       console.error('Error fetching personal:', error);
@@ -102,10 +102,10 @@ export default function PersonalPage() {
 
     try {
       if (editingId) {
-        await axios.put(`http://localhost:3000/api/v1/personal/${editingId}`, formData);
+        await api.put(`/personal/${editingId}`, formData);
         alert('✅ Personal actualizado exitosamente');
       } else {
-        await axios.post('http://localhost:3000/api/v1/personal', formData);
+        await api.post('/personal', formData);
         alert('✅ Personal registrado exitosamente');
       }
       setModalOpen(false);
@@ -118,7 +118,7 @@ export default function PersonalPage() {
   const handleDelete = async (id: number) => {
     if (!window.confirm('¿Está seguro de eliminar este registro de personal?')) return;
     try {
-      await axios.delete(`http://localhost:3000/api/v1/personal/${id}`);
+      await api.delete(`/personal/${id}`);
       fetchPersonal();
     } catch (error: any) {
       alert('Error al eliminar personal');

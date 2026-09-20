@@ -13,6 +13,8 @@ import syncRoutes from './routes/sync.routes';
 import valesRoutes from './routes/vales.routes';
 import sectoresRoutes from './routes/sectores.routes';
 import calidadRoutes from './routes/calidad.routes';
+import informesRoutes from './routes/informes.routes';
+import balanceRoutes from './routes/balance.routes';
 
 dotenv.config();
 
@@ -37,6 +39,8 @@ app.use('/api/v1/personal', personalRoutes);
 app.use('/api/v1/sectores', sectoresRoutes);
 app.use('/api/v1/sync', syncRoutes);
 app.use('/api/v1/calidad', calidadRoutes);
+app.use('/api/v1/informes', informesRoutes);
+app.use('/api/v1/balance', balanceRoutes);
 app.use('/api/v1', valesRoutes);
 
 

@@ -40,6 +40,18 @@ export const syncData = async (): Promise<{ success: boolean; syncedCount: numbe
         if (entrega.cisterna_id) formData.append('cisternaId', String(entrega.cisterna_id));
         if (entrega.conductor_id) formData.append('conductorId', String(entrega.conductor_id));
         formData.append('litrosEntregados', String(entrega.litros_entregados));
+        if (entrega.cuota_programada !== undefined && entrega.cuota_programada !== null) {
+          formData.append('cuotaProgramada', String(entrega.cuota_programada));
+        }
+        if (entrega.saldo_pendiente !== undefined && entrega.saldo_pendiente !== null) {
+          formData.append('saldoPendiente', String(entrega.saldo_pendiente));
+        }
+        if (entrega.estado_entrega) {
+          formData.append('estadoEntrega', String(entrega.estado_entrega));
+        }
+        if (entrega.observaciones_entrega) {
+          formData.append('observacionesEntrega', String(entrega.observaciones_entrega));
+        }
         formData.append('firmaBase64', entrega.firma_base64 || '');
         if (entrega.latitud) formData.append('latitud', String(entrega.latitud));
         if (entrega.longitud) formData.append('longitud', String(entrega.longitud));

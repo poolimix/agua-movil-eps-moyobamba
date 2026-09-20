@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import Pagination from '../components/Pagination';
+import api from '../config/api';
 import './Modules.css';
 
 interface ControlCalidad {
@@ -62,23 +63,14 @@ export default function CalidadPage() {
     try {
       setLoading(true);
       const [calidadRes, statsRes, cisternasRes] = await Promise.all([
-        fetch('http://localhost:3000/api/v1/calidad/calidad' + (filtroCisterna ? `?cisterna_id=${filtroCisterna}` : '')),
-        fetch('http://localhost:3000/api/v1/calidad/calidad/stats'),
-        fetch('http://localhost:3000/api/v1/cisternas')
+        api.get('/calidad/calidad' + (filtroCisterna ? `?cisterna_id=${filtroCisterna}` : '')),
+        api.get('/calidad/calidad/stats'),
+        api.get('/cisternas')
       ]);
 
-      if (calidadRes.ok) {
-        const data = await calidadRes.json();
-        setControles(data);
-      }
-      if (statsRes.ok) {
-        const data = await statsRes.json();
-        setStats(data);
-      }
-      if (cisternasRes.ok) {
-        const data = await cisternasRes.json();
-        setCisternas(data);
-      }
+      setControles(calidadRes.data);
+      setStats(statsRes.data);
+      setCisternas(cisternasRes.data);
     } catch (error) {
       console.error('Error cargando controles de calidad:', error);
     } finally {
@@ -94,16 +86,9 @@ export default function CalidadPage() {
     e.preventDefault();
     try {
       setSubmitting(true);
-      const res = await fetch('http://localhost:3000/api/v1/calidad/calidad', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
-      });
+      const res = await api.post('/calidad/calidad', formData);
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Error al registrar');
-
-      alert(data.message);
+      alert(res.data.message || 'Control registrado exitosamente');
       setModalOpen(false);
       setFormData({
         cisterna_id: '',

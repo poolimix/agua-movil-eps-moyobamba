@@ -38,6 +38,10 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
   const [beneficiario, setBeneficiario] = useState<any>(null);
   const [valeCodigo, setValeCodigo] = useState<string | null>(null);
   const [litrosEntregar, setLitrosEntregar] = useState('50');
+  const [cuotaTotal, setCuotaTotal] = useState(50);
+  const [entregadoPrevio, setEntregadoPrevio] = useState(0);
+  const [saldoPendiente, setSaldoPendiente] = useState(50);
+  const [tieneEntregaPrevia, setTieneEntregaPrevia] = useState(false);
   const [hasSignature, setHasSignature] = useState(false);
   const [qrScannerVisible, setQrScannerVisible] = useState(false);
   const [searching, setSearching] = useState(false);
@@ -331,17 +335,48 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
         setBeneficiario(result);
         setValeCodigo(codigoVale || result.vale_codigo || null);
 
-        // Compute Suggested Liters (SUNASS Standard: 50L x members)
-        const suggestedLiters = qrLitros
+        const progId = selectedProg?.id || PROGRAMACION_ACTUAL_ID;
+
+        // Consultar entregas previas para este beneficiario en esta programación
+        let yaEntregado = 0;
+        try {
+          const prevRows: any = await db.getFirstAsync(
+            `SELECT COALESCE(SUM(litros_entregados), 0) as total_entregado FROM entregas_agua WHERE beneficiario_id = ? AND programacion_id = ?`,
+            [result.id, progId]
+          );
+          if (prevRows?.total_entregado) {
+            yaEntregado = parseFloat(prevRows.total_entregado);
+          } else if (result.total_entregado_programacion) {
+            yaEntregado = parseFloat(result.total_entregado_programacion);
+          }
+        } catch (_) {}
+
+        // Calcular cuota familiar total (SUNASS Standard: 50L x integrantes)
+        const cuotaFamiliar = qrLitros
           ? parseFloat(qrLitros)
           : result.vale_litros
           ? parseFloat(result.vale_litros)
           : (result.num_miembros || 1) * DOTACION_POR_HABITANTE;
 
-        setLitrosEntregar(String(suggestedLiters));
+        const saldoResta = Math.max(0, cuotaFamiliar - yaEntregado);
+
+        setCuotaTotal(cuotaFamiliar);
+        setEntregadoPrevio(yaEntregado);
+        setSaldoPendiente(saldoResta);
+        setTieneEntregaPrevia(yaEntregado > 0);
+
+        // Sugerir por defecto el saldo restante pendiente
+        setLitrosEntregar(String(saldoResta > 0 ? saldoResta : cuotaFamiliar));
         setHasSignature(false);
         setPhotoUri(null);
         signatureRef.current?.clearSignature();
+
+        if (yaEntregado > 0) {
+          Alert.alert(
+            '⚠️ Entrega Parcial Previa Detectada',
+            `Este beneficiario ya recibió ${yaEntregado} Lts de su cuota total de ${cuotaFamiliar} Lts.\n\nSaldo disponible a entregar: ${saldoResta} Lts.`
+          );
+        }
       } else {
         Alert.alert(
           'No encontrado',
@@ -447,6 +482,10 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
     setValeCodigo(null);
     setDni('');
     setLitrosEntregar('50');
+    setCuotaTotal(50);
+    setEntregadoPrevio(0);
+    setSaldoPendiente(50);
+    setTieneEntregaPrevia(false);
     setHasSignature(false);
     setPhotoUri(null);
     signatureRef.current?.clearSignature();
@@ -454,15 +493,11 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
 
   // --- SAVE DELIVERY ---
   const handleSignatureOK = async (signatureBase64: string) => {
-    if (!signatureBase64 || signatureBase64.length < 50) {
-      Alert.alert('Firma requerida', 'Por favor capture la firma digital del Jefe de Familia.');
-      return;
-    }
-
     if (!beneficiario) return;
 
+    // FOTOGRAFÍA OBLIGATORIA
     if (!photoUri) {
-      Alert.alert('Fotografía requerida', 'Debe capturar la fotografía de evidencia en campo antes de registrar la entrega.');
+      Alert.alert('Fotografía obligatoria', '📸 Debe capturar la fotografía de evidencia en campo antes de registrar la entrega.');
       return;
     }
 
@@ -471,6 +506,15 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
       Alert.alert('Monto inválido', 'Ingrese una cantidad válida de litros a otorgar.');
       return;
     }
+
+    const progId = selectedProg?.id || PROGRAMACION_ACTUAL_ID;
+    const cuota = cuotaTotal > 0 ? cuotaTotal : (beneficiario.num_miembros || 1) * DOTACION_POR_HABITANTE;
+    const nuevoTotalEntregado = entregadoPrevio + litrosNum;
+    const saldoRestante = Math.max(0, cuota - nuevoTotalEntregado);
+    const estadoEntrega = saldoRestante > 0 ? 'PARCIAL' : 'COMPLETA';
+    const obsEntrega = saldoRestante > 0 
+      ? `Entrega parcial de ${litrosNum} Lts. Quedan pendientes ${saldoRestante} Lts por entregar.`
+      : `Entrega completa del 100% (${cuota} Lts).`;
 
     try {
       const db = await getDatabase();
@@ -484,7 +528,11 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
           programacion_id,
           cisterna_id,
           conductor_id,
+          cuota_programada,
           litros_entregados,
+          saldo_pendiente,
+          estado_entrega,
+          observaciones_entrega,
           firma_base64,
           foto_local_uri,
           latitud,
@@ -496,15 +544,19 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
           sincronizado,
           sync_status,
           retry_count
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'PENDING', 0)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'PENDING', 0)`,
         [
           localId,
           beneficiario.id,
-          PROGRAMACION_ACTUAL_ID,
+          progId,
           selectedCisternaId,
           selectedConductorId,
+          cuota,
           litrosNum,
-          signatureBase64,
+          saldoRestante,
+          estadoEntrega,
+          obsEntrega,
+          signatureBase64 || null,
           photoUri,
           location?.coords.latitude || null,
           location?.coords.longitude || null,
@@ -515,10 +567,17 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
         ]
       );
 
-      Alert.alert(
-        '✅ Entrega Registrada',
-        `Se guardaron ${litrosNum} Lts para ${beneficiario.nombres_apellidos}.\nEstado: PENDIENTE DE SYNC (Offline-First)`
-      );
+      if (saldoRestante > 0) {
+        Alert.alert(
+          '🟡 Entrega Parcial Registrada',
+          `Se guardaron ${litrosNum} Lts para ${beneficiario.nombres_apellidos}.\n\n⚠️ QUEDAN PENDIENTES: ${saldoRestante} Lts por entregar en esta programación.\nEstado: Guardado en Celular (Offline-First)`
+        );
+      } else {
+        Alert.alert(
+          '✅ Entrega Completa Registrada',
+          `Se completó el abastecimiento de ${litrosNum} Lts para ${beneficiario.nombres_apellidos}.\nCuota 100% cubierta.\nEstado: Guardado en Celular (Offline-First)`
+        );
+      }
 
       // Attempt background sync
       syncData().catch(() => {});
@@ -531,15 +590,18 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
   };
 
   const handleSaveDelivery = () => {
+    // 1. Fotografía es OBLIGATORIA
     if (!photoUri) {
       Alert.alert('Fotografía obligatoria', '📸 Debe capturar la fotografía de evidencia de la entrega antes de registrar.');
       return;
     }
-    if (!hasSignature) {
-      Alert.alert('Firma obligatoria', '✍️ Debe capturar la firma digital del Jefe de Familia antes de registrar la entrega.');
-      return;
+    
+    // 2. Firma digital es OPCIONAL: si se firmó en pantalla se lee, sino se procesa directamente
+    if (hasSignature) {
+      signatureRef.current?.readSignature();
+    } else {
+      handleSignatureOK('');
     }
-    signatureRef.current?.readSignature();
   };
 
   const handleManualSync = async () => {
@@ -1234,41 +1296,97 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
             <Text style={styles.infoValue}>{beneficiario.num_miembros} personas</Text>
           </View>
 
-          {/* CALCULATION & EDITABLE LITERS BOX */}
-          <View style={styles.waterCalcBox}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                <Ionicons name="water-outline" size={14} color="#0369a1" />
-                <Text style={styles.waterCalcTitle}>Dotación SUNASS</Text>
-              </View>
-              <Text style={styles.dotacionPill}>{DOTACION_POR_HABITANTE} L/hab</Text>
-            </View>
+          {/* CALCULATION & EDITABLE LITERS BOX CON SALDO PENDIENTE */}
+          {(() => {
+            const ltsNum = parseFloat(litrosEntregar) || 0;
+            const saldoBase = tieneEntregaPrevia ? saldoPendiente : cuotaTotal;
+            const saldoQueQuedara = Math.max(0, saldoBase - ltsNum);
+            const esParcial = saldoQueQuedara > 0;
+            const excedeCuota = ltsNum > saldoBase;
 
-            <Text style={styles.waterCalcSub}>
-              Cálculo sugerido: {(beneficiario.num_miembros || 1) * DOTACION_POR_HABITANTE} Litros
-            </Text>
+            return (
+              <View style={styles.waterCalcBox}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                    <Ionicons name="water-outline" size={15} color="#0369a1" />
+                    <Text style={styles.waterCalcTitle}>Cuota y Dotación Familiar</Text>
+                  </View>
+                  <Text style={styles.dotacionPill}>{DOTACION_POR_HABITANTE} L/hab</Text>
+                </View>
 
-            <View style={styles.litersInputRow}>
-              <Text style={styles.litersInputLabel}>Litros a Otorgar:</Text>
-              <View style={styles.litersInputContainer}>
-                <TextInput
-                  style={styles.litersInput}
-                  value={litrosEntregar}
-                  onChangeText={setLitrosEntregar}
-                  keyboardType="numeric"
-                />
-                <Text style={styles.litersSuffix}>Lts</Text>
+                <Text style={styles.waterCalcSub}>
+                  Cuota Total Programada: {beneficiario.num_miembros || 1} integrantes × {DOTACION_POR_HABITANTE} L = <Text style={{ fontWeight: '800', color: '#0369a1' }}>{cuotaTotal} Litros</Text>
+                </Text>
+
+                {tieneEntregaPrevia ? (
+                  <View style={{ backgroundColor: '#fef3c7', padding: 8, borderRadius: 8, marginVertical: 6, borderWidth: 1, borderColor: '#fde68a' }}>
+                    <Text style={{ fontSize: 11.5, color: '#92400e', fontWeight: '700' }}>
+                      ⚠️ Historial en esta ruta: Ya recibió {entregadoPrevio} Lts previamente.
+                    </Text>
+                    <Text style={{ fontSize: 11, color: '#b45309', marginTop: 2 }}>
+                      Saldo pendiente inicial: {saldoPendiente} Lts por entregar.
+                    </Text>
+                  </View>
+                ) : null}
+
+                <View style={styles.litersInputRow}>
+                  <Text style={styles.litersInputLabel}>Litros a Entregar Ahora:</Text>
+                  <View style={styles.litersInputContainer}>
+                    <TextInput
+                      style={styles.litersInput}
+                      value={litrosEntregar}
+                      onChangeText={setLitrosEntregar}
+                      keyboardType="numeric"
+                    />
+                    <Text style={styles.litersSuffix}>Lts</Text>
+                  </View>
+                </View>
+
+                {/* VISOR EN TIEMPO REAL DE SALDO PENDIENTE */}
+                {excedeCuota ? (
+                  <View style={{ backgroundColor: '#eff6ff', padding: 8, borderRadius: 8, marginTop: 8, borderWidth: 1, borderColor: '#bfdbfe' }}>
+                    <Text style={{ fontSize: 11.5, color: '#1d4ed8', fontWeight: '700' }}>
+                      ℹ️ Dotación Especial: Se entregan {ltsNum} Lts (Excede la cuota sugerida en {ltsNum - saldoBase} Lts).
+                    </Text>
+                  </View>
+                ) : esParcial ? (
+                  <View style={{ backgroundColor: '#fffbeb', padding: 10, borderRadius: 8, marginTop: 8, borderWidth: 1.5, borderColor: '#f59e0b' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Ionicons name="alert-circle" size={16} color="#d97706" />
+                      <Text style={{ fontSize: 12, color: '#b45309', fontWeight: '900' }}>
+                        ENTREGA PARCIAL DETECTADA
+                      </Text>
+                    </View>
+                    <Text style={{ fontSize: 11.5, color: '#78350f', marginTop: 4 }}>
+                      • Se registrarán: <Text style={{ fontWeight: '800' }}>{ltsNum} Litros entregados</Text>
+                    </Text>
+                    <Text style={{ fontSize: 12, color: '#b45309', fontWeight: '800', marginTop: 2 }}>
+                      • Saldo que quedará pendiente: {saldoQueQuedara} Litros por entregar
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={{ backgroundColor: '#f0fdf4', padding: 10, borderRadius: 8, marginTop: 8, borderWidth: 1.5, borderColor: '#22c55e' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Ionicons name="checkmark-circle" size={16} color="#16a34a" />
+                      <Text style={{ fontSize: 12, color: '#15803d', fontWeight: '900' }}>
+                        ENTREGA COMPLETA (100% CUBIERTA)
+                      </Text>
+                    </View>
+                    <Text style={{ fontSize: 11.5, color: '#166534', marginTop: 3 }}>
+                      Se entrega la cuota total de {ltsNum} Lts. No queda saldo pendiente.
+                    </Text>
+                  </View>
+                )}
               </View>
-            </View>
-            <Text style={styles.partialNote}>* Modificable en caso de entrega parcial</Text>
-          </View>
+            );
+          })()}
 
           {/* PHOTO EVIDENCE SECTION (OBLIGATORIA) */}
           <View style={styles.photoSection}>
             <View style={styles.sectionHeader}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                <Ionicons name="camera-outline" size={15} color="#0f172a" />
-                <Text style={styles.label}>Fotografía de Evidencia *</Text>
+                <Ionicons name="camera-outline" size={16} color="#0f172a" />
+                <Text style={styles.label}>Fotografía de Evidencia (Obligatorio *)</Text>
               </View>
               {photoUri ? (
                 <View style={styles.statusPillOk}>
@@ -1276,9 +1394,9 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                   <Text style={styles.statusPillOkText}>Capturada</Text>
                 </View>
               ) : (
-                <View style={styles.statusPillPending}>
-                  <Ionicons name="alert-circle" size={11} color="#d97706" style={{ marginRight: 3 }} />
-                  <Text style={styles.statusPillPendingText}>Requerido</Text>
+                <View style={[styles.statusPillPending, { backgroundColor: '#fee2e2', borderColor: '#fca5a5' }]}>
+                  <Ionicons name="alert-circle" size={11} color="#dc2626" style={{ marginRight: 3 }} />
+                  <Text style={[styles.statusPillPendingText, { color: '#dc2626' }]}>Obligatorio *</Text>
                 </View>
               )}
             </View>
@@ -1303,18 +1421,18 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
               <TouchableOpacity style={styles.takePhotoBtn} onPress={handleTakePhoto} activeOpacity={0.85}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                   <Ionicons name="camera-outline" size={18} color="#fff" />
-                  <Text style={styles.takePhotoBtnText}>Tomar Fotografía</Text>
+                  <Text style={styles.takePhotoBtnText}>📸 Tomar Fotografía (Requerido)</Text>
                 </View>
               </TouchableOpacity>
             )}
           </View>
 
-          {/* DIGITAL SIGNATURE CANVAS (OBLIGATORIA) */}
+          {/* DIGITAL SIGNATURE CANVAS (OPCIONAL) */}
           <View style={styles.sigSection}>
             <View style={styles.sectionHeader}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                 <Ionicons name="pencil-outline" size={15} color="#0f172a" />
-                <Text style={styles.label}>Firma del Beneficiario *</Text>
+                <Text style={styles.label}>Firma del Beneficiario (Opcional)</Text>
               </View>
               {hasSignature ? (
                 <View style={styles.statusPillOk}>
@@ -1322,9 +1440,8 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                   <Text style={styles.statusPillOkText}>Firmado</Text>
                 </View>
               ) : (
-                <View style={styles.statusPillPending}>
-                  <Ionicons name="alert-circle" size={11} color="#d97706" style={{ marginRight: 3 }} />
-                  <Text style={styles.statusPillPendingText}>Requerido</Text>
+                <View style={[styles.statusPillPending, { backgroundColor: '#f1f5f9', borderColor: '#cbd5e1' }]}>
+                  <Text style={[styles.statusPillPendingText, { color: '#64748b' }]}>Opcional</Text>
                 </View>
               )}
             </View>
@@ -1347,7 +1464,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                 nestedScrollEnabled={false}
                 webStyle={`.m-signature-pad {box-shadow: none; border: none; touch-action: none;} .m-signature-pad--body {border: none;} body,html {width: 100%; height: 100%; touch-action: none; overflow: hidden;}`}
                 autoClear={false}
-                descriptionText="Firme con su dedo sobre este recuadro"
+                descriptionText="Firme aquí (opcional: puede registrar sin firma)"
               />
             </View>
 

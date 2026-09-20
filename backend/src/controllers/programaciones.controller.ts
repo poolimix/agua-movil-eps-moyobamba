@@ -212,21 +212,25 @@ export const generatePdf = async (req: Request, res: Response) => {
 
     doc.fontSize(14).font('Helvetica-Bold')
       .text('FORMATO DE ENTREGA DE AGUA - ANEXO 2', { align: 'center' });
-    doc.fontSize(9).font('Helvetica')
-      .text(`EPS Moyobamba  |  Zona: ${programacion.zona}  |  Fecha: ${new Date(programacion.fecha).toLocaleDateString('es-PE')}  |  Cisterna: ${programacion.cisterna_placa || 'EGA-902'} (${programacion.cisterna_capacidad_m3 || 15} m³)  |  Conductor: ${programacion.conductor_nombre || 'Asignado'}  |  Viajes: ${programacion.viajes_estimados || 1}`, { align: 'center' });
+    doc.fontSize(8.5).font('Helvetica')
+      .text(`EPS MOYOBAMBA S.A.  |  Región: SAN MARTIN  |  Provincia: MOYOBAMBA  |  Distrito: MOYOBAMBA  |  Zona: ${programacion.zona}`, { align: 'center' });
+    doc.fontSize(8).text(
+      `Fecha: ${new Date(programacion.fecha).toLocaleDateString('es-PE')}  |  Cap. Cisterna: ${programacion.cisterna_capacidad_m3 || 15} m³ (${programacion.cisterna_placa || 'EGA-902'})  |  Conductor: ${programacion.conductor_nombre || 'Asignado'}  |  Supervisor: ING. SANDRO SORIA CHUQUIZUTA`,
+      { align: 'center' }
+    );
     doc.moveDown(0.8);
 
-    const colWidths = [30, 180, 70, 160, 70, 80, 200];
-    const headers  = ['N°', 'Nombres y Apellidos', 'DNI', 'Dirección', 'Habitantes', 'Litros', 'Firma'];
+    const colWidths = [25, 175, 65, 150, 50, 65, 65, 125];
+    const headers  = ['N°', 'Jefe de Familia', 'DNI', 'Dirección', 'Hab.', 'Otorgado', 'Saldo Pend.', 'Firma / Evidencia'];
     const startX   = 40;
     let   curX     = startX;
     const rowH     = 22;
 
     doc.rect(startX, doc.y, colWidths.reduce((a, b) => a + b, 0), rowH).fill('#1E40AF');
-    doc.fillColor('white').font('Helvetica-Bold').fontSize(9);
+    doc.fillColor('white').font('Helvetica-Bold').fontSize(8.5);
 
     headers.forEach((h, i) => {
-      doc.text(h, curX + 3, doc.y - rowH + 5, { width: colWidths[i] - 6, align: 'center' });
+      doc.text(h, curX + 2, doc.y - rowH + 6, { width: colWidths[i] - 4, align: 'center' });
       curX += colWidths[i];
     });
 
@@ -242,29 +246,33 @@ export const generatePdf = async (req: Request, res: Response) => {
       }
       doc.fillColor('black');
 
+      const saldoNum = Number(entrega.saldo_pendiente || 0);
       const cells = [
         (index + 1).toString(),
         entrega.nombres_apellidos,
         entrega.dni,
         entrega.direccion || '-',
         entrega.num_miembros?.toString() || '-',
-        `${entrega.litros_entregados} Lts`,
+        `${entrega.litros_entregados} L`,
+        saldoNum > 0 ? `${saldoNum} L (Parcial)` : '0 L (Completa)',
         ''
       ];
 
       cells.forEach((cell, i) => {
         if (i < cells.length - 1) {
-          doc.text(cell, curX + 3, rowY + 5, { width: colWidths[i] - 6, align: 'center' });
+          doc.text(cell, curX + 2, rowY + 6, { width: colWidths[i] - 4, align: 'center' });
         } else if (entrega.firma_base64 && entrega.firma_base64.startsWith('data:image')) {
           const base64Data = entrega.firma_base64.replace(/^data:image\/\w+;base64,/, '');
           const imgBuffer = Buffer.from(base64Data, 'base64');
           try {
             doc.image(imgBuffer, curX + 3, rowY + 2, { width: colWidths[i] - 10, height: rowH - 4 });
           } catch (_) {
-            doc.text('Firma registrada', curX + 3, rowY + 5, { width: colWidths[i] - 6, align: 'center' });
+            doc.text('Firma registrada', curX + 2, rowY + 6, { width: colWidths[i] - 4, align: 'center' });
           }
         } else {
-          doc.text('Sin firma', curX + 3, rowY + 5, { width: colWidths[i] - 6, align: 'center' });
+          doc.fontSize(7.5).fillColor('#64748b')
+             .text('Foto Acreditada', curX + 2, rowY + 6, { width: colWidths[i] - 4, align: 'center' })
+             .fontSize(8).fillColor('#000000');
         }
         curX += colWidths[i];
       });
@@ -273,8 +281,8 @@ export const generatePdf = async (req: Request, res: Response) => {
       doc.y = rowY + rowH;
     });
 
-    doc.moveDown(2);
-    doc.fontSize(9).text(`Total de beneficiarios atendidos: ${entregas.length}`, { align: 'right' });
+    doc.moveDown(1.5);
+    doc.fontSize(9).text(`Total de familias atendidas: ${entregas.length}  |  Total volumen entregado: ${entregas.reduce((acc, e) => acc + Number(e.litros_entregados || 0), 0).toLocaleString()} Litros`, { align: 'right' });
 
     doc.end();
   } catch (error: any) {

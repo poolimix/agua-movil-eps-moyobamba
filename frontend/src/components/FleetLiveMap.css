@@ -1,0 +1,573 @@
+/* Fleet Live Map Styling - Modern EPS Moyobamba Telemetry */
+
+.fleet-live-map-card {
+  background: #ffffff;
+  border-radius: 16px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.08);
+  margin-bottom: 24px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.fleet-map-header {
+  padding: 18px 24px;
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  color: #ffffff;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.fleet-map-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.fleet-radar-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: rgba(14, 165, 233, 0.2);
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  position: relative;
+}
+
+.radar-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 8px;
+  height: 8px;
+  background-color: #38bdf8;
+  border-radius: 50%;
+  animation: radarPulse 2s infinite ease-out;
+}
+
+@keyframes radarPulse {
+  0% {
+    transform: scale(0.8);
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.7);
+  }
+  70% {
+    transform: scale(1.6);
+    opacity: 0.3;
+    box-shadow: 0 0 0 8px rgba(56, 189, 248, 0);
+  }
+  100% {
+    transform: scale(0.8);
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(56, 189, 248, 0);
+  }
+}
+
+.fleet-map-title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #ffffff;
+}
+
+.fleet-map-subtitle {
+  margin: 2px 0 0 0;
+  font-size: 0.82rem;
+  color: #94a3b8;
+}
+
+.fleet-map-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.fleet-filter-pills {
+  display: flex;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 3px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.filter-pill {
+  background: transparent;
+  border: none;
+  color: #cbd5e1;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.filter-pill:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.filter-pill.active {
+  background: #0284c7;
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(2, 132, 199, 0.4);
+}
+
+.filter-pill.pill-success.active {
+  background: #10b981;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.4);
+}
+
+.filter-pill.pill-warning.active {
+  background: #f59e0b;
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.4);
+}
+
+.btn-fleet-refresh {
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.btn-fleet-refresh:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* Grid del cuerpo */
+.fleet-map-body-grid {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  min-height: 480px;
+  position: relative;
+}
+
+@media (max-width: 992px) {
+  .fleet-map-body-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.fleet-map-canvas-container {
+  position: relative;
+  min-height: 480px;
+  background: #e2e8f0;
+}
+
+.fleet-leaflet-map {
+  width: 100%;
+  height: 100%;
+  min-height: 480px;
+  z-index: 1;
+}
+
+.fleet-map-overlay-badge {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  z-index: 999;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(8px);
+  color: #f8fafc;
+  padding: 8px 14px;
+  border-radius: 20px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.live-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 8px #22c55e;
+  animation: pulseGreen 1.5s infinite;
+}
+
+@keyframes pulseGreen {
+  0% { transform: scale(0.9); opacity: 0.8; }
+  50% { transform: scale(1.3); opacity: 1; }
+  100% { transform: scale(0.9); opacity: 0.8; }
+}
+
+/* Panel Lateral de Unidades */
+.fleet-sidebar-list {
+  background: #f8fafc;
+  border-left: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  max-height: 520px;
+}
+
+.fleet-sidebar-header {
+  padding: 14px 18px;
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.fleet-sidebar-header h3 {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.units-count {
+  background: #e0f2fe;
+  color: #0369a1;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 12px;
+}
+
+.fleet-units-scroll {
+  padding: 12px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+}
+
+.fleet-no-units {
+  padding: 24px;
+  text-align: center;
+  color: #64748b;
+  font-size: 0.85rem;
+}
+
+.fleet-unit-item {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.fleet-unit-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 14px -3px rgba(0, 0, 0, 0.08);
+  border-color: #38bdf8;
+}
+
+.fleet-unit-item.selected {
+  border-color: #0284c7;
+  background: #f0f9ff;
+  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.2);
+}
+
+.unit-item-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.unit-plate-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'JetBrains Mono', monospace, sans-serif;
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.unit-icon {
+  font-size: 1.1rem;
+}
+
+.unit-status-tag {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 6px;
+  text-transform: uppercase;
+}
+
+.unit-status-tag.status-operativo {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.unit-status-tag.status-mantenimiento {
+  background: #fef3c7;
+  color: #b45366;
+}
+
+.unit-item-details {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.8rem;
+  color: #475569;
+  margin-bottom: 10px;
+}
+
+.unit-detail-row {
+  display: flex;
+  justify-content: space-between;
+}
+
+.detail-label {
+  color: #64748b;
+}
+
+.detail-val {
+  color: #1e293b;
+  font-weight: 500;
+}
+
+.unit-item-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 8px;
+  border-top: 1px dashed #e2e8f0;
+  font-size: 0.75rem;
+}
+
+.gps-status-active {
+  color: #15803d;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.gps-status-inactive {
+  color: #94a3b8;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.gps-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.gps-dot.active {
+  background: #10b981;
+  box-shadow: 0 0 6px #10b981;
+}
+
+.gps-dot.inactive {
+  background: #cbd5e1;
+}
+
+.btn-track-action {
+  color: #0284c7;
+  font-weight: 700;
+  background: #e0f2fe;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+/* Custom DivIcon Marker en Leaflet */
+.custom-fleet-marker-container {
+  background: transparent;
+  border: none;
+}
+
+.fleet-marker-wrapper {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+}
+
+.fleet-marker-pulse {
+  position: absolute;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--pulse-color, rgba(16, 185, 129, 0.4));
+  animation: fleetPulse 2s infinite ease-out;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+@keyframes fleetPulse {
+  0% { transform: translateX(-50%) scale(0.8); opacity: 0.9; }
+  100% { transform: translateX(-50%) scale(1.8); opacity: 0; }
+}
+
+.fleet-marker-pin {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 18px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
+  border: 2px solid #ffffff;
+  position: relative;
+  z-index: 2;
+  transition: transform 0.2s ease;
+}
+
+.fleet-marker-wrapper:hover .fleet-marker-pin {
+  transform: scale(1.15);
+}
+
+.fleet-marker-plate {
+  margin-top: 4px;
+  background: #0f172a;
+  color: #ffffff;
+  font-family: 'JetBrains Mono', monospace, sans-serif;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid #334155;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  white-space: nowrap;
+  letter-spacing: 0.5px;
+}
+
+/* Popup Card en Leaflet */
+.leaflet-popup-content-wrapper {
+  padding: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2);
+}
+
+.leaflet-popup-content {
+  margin: 0;
+  line-height: 1.4;
+}
+
+.fleet-popup-card {
+  padding: 14px 16px;
+  min-width: 240px;
+}
+
+.fleet-popup-header {
+  padding-bottom: 8px;
+  margin-bottom: 10px;
+}
+
+.fleet-popup-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 1rem;
+}
+
+.fleet-popup-title strong {
+  font-family: 'JetBrains Mono', monospace, sans-serif;
+  letter-spacing: 0.5px;
+}
+
+.fleet-popup-status {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.fleet-popup-subtitle {
+  font-size: 0.78rem;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+.fleet-popup-body {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 0.8rem;
+}
+
+.fleet-popup-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fleet-popup-label {
+  color: #64748b;
+}
+
+.fleet-popup-value {
+  color: #1e293b;
+  text-align: right;
+}
+
+.fleet-popup-value.font-mono {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.78rem;
+}
+
+.fleet-popup-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.btn-popup-gmaps,
+.btn-popup-tracking {
+  display: block;
+  text-align: center;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.btn-popup-gmaps {
+  background: #0284c7;
+  color: #ffffff;
+}
+
+.btn-popup-gmaps:hover {
+  background: #0369a1;
+}
+
+.btn-popup-tracking {
+  background: #f8fafc;
+  color: #0f172a;
+  border: 1px solid #cbd5e1;
+}
+
+.btn-popup-tracking:hover {
+  background: #e2e8f0;
+}

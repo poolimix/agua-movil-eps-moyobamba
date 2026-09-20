@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import Pagination from '../components/Pagination';
-import axios from 'axios';
+import api from '../config/api';
 import './Modules.css';
 
 interface Cisterna {
@@ -15,6 +15,11 @@ interface Cisterna {
   conductor_habitual_id?: number | null;
   conductor_habitual_nombre?: string | null;
   conductor_habitual_telefono?: string | null;
+  codigo_gps?: string | null;
+  latitud_actual?: number | string | null;
+  longitud_actual?: number | string | null;
+  enlace_gps_tracking?: string | null;
+  ultima_actualizacion_gps?: string | null;
   estado: 'OPERATIVO' | 'MANTENIMIENTO' | 'INACTIVO';
 }
 
@@ -35,6 +40,7 @@ export default function CisternasPage() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [filterEstado, setFilterEstado] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [gettingGps, setGettingGps] = useState(false);
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -47,6 +53,10 @@ export default function CisternasPage() {
     soat_vencimiento: '',
     revision_tecnica_vencimiento: '',
     conductor_habitual_id: '' as string | number,
+    codigo_gps: '',
+    latitud_actual: '',
+    longitud_actual: '',
+    enlace_gps_tracking: '',
     estado: 'OPERATIVO' as 'OPERATIVO' | 'MANTENIMIENTO' | 'INACTIVO',
   });
 
@@ -59,9 +69,9 @@ export default function CisternasPage() {
     try {
       setLoading(true);
       const url = filterEstado 
-        ? `http://localhost:3000/api/v1/cisternas?estado=${filterEstado}` 
-        : 'http://localhost:3000/api/v1/cisternas';
-      const res = await axios.get(url);
+        ? `/cisternas?estado=${filterEstado}` 
+        : '/cisternas';
+      const res = await api.get(url);
       setCisternas(res.data);
     } catch (error) {
       console.error('Error fetching cisternas:', error);
@@ -72,11 +82,34 @@ export default function CisternasPage() {
 
   const fetchConductores = async () => {
     try {
-      const res = await axios.get('http://localhost:3000/api/v1/personal?tipo=CONDUCTOR');
+      const res = await api.get('/personal?tipo=CONDUCTOR');
       setConductores(res.data);
     } catch (error) {
       console.error('Error fetching conductores:', error);
     }
+  };
+
+  const handleCapturarGpsNavegador = () => {
+    if (!navigator.geolocation) {
+      alert('La geolocalización no es compatible con este navegador.');
+      return;
+    }
+    setGettingGps(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setFormData(prev => ({
+          ...prev,
+          latitud_actual: pos.coords.latitude.toFixed(6),
+          longitud_actual: pos.coords.longitude.toFixed(6),
+        }));
+        setGettingGps(false);
+      },
+      (err) => {
+        setGettingGps(false);
+        alert('No se pudo obtener la ubicación GPS: ' + err.message);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
   };
 
   const handleOpenModal = (cisterna?: Cisterna) => {
@@ -89,6 +122,10 @@ export default function CisternasPage() {
         soat_vencimiento: cisterna.soat_vencimiento ? cisterna.soat_vencimiento.split('T')[0] : '',
         revision_tecnica_vencimiento: cisterna.revision_tecnica_vencimiento ? cisterna.revision_tecnica_vencimiento.split('T')[0] : '',
         conductor_habitual_id: cisterna.conductor_habitual_id || '',
+        codigo_gps: cisterna.codigo_gps || '',
+        latitud_actual: cisterna.latitud_actual ? String(cisterna.latitud_actual) : '',
+        longitud_actual: cisterna.longitud_actual ? String(cisterna.longitud_actual) : '',
+        enlace_gps_tracking: cisterna.enlace_gps_tracking || '',
         estado: cisterna.estado,
       });
     } else {
@@ -100,6 +137,10 @@ export default function CisternasPage() {
         soat_vencimiento: '',
         revision_tecnica_vencimiento: '',
         conductor_habitual_id: conductores.length > 0 ? conductores[0].id : '',
+        codigo_gps: '',
+        latitud_actual: '-6.03417',
+        longitud_actual: '-76.97139',
+        enlace_gps_tracking: '',
         estado: 'OPERATIVO',
       });
     }
@@ -110,10 +151,10 @@ export default function CisternasPage() {
     e.preventDefault();
     try {
       if (editingId) {
-        await axios.put(`http://localhost:3000/api/v1/cisternas/${editingId}`, formData);
+        await api.put(`/cisternas/${editingId}`, formData);
         alert('✅ Cisterna actualizada exitosamente');
       } else {
-        await axios.post('http://localhost:3000/api/v1/cisternas', formData);
+        await api.post('/cisternas', formData);
         alert('✅ Cisterna registrada exitosamente');
       }
       setModalOpen(false);
@@ -126,7 +167,7 @@ export default function CisternasPage() {
   const handleDelete = async (id: number) => {
     if (!window.confirm('¿Estás seguro de eliminar esta cisterna?')) return;
     try {
-      await axios.delete(`http://localhost:3000/api/v1/cisternas/${id}`);
+      await api.delete(`/cisternas/${id}`);
       fetchCisternas();
     } catch (error: any) {
       alert('Error al eliminar');
@@ -204,7 +245,8 @@ export default function CisternasPage() {
               <th>Placa</th>
               <th>Marca y Modelo</th>
               <th>Capacidad</th>
-              <th>Chofer Habitual Asignado</th>
+              <th>Chofer Asignado</th>
+              <th>🛰️ GPS Satelital</th>
               <th>SOAT</th>
               <th>Rev. Técnica</th>
               <th>Estado</th>
@@ -214,13 +256,13 @@ export default function CisternasPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={8} className="empty-state">
+                <td colSpan={9} className="empty-state">
                   <span>⏳</span> Cargando flota de cisternas...
                 </td>
               </tr>
             ) : filtered.length === 0 ? (
               <tr>
-                <td colSpan={8} className="empty-state">
+                <td colSpan={9} className="empty-state">
                   <span>🚛</span> No se encontraron cisternas registradas.
                 </td>
               </tr>
@@ -246,6 +288,46 @@ export default function CisternasPage() {
                       </div>
                     ) : (
                       <span style={{ color: '#94a3b8', fontSize: 12 }}>Sin asignar</span>
+                    )}
+                  </td>
+                  <td>
+                    {c.latitud_actual && c.longitud_actual ? (
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: '#0369a1' }}>
+                          🛰️ {c.codigo_gps || 'GPS Conectado'}
+                        </div>
+                        <a
+                          href={`https://www.google.com/maps?q=${c.latitud_actual},${c.longitud_actual}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 4,
+                            color: '#0284c7',
+                            fontWeight: 600,
+                            fontSize: 11.5,
+                            textDecoration: 'none',
+                            marginTop: 2,
+                          }}
+                        >
+                          📍 {parseFloat(String(c.latitud_actual)).toFixed(4)}, {parseFloat(String(c.longitud_actual)).toFixed(4)}
+                        </a>
+                        {c.enlace_gps_tracking && (
+                          <div>
+                            <a
+                              href={c.enlace_gps_tracking}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ fontSize: 10.5, color: '#059669', textDecoration: 'underline' }}
+                            >
+                              🔗 Plataforma Satelital
+                            </a>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <span style={{ color: '#94a3b8', fontSize: 11 }}>Sin GPS</span>
                     )}
                   </td>
                   <td>
@@ -294,7 +376,7 @@ export default function CisternasPage() {
       {/* MODAL CREAR / EDITAR CISTERNA */}
       {modalOpen && (
         <div className="modal-overlay" onClick={() => setModalOpen(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-content" style={{ maxWidth: 620 }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>{editingId ? 'Editar Cisterna' : 'Registrar Nueva Cisterna'}</h2>
               <button className="close-btn" onClick={() => setModalOpen(false)}>✕</button>
@@ -358,6 +440,65 @@ export default function CisternasPage() {
                 <small style={{ color: '#0369a1', fontSize: 11 }}>
                   💡 Este chofer se cargará automáticamente al programar esta cisterna.
                 </small>
+              </div>
+
+              {/* SECCIÓN DEDICADA: GEOLOCALIZACIÓN Y DISPOSITIVO GPS */}
+              <div style={{ background: '#f8fafc', padding: 14, borderRadius: 10, border: '1px solid #e2e8f0', margin: '14px 0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <span style={{ fontWeight: 800, fontSize: 13, color: '#0369a1' }}>
+                    🛰️ Geolocalización y Dispositivo GPS
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleCapturarGpsNavegador}
+                    disabled={gettingGps}
+                    className="btn-secondary"
+                    style={{ fontSize: 11, padding: '4px 8px' }}
+                  >
+                    {gettingGps ? 'Buscando satélites...' : '📍 Capturar GPS Actual'}
+                  </button>
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 10 }}>
+                  <label style={{ fontSize: 12 }}>Código / ID de Dispositivo GPS</label>
+                  <input
+                    placeholder="Ej. GPS-EGA-401 o IMEI del módem"
+                    className="form-input"
+                    value={formData.codigo_gps}
+                    onChange={(e) => setFormData({ ...formData, codigo_gps: e.target.value })}
+                  />
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label style={{ fontSize: 12 }}>Latitud (GPS)</label>
+                    <input
+                      placeholder="-6.03417"
+                      className="form-input"
+                      value={formData.latitud_actual}
+                      onChange={(e) => setFormData({ ...formData, latitud_actual: e.target.value })}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label style={{ fontSize: 12 }}>Longitud (GPS)</label>
+                    <input
+                      placeholder="-76.97139"
+                      className="form-input"
+                      value={formData.longitud_actual}
+                      onChange={(e) => setFormData({ ...formData, longitud_actual: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label style={{ fontSize: 12 }}>Enlace a Plataforma de Seguimiento Satelital (Opcional)</label>
+                  <input
+                    placeholder="https://tracking.proveedor.com/live/..."
+                    className="form-input"
+                    value={formData.enlace_gps_tracking}
+                    onChange={(e) => setFormData({ ...formData, enlace_gps_tracking: e.target.value })}
+                  />
+                </div>
               </div>
 
               <div className="form-row">

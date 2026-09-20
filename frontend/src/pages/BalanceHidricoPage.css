@@ -1,0 +1,324 @@
+/* Balance Hídrico Page Styling */
+
+.balance-page-container {
+  padding: 24px;
+  max-width: 1300px;
+  margin: 0 auto;
+}
+
+.balance-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 16px;
+  background: #ffffff;
+  padding: 20px 24px;
+  border-radius: 16px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.05);
+  margin-bottom: 24px;
+}
+
+.balance-badge-top {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.badge-pns {
+  background: #f1f5f9;
+  color: #334155;
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 3px 10px;
+  border-radius: 20px;
+}
+
+.badge-eps {
+  background: #e0f2fe;
+  color: #0369a1;
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 3px 10px;
+  border-radius: 20px;
+}
+
+.balance-title {
+  margin: 0;
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.balance-subtitle {
+  margin: 4px 0 0;
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+.balance-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.date-inputs-group {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.date-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.date-field label {
+  font-size: 0.72rem;
+  color: #64748b;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.input-date,
+.select-cisterna {
+  padding: 7px 12px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  font-size: 0.85rem;
+  color: #1e293b;
+  font-weight: 600;
+}
+
+.action-btns {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.btn-pdf-acta {
+  background: #0284c7;
+  color: #ffffff;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-decoration: none;
+  transition: background 0.2s ease;
+}
+
+.btn-pdf-acta:hover {
+  background: #0369a1;
+}
+
+.btn-print {
+  background: #0f172a;
+  color: #ffffff;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.btn-refresh {
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+/* KPI Cards */
+.balance-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.bal-card {
+  background: #ffffff;
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
+  padding: 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.bal-icon {
+  font-size: 2rem;
+}
+
+.bal-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.bal-label {
+  font-size: 0.76rem;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.bal-value {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.bal-value .unit {
+  font-size: 0.8rem;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.bal-sub {
+  font-size: 0.75rem;
+  color: #475569;
+}
+
+/* Card Themes */
+.card-cargado {
+  border-left: 4px solid #0284c7;
+}
+
+.card-entregado {
+  border-left: 4px solid #10b981;
+}
+
+.card-diferencial {
+  border-left: 4px solid #f59e0b;
+}
+
+.card-eficiencia {
+  border-left: 4px solid #8b5cf6;
+}
+
+/* Section Cards */
+.balance-section-card {
+  background: #ffffff;
+  border-radius: 16px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.05);
+  margin-bottom: 24px;
+  overflow: hidden;
+}
+
+.section-card-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.section-card-header h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.section-card-header p {
+  margin: 2px 0 0;
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.count-pill {
+  background: #f1f5f9;
+  color: #475569;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+/* Tables */
+.table-responsive {
+  overflow-x: auto;
+  padding: 12px 20px 20px;
+}
+
+.bal-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.bal-table th,
+.bal-table td {
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+}
+
+.bal-table th {
+  background: #f8fafc;
+  color: #1e293b;
+  font-weight: 700;
+  text-align: left;
+}
+
+.merma-tag {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.tag-optimo {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.tag-aceptable {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.tag-alerta {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.text-cyan {
+  color: #0284c7;
+}
+
+.text-center {
+  text-align: center;
+}
+
+.font-mono {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.font-bold {
+  font-weight: 700;
+}
+
+/* Print */
+@media print {
+  .balance-controls,
+  .btn-pdf-acta,
+  .btn-print,
+  .btn-refresh {
+    display: none !important;
+  }
+
+  .balance-page-container {
+    padding: 0;
+  }
+}

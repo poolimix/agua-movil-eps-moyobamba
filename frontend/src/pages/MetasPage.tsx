@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import DaysOfWeekSelector from '../components/DaysOfWeekSelector';
 import Pagination from '../components/Pagination';
-import axios from 'axios';
+import api from '../config/api';
 import './Modules.css';
 
 interface SectorMeta {
@@ -44,7 +44,7 @@ export default function MetasPage() {
   const fetchMetas = async () => {
     try {
       setLoading(true);
-      const res = await axios.get('http://localhost:3000/api/v1/sectores');
+      const res = await api.get('/sectores');
       setSectores(res.data);
     } catch (error) {
       console.error('Error fetching metas:', error);
@@ -67,7 +67,7 @@ export default function MetasPage() {
     if (!editingSector) return;
 
     try {
-      await axios.put(`http://localhost:3000/api/v1/sectores/${editingSector.id}`, {
+      await api.put(`/sectores/${editingSector.id}`, {
         nombre: editingSector.nombre,
         distrito: editingSector.distrito,
         descripcion: editFormData.descripcion,
