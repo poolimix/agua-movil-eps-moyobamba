@@ -1,4 +1,5 @@
 import NetInfo from '@react-native-community/netinfo';
+import { Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import { getDatabase } from '../database/schema';
 
@@ -62,17 +63,31 @@ export const syncData = async (): Promise<{ success: boolean; syncedCount: numbe
 
         // Attach Photo file if exists
         if (entrega.foto_local_uri) {
-          const fileInfo = await FileSystem.getInfoAsync(entrega.foto_local_uri);
-          if (fileInfo.exists) {
-            const filename = entrega.foto_local_uri.split('/').pop() || 'evidencia.jpg';
-            const match = /\.(\w+)$/.exec(filename);
-            const type = match ? `image/${match[1]}` : `image/jpeg`;
+          if (Platform.OS === 'web') {
+            try {
+              const res = await fetch(entrega.foto_local_uri);
+              const blob = await res.blob();
+              (formData as any).append('foto', blob, 'evidencia.jpg');
+            } catch (errWeb) {
+              console.warn('Could not convert web photo to blob:', errWeb);
+            }
+          } else {
+            try {
+              const fileInfo = await FileSystem.getInfoAsync(entrega.foto_local_uri);
+              if (fileInfo?.exists) {
+                const filename = entrega.foto_local_uri.split('/').pop() || 'evidencia.jpg';
+                const match = /\.(\w+)$/.exec(filename);
+                const type = match ? `image/${match[1]}` : `image/jpeg`;
 
-            formData.append('foto', {
-              uri: entrega.foto_local_uri,
-              name: filename,
-              type,
-            } as any);
+                formData.append('foto', {
+                  uri: entrega.foto_local_uri,
+                  name: filename,
+                  type,
+                } as any);
+              }
+            } catch (fsErr) {
+              console.warn('FileSystem error on native:', fsErr);
+            }
           }
         }
 

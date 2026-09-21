@@ -580,9 +580,14 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
         return manipulated.uri;
       }
 
+      // En ambiente Web, expo-file-system no está disponible; retornamos la imagen base64 directamente
+      if (Platform.OS === 'web') {
+        return stampedBase64;
+      }
+
       // 4. Guardar permanentemente en el directorio de evidencias
       const base64Clean = stampedBase64.replace(/^data:image\/\w+;base64,/, '');
-      const dirPath = `${FileSystem.documentDirectory}evidencias/`;
+      const dirPath = `${FileSystem.documentDirectory || ''}evidencias/`;
       const dirInfo = await FileSystem.getInfoAsync(dirPath);
       if (!dirInfo.exists) {
         await FileSystem.makeDirectoryAsync(dirPath, { intermediates: true });
