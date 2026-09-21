@@ -50,6 +50,11 @@ export default function BeneficiariosPage() {
 
   const [importing, setImporting] = useState(false);
   const [importSummary, setImportSummary] = useState<any>(null);
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [importSectorMode, setImportSectorMode] = useState<'auto' | 'custom'>('auto');
+  const [importCustomSector, setImportCustomSector] = useState('');
+  const [selectedSector, setSelectedSector] = useState('');
   const [qrModalBeneficiario, setQrModalBeneficiario] = useState<Beneficiario | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -290,12 +295,36 @@ export default function BeneficiariosPage() {
     }
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleFilesSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files ? Array.from(e.target.files) : [];
+    if (files.length > 0) {
+      setSelectedFiles((prev) => [...prev, ...files]);
+      setImportSummary(null);
+    }
+  };
+
+  const handleRemoveFile = (index: number) => {
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleExecuteImport = async () => {
+    if (selectedFiles.length === 0) {
+      await dialogAlert({
+        title: 'Sin archivos seleccionados',
+        message: 'Por favor selecciona al menos un archivo Excel del Padrón de Beneficiarios.',
+        type: 'warning',
+      });
+      return;
+    }
 
     const data = new FormData();
-    data.append('file', file);
+    selectedFiles.forEach((file) => {
+      data.append('files', file);
+    });
+
+    if (importSectorMode === 'custom' && importCustomSector.trim()) {
+      data.append('sector', importCustomSector.trim());
+    }
 
     try {
       setImporting(true);
@@ -303,9 +332,10 @@ export default function BeneficiariosPage() {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       setImportSummary(res.data);
+      setSelectedFiles([]);
       await dialogAlert({
         title: 'Padrón Importado',
-        message: `✅ ${res.data.message}\nTotal Volumen Estimado: ${res.data.totalM3} m³ (${res.data.totalLitros} Litros)`,
+        message: `✅ ${res.data.message}\nTotal Volumen Asignado: ${res.data.totalM3} m³ (${res.data.totalLitros} Litros)`,
         type: 'success',
       });
       fetchBeneficiarios();
@@ -322,14 +352,52 @@ export default function BeneficiariosPage() {
     }
   };
 
-  const filtered = beneficiarios.filter(
-    (b) =>
+  // Calcular conteo de beneficiarios por sector
+  const sectorCounts: { [sec: string]: number } = {};
+  beneficiarios.forEach((b) => {
+    const sec = (b.sector_aahh || b.sector || '').trim();
+    if (sec) {
+      sectorCounts[sec] = (sectorCounts[sec] || 0) + 1;
+    }
+  });
+
+  const uniqueSectores = Array.from(
+    new Set([
+      ...sectores.map((s) => s.nombre.trim()),
+      ...Object.keys(sectorCounts),
+    ])
+  )
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b));
+
+  const filtered = beneficiarios.filter((b) => {
+    const sec = (b.sector_aahh || b.sector || '').trim();
+    const matchesSector = !selectedSector || sec.toLowerCase() === selectedSector.toLowerCase();
+
+    const matchesSearch =
+      !searchTerm ||
       b.nombres_apellidos?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       b.dni?.includes(searchTerm) ||
-      (b.sector_aahh || b.sector)?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+      sec.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (b.calle_direccion || b.direccion || '').toLowerCase().includes(searchTerm.toLowerCase());
+
+    return matchesSector && matchesSearch;
+  });
 
   const paginatedData = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
+  // Totales para el sector seleccionado o activos
+  const totalHabitantesFiltrados = filtered.reduce(
+    (acc, b) => acc + (Number(b.num_miembros) || 1),
+    0
+  );
+  const totalLitrosFiltrados = totalHabitantesFiltrados * 50;
+  const totalM3Filtrados = (totalLitrosFiltrados / 1000).toFixed(2);
+
+  const exportUrl = `${API_BASE_URL}/api/v1/beneficiarios/export-excel?${new URLSearchParams({
+    ...(searchTerm ? { search: searchTerm } : {}),
+    ...(selectedSector ? { sector: selectedSector } : {}),
+  }).toString()}`;
 
   return (
     <Layout>
@@ -339,29 +407,41 @@ export default function BeneficiariosPage() {
           <p>Gestión integral, sectores/AA.HH., carnets QR y dotación oficial (50 Lts/habitante)</p>
         </div>
         <div className="module-actions">
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileUpload}
-            accept=".xlsx, .xls"
-            style={{ display: 'none' }}
-          />
           <button
-            className="btn-secondary"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={importing}
+            className="btn-primary"
+            onClick={() => {
+              setImportSummary(null);
+              setImportModalOpen(true);
+            }}
+            style={{
+              background: '#0284c7',
+              borderColor: '#0369a1',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              fontWeight: 700,
+            }}
           >
-            📥 {importing ? 'Procesando...' : 'Importar Excel (ANEXO 1)'}
+            📥 Importar Padrón Excel
           </button>
           <a
-            href={`${API_BASE_URL}/api/v1/beneficiarios/export-excel${searchTerm ? `?search=${encodeURIComponent(searchTerm)}` : ''}`}
+            href={exportUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="btn-secondary"
-            style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, color: '#15803d', background: '#f0fdf4', borderColor: '#bbf7d0', fontWeight: 700 }}
-            title="Descargar Padrón Oficial Catastral (ANEXO 1) en Excel"
+            style={{
+              textDecoration: 'none',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              color: '#15803d',
+              background: '#f0fdf4',
+              borderColor: '#bbf7d0',
+              fontWeight: 700,
+            }}
+            title={selectedSector ? `Descargar Padrón Oficial filtrado por sector "${selectedSector}"` : 'Descargar Padrón Oficial Catastral (ANEXO 1) en Excel'}
           >
-            📊 Exportar Excel
+            📊 Exportar Excel {selectedSector ? `(${filtered.length})` : ''}
           </a>
           <button className="btn-secondary" onClick={() => setSectoresModalOpen(true)}>
             📍 Gestionar Sectores ({sectores.length})
@@ -381,19 +461,136 @@ export default function BeneficiariosPage() {
         </div>
       )}
 
-      <div className="filters-card">
+      {/* Barra de Filtros con Búsqueda y Selector de Sector */}
+      <div
+        className="filters-card"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 12,
+          background: '#ffffff',
+          padding: '12px 18px',
+          borderRadius: 12,
+          border: '1px solid #e2e8f0',
+          marginBottom: 18,
+          boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+        }}
+      >
+        {/* Buscador de Texto */}
         <input
           type="text"
-          placeholder="🔍 Buscar por DNI, Nombres, Apellidos o Sector..."
+          placeholder="🔍 Buscar por DNI, Nombres, Apellidos o Calle..."
           value={searchTerm}
           onChange={(e) => {
             setSearchTerm(e.target.value);
             setCurrentPage(1);
           }}
           className="search-input"
-          style={{ width: 380 }}
+          style={{ minWidth: 260, flex: '1 1 260px' }}
         />
-        <span className="badge-count">Total: {filtered.length} beneficiarios</span>
+
+        {/* Filtro Dropdown de Sector con Conteo Integrado */}
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 12.5, fontWeight: 700, color: '#475569', whiteSpace: 'nowrap' }}>
+            📍 Sector:
+          </span>
+          <select
+            value={selectedSector}
+            onChange={(e) => {
+              setSelectedSector(e.target.value);
+              setCurrentPage(1);
+            }}
+            style={{
+              padding: '7px 12px',
+              borderRadius: 8,
+              border: '1px solid #cbd5e1',
+              fontSize: 12.5,
+              color: '#0f172a',
+              fontWeight: 700,
+              background: '#f8fafc',
+              cursor: 'pointer',
+              minWidth: 220,
+              maxWidth: 320,
+            }}
+          >
+            <option value="">-- Todos los Sectores ({beneficiarios.length}) --</option>
+            {uniqueSectores.map((sec) => {
+              const count = sectorCounts[sec] || 0;
+              return (
+                <option key={sec} value={sec}>
+                  {sec} ({count} {count === 1 ? 'beneficiario' : 'beneficiarios'})
+                </option>
+              );
+            })}
+          </select>
+
+          {selectedSector ? (
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedSector('');
+                setCurrentPage(1);
+              }}
+              style={{
+                background: '#fee2e2',
+                border: '1px solid #fca5a5',
+                color: '#b91c1c',
+                borderRadius: 8,
+                padding: '6px 10px',
+                fontSize: 11.5,
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+              }}
+              title="Quitar filtro de sector y mostrar todos"
+            >
+              ✕ Limpiar
+            </button>
+          ) : null}
+        </div>
+
+        {/* Badge Dinámico de Cantidad y Dotación Hídrica */}
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginLeft: 'auto', flexWrap: 'wrap' }}>
+          {selectedSector ? (
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                background: '#eff6ff',
+                border: '1px solid #bfdbfe',
+                padding: '6px 14px',
+                borderRadius: 8,
+                fontSize: 12.5,
+              }}
+            >
+              <span style={{ color: '#1e40af', fontWeight: 800 }}>📍 {selectedSector}:</span>
+              <strong style={{ fontSize: 13.5, color: '#1d4ed8' }}>
+                {filtered.length} {filtered.length === 1 ? 'familia' : 'familias'}
+              </strong>
+              <span style={{ color: '#3b82f6', fontWeight: 700 }}>
+                • {totalHabitantesFiltrados} hab. ({totalM3Filtrados} m³ / {totalLitrosFiltrados.toLocaleString('es-PE')} Lts)
+              </span>
+            </div>
+          ) : (
+            <span
+              className="badge-count"
+              style={{
+                background: '#f1f5f9',
+                color: '#334155',
+                fontWeight: 700,
+                padding: '6px 14px',
+                borderRadius: 8,
+                fontSize: 12.5,
+              }}
+            >
+              Total: {filtered.length} beneficiarios
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="table-card">
@@ -860,6 +1057,257 @@ export default function BeneficiariosPage() {
               </button>
               <button className="btn-secondary" onClick={() => setQrModalBeneficiario(null)}>
                 Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE IMPORTACIÓN MASIVA DE PADRÓN POR SECTORES / AA.HH. */}
+      {importModalOpen && (
+        <div className="modal-overlay" onClick={() => setImportModalOpen(false)}>
+          <div
+            className="modal-content"
+            style={{ maxWidth: 680, maxHeight: '90vh', overflowY: 'auto' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-header">
+              <div>
+                <h2 style={{ margin: 0, fontSize: 18 }}>📥 Importar Padrón de Beneficiarios</h2>
+                <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: 12.5 }}>
+                  Sube los archivos Excel del Padrón Oficial por Sector o Asentamiento Humano (AA.HH.)
+                </p>
+              </div>
+              <button className="close-btn" onClick={() => setImportModalOpen(false)}>✕</button>
+            </div>
+
+            {/* Banner de Guía de Estructura Reconocida */}
+            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: 12, marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                <span style={{ fontSize: 14 }}>📋</span>
+                <strong style={{ fontSize: 12, color: '#0f172a' }}>Formato Oficial de Ficha Reconocido:</strong>
+              </div>
+              <div style={{ fontSize: 11, color: '#334155', fontFamily: 'monospace', background: '#ffffff', padding: '8px 10px', borderRadius: 6, border: '1px dashed #cbd5e1' }}>
+                <div><strong>DISTRITO:</strong> Moyobamba &nbsp;&nbsp;|&nbsp;&nbsp; <strong>AA.HH:</strong> SOL DE INDAÑE</div>
+                <div style={{ borderTop: '1px solid #e2e8f0', marginTop: 4, paddingTop: 4 }}>
+                  N° | <strong>SECTOR / AA.HH.</strong> | N° VIV. | MIEMBROS | Mz | Lt | DIRECCIÓN | NOMBRES Y APELLIDOS | DNI | TELÉFONO
+                </div>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+                <p style={{ fontSize: 11, color: '#64748b', margin: 0 }}>
+                  💡 Puedes pegar todos tus sectores juntos en una sola hoja usando la columna <strong>SECTOR / AA.HH.</strong>
+                </p>
+                <a
+                  href="/Plantilla_Padron_Beneficiarios_EPS_Moyobamba.xlsx"
+                  download="Plantilla_Padron_Beneficiarios_EPS_Moyobamba.xlsx"
+                  style={{
+                    padding: '5px 12px',
+                    fontSize: 11.5,
+                    fontWeight: 700,
+                    borderRadius: 6,
+                    background: '#f0fdf4',
+                    border: '1px solid #86efac',
+                    color: '#15803d',
+                    textDecoration: 'none',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    whiteSpace: 'nowrap',
+                  }}
+                  title="Descargar archivo Excel con formato de ejemplo listo para rellenar o pegar"
+                >
+                  <span>📥</span> Descargar Plantilla de Ejemplo (.xlsx)
+                </a>
+              </div>
+            </div>
+
+            {/* Zona de Arrastre / Selección de Archivos */}
+            <div
+              style={{
+                border: '2px dashed #38bdf8',
+                background: '#f0f9ff',
+                borderRadius: 12,
+                padding: '24px 16px',
+                textAlign: 'center',
+                cursor: 'pointer',
+                marginBottom: 16,
+                transition: 'border 0.2s',
+              }}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFilesSelected}
+                accept=".xlsx, .xls"
+                multiple
+                style={{ display: 'none' }}
+              />
+              <span style={{ fontSize: 32 }}>📁</span>
+              <h4 style={{ margin: '8px 0 4px', fontSize: 14, color: '#0369a1', fontWeight: 800 }}>
+                Haz clic para seleccionar uno o varios archivos Excel (.xlsx, .xls)
+              </h4>
+              <p style={{ margin: 0, fontSize: 12, color: '#64748b' }}>
+                Puedes seleccionar todos los archivos de tus sectores a la vez para cargarlos en bloque
+              </p>
+            </div>
+
+            {/* Lista de Archivos Seleccionados */}
+            {selectedFiles.length > 0 && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#334155' }}>
+                    Archivos a procesar ({selectedFiles.length}):
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedFiles([])}
+                    style={{ background: 'none', border: 'none', color: '#dc2626', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    Quitar todos
+                  </button>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 150, overflowY: 'auto' }}>
+                  {selectedFiles.map((file, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        background: '#ffffff',
+                        border: '1px solid #e2e8f0',
+                        padding: '6px 12px',
+                        borderRadius: 8,
+                        fontSize: 12,
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden' }}>
+                        <span style={{ color: '#10b981' }}>📊</span>
+                        <strong style={{ color: '#0f172a', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
+                          {file.name}
+                        </strong>
+                        <span style={{ color: '#94a3b8', fontSize: 11 }}>
+                          ({(file.size / 1024).toFixed(1)} KB)
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveFile(idx)}
+                        style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 14 }}
+                        title="Quitar archivo"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Selector de Modo de Asignación de Sector */}
+            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: 14, marginBottom: 16 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#334155', display: 'block', marginBottom: 8 }}>
+                Asignación de Sector / AA.HH.:
+              </span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, cursor: 'pointer' }}>
+                  <input
+                    type="radio"
+                    name="sectorMode"
+                    value="auto"
+                    checked={importSectorMode === 'auto'}
+                    onChange={() => setImportSectorMode('auto')}
+                  />
+                  <span>
+                    <strong>Detección automática de cada archivo</strong> (Recomendado: lee el campo <code>AA.HH:</code> de cada hoja)
+                  </span>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, cursor: 'pointer' }}>
+                  <input
+                    type="radio"
+                    name="sectorMode"
+                    value="custom"
+                    checked={importSectorMode === 'custom'}
+                    onChange={() => setImportSectorMode('custom')}
+                  />
+                  <span>Asignar todos los registros de esta carga a un sector específico:</span>
+                </label>
+                {importSectorMode === 'custom' && (
+                  <div style={{ marginLeft: 22, marginTop: 4 }}>
+                    <select
+                      value={importCustomSector}
+                      onChange={(e) => setImportCustomSector(e.target.value)}
+                      style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 12, width: '100%', maxWidth: 320 }}
+                    >
+                      <option value="">-- Seleccionar Sector Existente --</option>
+                      {sectores.map((s) => (
+                        <option key={s.id} value={s.nombre}>
+                          {s.nombre} ({s.distrito})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Resultado de Importación Reciente */}
+            {importSummary && (
+              <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', padding: 14, borderRadius: 10, marginBottom: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#065f46', marginBottom: 8 }}>
+                  <span style={{ fontSize: 16 }}>✅</span>
+                  <strong style={{ fontSize: 13 }}>{importSummary.message}</strong>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, marginBottom: 10 }}>
+                  <div style={{ background: '#ffffff', padding: 8, borderRadius: 6, border: '1px solid #bbf7d0', textAlign: 'center' }}>
+                    <div style={{ fontSize: 11, color: '#64748b' }}>Total Familias</div>
+                    <strong style={{ fontSize: 16, color: '#059669' }}>{importSummary.importedCount}</strong>
+                  </div>
+                  <div style={{ background: '#ffffff', padding: 8, borderRadius: 6, border: '1px solid #bbf7d0', textAlign: 'center' }}>
+                    <div style={{ fontSize: 11, color: '#64748b' }}>Volumen Diario</div>
+                    <strong style={{ fontSize: 16, color: '#0284c7' }}>{importSummary.totalM3} m³</strong>
+                  </div>
+                </div>
+
+                {importSummary.sectores && Object.keys(importSummary.sectores).length > 0 && (
+                  <div>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: '#065f46', display: 'block', marginBottom: 4 }}>
+                      Desglose por Sector / AA.HH. registrado:
+                    </span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {Object.entries(importSummary.sectores).map(([secName, secData]: [string, any]) => (
+                        <div key={secName} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, background: '#ffffff', padding: '4px 8px', borderRadius: 4, border: '1px solid #d1fae5' }}>
+                          <strong>📍 {secName}</strong>
+                          <span>{secData.beneficiarios} familias • {secData.miembros} hab. ({secData.m3} m³)</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setImportModalOpen(false)}
+              >
+                {importSummary ? 'Cerrar' : 'Cancelar'}
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={handleExecuteImport}
+                disabled={importing || selectedFiles.length === 0}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              >
+                {importing ? (
+                  <><span>⏳</span> Procesando Padrón...</>
+                ) : (
+                  <><span>🚀</span> Iniciar Importación ({selectedFiles.length} archivos)</>
+                )}
               </button>
             </div>
           </div>

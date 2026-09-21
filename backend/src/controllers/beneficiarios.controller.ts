@@ -335,175 +335,295 @@ export const deleteBeneficiario = async (req: Request, res: Response) => {
 
 export const importExcel = async (req: Request, res: Response) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ message: 'No se subió ningún archivo Excel.' });
+    const files: Express.Multer.File[] = [];
+    if (req.files && Array.isArray(req.files) && req.files.length > 0) {
+      files.push(...(req.files as Express.Multer.File[]));
+    } else if (req.file) {
+      files.push(req.file);
     }
 
-    const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
-    
-    // Find sheet (Prefer "ANEXO 1", "ANEXO1", "PADRON" or first sheet)
-    const targetSheetName = workbook.SheetNames.find(s => 
-      s.toUpperCase().includes('ANEXO 1') || 
-      s.toUpperCase().includes('ANEXO1') || 
-      s.toUpperCase().includes('PADRON') || 
-      s.toUpperCase().includes('BENEFICIARIOS')
-    ) || workbook.SheetNames[0];
-
-    const sheet = workbook.Sheets[targetSheetName];
-    
-    // Parse as 2D array or objects
-    const rawRows = xlsx.utils.sheet_to_json<any>(sheet, { header: 1, defval: '' });
-    
-    let currentSector = '';
-    let currentDistrito = 'Moyobamba';
-    let headerRowIdx = -1;
-    let colMap: { [key: string]: number } = {};
+    if (files.length === 0) {
+      return res.status(400).json({ message: 'No se subió ningún archivo Excel para importar.' });
+    }
 
     let importedCount = 0;
     const sectorsSummary: { [sector: string]: { beneficiarios: number; miembros: number; m3: number; litros: number } } = {};
+    const customSectorOverride = req.body.sector ? String(req.body.sector).trim() : '';
 
-    // Analyze rows
-    for (let r = 0; r < rawRows.length; r++) {
-      const row = rawRows[r];
-      if (!Array.isArray(row) || row.length === 0) continue;
+    for (const file of files) {
+      const workbook = xlsx.read(file.buffer, { type: 'buffer' });
 
-      const rowStr = row.map(c => String(c).trim()).join(' ');
+      // Procesar todas las pestañas/hojas del libro Excel
+      for (const sheetName of workbook.SheetNames) {
+        const sheet = workbook.Sheets[sheetName];
+        if (!sheet) continue;
 
-      const sectorMatch = rowStr.match(/(?:SECTOR|AA\.?HH\.?|BARRIO|URB\.?)\s*[:\-]?\s*([A-Za-z0-9\sÁÉÍÓÚáéíóúÑñ]+)/i);
-      if (sectorMatch && !rowStr.includes('DNI') && !rowStr.includes('NOMBRES')) {
-        currentSector = sectorMatch[1].trim();
-      }
+        const rawRows = xlsx.utils.sheet_to_json<any>(sheet, { header: 1, defval: '' });
+        if (!rawRows || rawRows.length < 2) continue;
 
-      const hasDni = row.some((c: any) => /DNI|DOCUMENTO/i.test(String(c)));
-      const hasNombres = row.some((c: any) => /NOMBRE|APELLIDO|BENEFICIARIO|TITULAR/i.test(String(c)));
+        let detectedSector = '';
+        let detectedDistrito = 'Moyobamba';
 
-      if (hasDni && hasNombres) {
-        headerRowIdx = r;
-        colMap = {};
-        row.forEach((cellVal: any, colIdx: number) => {
-          const val = String(cellVal).toUpperCase().trim();
-          if (/DNI|DOCUMENTO/i.test(val)) colMap['dni'] = colIdx;
-          else if (/NOMBRE|APELLIDO|BENEFICIARIO|TITULAR/i.test(val)) colMap['nombres'] = colIdx;
-          else if (/DISTRITO/i.test(val)) colMap['distrito'] = colIdx;
-          else if (/SECTOR|AA\.?HH/i.test(val)) colMap['sector'] = colIdx;
-          else if (/VIVIENDA|CASA|N[°º]\s*VIV/i.test(val)) colMap['num_vivienda'] = colIdx;
-          else if (/MIEMBRO|HABITANTE|PERSONA|INTEGRANTE/i.test(val)) colMap['num_miembros'] = colIdx;
-          else if (/^MZ|^MANZANA/i.test(val)) colMap['mz'] = colIdx;
-          else if (/^LT|^LOTE/i.test(val)) colMap['lt'] = colIdx;
-          else if (/CALLE|DIRECCI[OÓ]N|JR|AV/i.test(val)) colMap['direccion'] = colIdx;
-          else if (/TEL[EÉ]FONO|CELULAR|MOVIL/i.test(val)) colMap['telefono'] = colIdx;
-        });
-        continue;
-      }
+        // 1. Escaneo de cabecera superior (Filas 0 a 12) para DISTRITO y AA.HH. / SECTOR
+        for (let r = 0; r < Math.min(12, rawRows.length); r++) {
+          const row = rawRows[r];
+          if (!Array.isArray(row)) continue;
 
-      if (headerRowIdx !== -1 && r > headerRowIdx) {
-        const dniRaw = colMap['dni'] !== undefined ? String(row[colMap['dni']]).trim() : '';
-        const nombresRaw = colMap['nombres'] !== undefined ? String(row[colMap['nombres']]).trim() : '';
+          for (let c = 0; c < row.length; c++) {
+            const cellText = String(row[c] || '').trim();
+            if (!cellText) continue;
 
-        if (!dniRaw || !nombresRaw || dniRaw.toLowerCase() === 'dni') continue;
+            // Extraer DISTRITO
+            const distMatch = cellText.match(/^DISTRITO\s*[:\-]?\s*(.*)/i);
+            if (distMatch) {
+              let distVal = distMatch[1].trim();
+              if (!distVal && row[c + 1]) distVal = String(row[c + 1]).trim();
+              if (distVal && !distVal.includes('N° Formato') && !distVal.includes('Formato')) {
+                detectedDistrito = distVal;
+              }
+            }
 
-        const distrito = colMap['distrito'] !== undefined && row[colMap['distrito']] 
-          ? String(row[colMap['distrito']]).trim() 
-          : currentDistrito;
-
-        const sector = colMap['sector'] !== undefined && row[colMap['sector']] 
-          ? String(row[colMap['sector']]).trim() 
-          : (currentSector || 'Sector General');
-
-        const numVivienda = colMap['num_vivienda'] !== undefined ? String(row[colMap['num_vivienda']]).trim() : '';
-        
-        let numMiembros = 1;
-        if (colMap['num_miembros'] !== undefined) {
-          const parsed = parseInt(String(row[colMap['num_miembros']]).replace(/\D/g, ''), 10);
-          if (!isNaN(parsed) && parsed > 0) numMiembros = parsed;
+            // Extraer AA.HH. o SECTOR
+            const secMatch = cellText.match(/^(?:AA\.?HH\.?|SECTOR|ASENTAMIENTO\s*HUMANO|BARRIO|URB\.?)\s*[:\-]?\s*(.*)/i);
+            if (secMatch) {
+              let secVal = secMatch[1].trim();
+              if (!secVal && row[c + 1]) secVal = String(row[c + 1]).trim();
+              secVal = secVal.replace(/^[_\-\s]+|[_\-\s]+$/g, '');
+              if (secVal && secVal.length > 1) {
+                detectedSector = secVal;
+              }
+            }
+          }
         }
 
-        const mz = colMap['mz'] !== undefined ? String(row[colMap['mz']]).trim() : '';
-        const lt = colMap['lt'] !== undefined ? String(row[colMap['lt']]).trim() : '';
-        const direccion = colMap['direccion'] !== undefined ? String(row[colMap['direccion']]).trim() : '';
-        const telefono = colMap['telefono'] !== undefined ? String(row[colMap['telefono']]).trim() : '';
-
-        const insertQuery = `
-          INSERT INTO beneficiarios (
-            dni, nombres_apellidos, distrito, sector_aahh, sector,
-            num_vivienda, num_miembros, mz, lt, calle_direccion, direccion, telefono
-          )
-          VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $8, $9, $9, $10)
-          ON CONFLICT (dni) DO UPDATE 
-          SET nombres_apellidos = EXCLUDED.nombres_apellidos,
-              distrito = EXCLUDED.distrito,
-              sector_aahh = EXCLUDED.sector_aahh,
-              sector = EXCLUDED.sector,
-              num_vivienda = EXCLUDED.num_vivienda,
-              num_miembros = EXCLUDED.num_miembros,
-              mz = EXCLUDED.mz,
-              lt = EXCLUDED.lt,
-              calle_direccion = EXCLUDED.calle_direccion,
-              direccion = EXCLUDED.direccion,
-              telefono = EXCLUDED.telefono;
-        `;
-
-        await query(insertQuery, [dniRaw, nombresRaw, distrito, sector, numVivienda, numMiembros, mz, lt, direccion, telefono]);
-        importedCount++;
-
-        if (!sectorsSummary[sector]) {
-          sectorsSummary[sector] = { beneficiarios: 0, miembros: 0, m3: 0, litros: 0 };
+        // Si no se detectó en texto, verificar nombre de la pestaña (si no es 'Sheet1' o similar)
+        if (!detectedSector && sheetName && !/^(SHEET|HOJA)\s*\d*$/i.test(sheetName.trim())) {
+          detectedSector = sheetName.trim();
         }
-        sectorsSummary[sector].beneficiarios += 1;
-        sectorsSummary[sector].miembros += numMiembros;
-        const litros = numMiembros * DOTACION_POR_HABITANTE;
-        sectorsSummary[sector].litros += litros;
-        sectorsSummary[sector].m3 = parseFloat((sectorsSummary[sector].litros / LITROS_POR_M3).toFixed(2));
-      }
-    }
 
-    if (importedCount === 0) {
-      const jsonData = xlsx.utils.sheet_to_json<any>(sheet);
-      for (const item of jsonData) {
-        const dni = item['DNI'] || item['Dni'] || item['dni'] || item['DOCUMENTO'];
-        const nombres = item['Nombres y Apellidos'] || item['NOMBRES Y APELLIDOS'] || item['NOMBRES'] || item['Titular'];
-        if (!dni || !nombres) continue;
-
-        const distrito = item['Distrito'] || item['DISTRITO'] || 'Moyobamba';
-        const sector = item['AA.HH/Sector'] || item['SECTOR / AA.HH'] || item['Sector'] || item['SECTOR'] || 'Sector General';
-        const numVivienda = item['N° de Vivienda'] || item['N° Vivienda'] || item['Vivienda'] || '';
-        const numMiembros = parseInt(item['N° de Miembros'] || item['N° Miembros'] || item['Miembros'] || '1', 10) || 1;
-        const mz = item['Mz'] || item['MZ'] || '';
-        const lt = item['Lt'] || item['LT'] || '';
-        const direccion = item['Dirección'] || item['DIRECCION'] || item['Calle'] || item['CALLE / DIRECCIÓN'] || '';
-        const telefono = item['Teléfono'] || item['TELEFONO'] || item['Celular'] || '';
-
-        const insertQuery = `
-          INSERT INTO beneficiarios (
-            dni, nombres_apellidos, distrito, sector_aahh, sector,
-            num_vivienda, num_miembros, mz, lt, calle_direccion, direccion, telefono
-          )
-          VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $8, $9, $9, $10)
-          ON CONFLICT (dni) DO UPDATE 
-          SET nombres_apellidos = EXCLUDED.nombres_apellidos,
-              distrito = EXCLUDED.distrito,
-              sector_aahh = EXCLUDED.sector_aahh,
-              sector = EXCLUDED.sector,
-              num_vivienda = EXCLUDED.num_vivienda,
-              num_miembros = EXCLUDED.num_miembros,
-              mz = EXCLUDED.mz,
-              lt = EXCLUDED.lt,
-              calle_direccion = EXCLUDED.calle_direccion,
-              direccion = EXCLUDED.direccion,
-              telefono = EXCLUDED.telefono;
-        `;
-
-        await query(insertQuery, [String(dni).trim(), String(nombres).trim(), distrito, sector, String(numVivienda), numMiembros, String(mz), String(lt), String(direccion), String(telefono)]);
-        importedCount++;
-
-        if (!sectorsSummary[sector]) {
-          sectorsSummary[sector] = { beneficiarios: 0, miembros: 0, m3: 0, litros: 0 };
+        // Si aún no se detectó, extraer del nombre del archivo
+        if (!detectedSector && file.originalname) {
+          const baseName = file.originalname
+            .replace(/\.[^/.]+$/, '')
+            .replace(/^(PADRON|BENEFICIARIOS|ANEXO\s*\d*)[_\-\s]*/i, '')
+            .trim();
+          if (baseName && baseName.length > 2) {
+            detectedSector = baseName;
+          }
         }
-        sectorsSummary[sector].beneficiarios += 1;
-        sectorsSummary[sector].miembros += numMiembros;
-        const litros = numMiembros * DOTACION_POR_HABITANTE;
-        sectorsSummary[sector].litros += litros;
-        sectorsSummary[sector].m3 = parseFloat((sectorsSummary[sector].litros / LITROS_POR_M3).toFixed(2));
+
+        const finalSector = customSectorOverride || detectedSector || 'Sector General';
+
+        // Auto-crear el sector en el catálogo si aún no existe
+        try {
+          const secCheck = await query('SELECT id FROM sectores WHERE LOWER(nombre) = LOWER($1)', [finalSector]);
+          if (secCheck.rows.length === 0) {
+            await query(
+              'INSERT INTO sectores (nombre, distrito, descripcion) VALUES ($1, $2, $3)',
+              [finalSector, detectedDistrito, `Sector / AA.HH. importado del Padrón Oficial (${detectedDistrito})`]
+            );
+          }
+        } catch (secErr) {
+          console.warn('Advertencia registrando nuevo sector:', secErr);
+        }
+
+        // 2. Mapeo de Columnas (Manejo de Cabecera Simple o con DIRECCIÓN Combinada en 2 filas)
+        let headerRowIdx = -1;
+        let dataStartRow = -1;
+        let colMap: { [key: string]: number } = {};
+
+        for (let r = 0; r < Math.min(18, rawRows.length); r++) {
+          const row = rawRows[r];
+          if (!Array.isArray(row)) continue;
+
+          const hasDni = row.some((cell) => /DNI|DOCUMENTO/i.test(String(cell || '')));
+          const hasNombres = row.some((cell) => /NOMBRE|APELLIDO|TITULAR/i.test(String(cell || '')));
+          const hasVivienda = row.some((cell) => /VIVIENDA|CASA/i.test(String(cell || '')));
+          const hasMiembros = row.some((cell) => /MIEMBRO|HABITANTE/i.test(String(cell || '')));
+
+          if ((hasDni && hasNombres) || (hasVivienda && hasDni) || (hasMiembros && hasDni)) {
+            headerRowIdx = r;
+            dataStartRow = r + 1;
+
+            // Fila principal
+            row.forEach((cellVal, colIdx) => {
+              const val = String(cellVal || '').toUpperCase().trim();
+              if (/DNI|DOCUMENTO/i.test(val)) colMap['dni'] = colIdx;
+              else if (/NOMBRE|APELLIDO|TITULAR/i.test(val)) colMap['nombres'] = colIdx;
+              else if (/SECTOR|AA\.?HH|BARRIO|URBANIZACI[OÓ]N/i.test(val)) colMap['sector'] = colIdx;
+              else if (/VIVIENDA|CASA|N[°º]\s*VIV/i.test(val)) colMap['num_vivienda'] = colIdx;
+              else if (/MIEMBRO|HABITANTE|PERSONA/i.test(val)) colMap['num_miembros'] = colIdx;
+              else if (/TEL[EÉ]FONO|CELULAR|MOVIL/i.test(val)) colMap['telefono'] = colIdx;
+              else if (/^MZ|^MANZANA/i.test(val)) colMap['mz'] = colIdx;
+              else if (/^LT|^LOTE/i.test(val)) colMap['lt'] = colIdx;
+              else if (/CALLE|DIRECCI[OÓ]N|CUADRA/i.test(val)) colMap['direccion'] = colIdx;
+            });
+
+            // Verificar si hay subcabecera en fila r + 1 (Mz | Lt | calle/dirección/cuadra/N°)
+            if (r + 1 < rawRows.length && Array.isArray(rawRows[r + 1])) {
+              const subRow = rawRows[r + 1];
+              const hasSubMz = subRow.some((cell) => /^MZ|^MANZANA/i.test(String(cell || '').trim()));
+              const hasSubLt = subRow.some((cell) => /^LT|^LOTE/i.test(String(cell || '').trim()));
+              const hasSubCalle = subRow.some((cell) => /CALLE|DIRECCI[OÓ]N|CUADRA/i.test(String(cell || '').trim()));
+
+              if (hasSubMz || hasSubLt || hasSubCalle) {
+                dataStartRow = r + 2;
+                subRow.forEach((cellVal, colIdx) => {
+                  const val = String(cellVal || '').toUpperCase().trim();
+                  if (/^MZ|^MANZANA/i.test(val)) colMap['mz'] = colIdx;
+                  else if (/^LT|^LOTE/i.test(val)) colMap['lt'] = colIdx;
+                  else if (/CALLE|DIRECCI[OÓ]N|CUADRA/i.test(val)) colMap['direccion'] = colIdx;
+                });
+              }
+            }
+            break;
+          }
+        }
+
+        // Si no se identificó por texto, aplicar orden posicional del formato oficial estándar
+        // [0: N°, 1: Vivienda, 2: Miembros, 3: Mz, 4: Lt, 5: Dirección, 6: Nombres, 7: DNI, 8: Teléfono]
+        if (colMap['dni'] === undefined) {
+          colMap = {
+            num_vivienda: 1,
+            num_miembros: 2,
+            mz: 3,
+            lt: 4,
+            direccion: 5,
+            nombres: 6,
+            dni: 7,
+            telefono: 8,
+          };
+          if (dataStartRow === -1) dataStartRow = 5;
+        }
+
+        // 3. Procesamiento e Inserción de Beneficiarios
+        for (let r = dataStartRow; r < rawRows.length; r++) {
+          const row = rawRows[r];
+          if (!Array.isArray(row) || row.length === 0) continue;
+
+          // Verificar si esta fila es un separador de bloque "AA.HH: [Nuevo Sector]"
+          const rowText = row.map((c) => String(c || '').trim()).join(' ');
+          const blockSecMatch = rowText.match(/^(?:AA\.?HH\.?|SECTOR)\s*[:\-]?\s*([A-Za-z0-9\sÁÉÍÓÚáéíóúÑñ]+)/i);
+          if (blockSecMatch && !rowText.includes('DNI') && !rowText.includes('NOMBRES')) {
+            detectedSector = blockSecMatch[1].trim().replace(/^[_\-\s]+|[_\-\s]+$/g, '');
+            continue;
+          }
+
+          const rawDniVal = colMap['dni'] !== undefined ? String(row[colMap['dni']] || '').trim() : '';
+          const rawNombresVal = colMap['nombres'] !== undefined ? String(row[colMap['nombres']] || '').trim() : '';
+
+          let dni = rawDniVal.replace(/\D/g, '');
+          if (dni.length === 7) dni = '0' + dni;
+
+          if (!dni || dni.length < 6 || !rawNombresVal || rawNombresVal.toUpperCase() === 'NOMBRES Y APELLIDOS') {
+            continue;
+          }
+
+          // Resolver el sector de la fila (columna dedicada o sector detectado)
+          let rowSector = customSectorOverride || detectedSector || 'Sector General';
+          if (colMap['sector'] !== undefined && row[colMap['sector']]) {
+            const sVal = String(row[colMap['sector']]).trim();
+            if (sVal && !/^(SECTOR|AA\.?HH\.?)$/i.test(sVal)) {
+              rowSector = sVal;
+            }
+          }
+
+          // Asegurar registro de sector
+          try {
+            const secCheck = await query('SELECT id FROM sectores WHERE LOWER(nombre) = LOWER($1)', [rowSector]);
+            if (secCheck.rows.length === 0) {
+              await query(
+                'INSERT INTO sectores (nombre, distrito, descripcion) VALUES ($1, $2, $3)',
+                [rowSector, detectedDistrito, `Sector / AA.HH. importado del Padrón Oficial (${detectedDistrito})`]
+              );
+            }
+          } catch (e) {}
+
+          const nombresApellidos = rawNombresVal.toUpperCase().trim();
+
+          let nombres = '';
+          let apellidos = '';
+          if (nombresApellidos.includes(',')) {
+            const parts = nombresApellidos.split(',');
+            apellidos = parts[0].trim();
+            nombres = parts.slice(1).join(' ').trim();
+          } else {
+            const parts = nombresApellidos.split(/\s+/);
+            if (parts.length >= 3) {
+              apellidos = parts.slice(0, 2).join(' ');
+              nombres = parts.slice(2).join(' ');
+            } else if (parts.length === 2) {
+              apellidos = parts[0];
+              nombres = parts[1];
+            } else {
+              nombres = nombresApellidos;
+            }
+          }
+
+          const numVivienda = colMap['num_vivienda'] !== undefined ? String(row[colMap['num_vivienda']] || '').trim() : '';
+
+          let numMiembros = 4;
+          if (colMap['num_miembros'] !== undefined) {
+            const parsed = parseInt(String(row[colMap['num_miembros']]).replace(/\D/g, ''), 10);
+            if (!isNaN(parsed) && parsed > 0 && parsed <= 30) {
+              numMiembros = parsed;
+            }
+          }
+
+          const mz = colMap['mz'] !== undefined ? String(row[colMap['mz']] || '-').trim() : '-';
+          const lt = colMap['lt'] !== undefined ? String(row[colMap['lt']] || '-').trim() : '-';
+          const direccion = colMap['direccion'] !== undefined ? String(row[colMap['direccion']] || '').trim() : '';
+          const telefono = colMap['telefono'] !== undefined ? String(row[colMap['telefono']] || '').trim().replace(/[^\d\s\-\+]/g, '') : '';
+
+          const insertQuery = `
+            INSERT INTO beneficiarios (
+              dni, nombres_apellidos, distrito, sector_aahh, sector,
+              num_vivienda, num_miembros, mz, lt, calle_direccion, direccion, telefono,
+              nombres, apellidos
+            )
+            VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $8, $9, $9, $10, $11, $12)
+            ON CONFLICT (dni) DO UPDATE 
+            SET nombres_apellidos = EXCLUDED.nombres_apellidos,
+                distrito = EXCLUDED.distrito,
+                sector_aahh = EXCLUDED.sector_aahh,
+                sector = EXCLUDED.sector,
+                num_vivienda = EXCLUDED.num_vivienda,
+                num_miembros = EXCLUDED.num_miembros,
+                mz = EXCLUDED.mz,
+                lt = EXCLUDED.lt,
+                calle_direccion = EXCLUDED.calle_direccion,
+                direccion = EXCLUDED.direccion,
+                telefono = EXCLUDED.telefono,
+                nombres = EXCLUDED.nombres,
+                apellidos = EXCLUDED.apellidos;
+          `;
+
+          await query(insertQuery, [
+            dni,
+            nombresApellidos,
+            detectedDistrito,
+            rowSector,
+            numVivienda,
+            numMiembros,
+            mz,
+            lt,
+            direccion,
+            telefono,
+            nombres,
+            apellidos,
+          ]);
+
+          importedCount++;
+
+          if (!sectorsSummary[rowSector]) {
+            sectorsSummary[rowSector] = { beneficiarios: 0, miembros: 0, m3: 0, litros: 0 };
+          }
+          sectorsSummary[rowSector].beneficiarios += 1;
+          sectorsSummary[rowSector].miembros += numMiembros;
+          const litros = numMiembros * DOTACION_POR_HABITANTE;
+          sectorsSummary[rowSector].litros += litros;
+          sectorsSummary[rowSector].m3 = parseFloat((sectorsSummary[rowSector].litros / LITROS_POR_M3).toFixed(2));
+        }
       }
     }
 
@@ -511,16 +631,66 @@ export const importExcel = async (req: Request, res: Response) => {
     const totalM3 = parseFloat((totalLitros / LITROS_POR_M3).toFixed(2));
 
     res.status(200).json({
-      message: `Padrón ANEXO 1 procesado con éxito: ${importedCount} beneficiarios importados.`,
+      message: `Padrón procesado con éxito: ${importedCount} beneficiarios importados/actualizados.`,
       importedCount,
+      totalArchivos: files.length,
       dotacionPorHabitante: DOTACION_POR_HABITANTE,
       totalLitros,
       totalM3,
-      sectores: sectorsSummary
+      sectores: sectorsSummary,
     });
   } catch (error: any) {
     console.error('Error importing excel:', error);
     res.status(500).json({ message: 'Error interno al procesar archivo Excel', error: error.message });
+  }
+};
+
+/**
+ * Descargar Plantilla Excel Oficial de Padrón Multissectorial
+ */
+export const descargarPlantillaExcel = async (_req: Request, res: Response) => {
+  try {
+    const wb = xlsx.utils.book_new();
+
+    // Hoja 1: Todos los sectores en una sola hoja
+    const rowsHoja1 = [
+      ['PADRÓN GENERAL DE BENEFICIARIOS — PROGRAMA AGUA MÓVIL EPS MOYOBAMBA'],
+      ['INSTRUCCIONES: Puedes pegar aquí todos los beneficiarios de todos los sectores juntos. Cada fila especifica su SECTOR o AA.HH.'],
+      ['N°', 'SECTOR / AA.HH.', 'N° DE VIVIENDA', 'N° DE MIEMBROS', 'Mz', 'Lt', 'DIRECCIÓN (calle/cuadra/N°)', 'NOMBRES Y APELLIDOS', 'DNI', 'NUMERO DE TELEFONO'],
+      [1, 'SOL DE INDAÑE', '1', 4, 'A', '01', 'Jr. Los Cedros s/n', 'PÉREZ GARCÍA SEGUNDO JUAN', '47891234', '942123456'],
+      [2, 'SOL DE INDAÑE', '2', 3, 'A', '02', 'Jr. Los Cedros s/n', 'VASQUEZ GÓMEZ MARÍA ELENA', '76089503', '976543210'],
+      [3, 'ALTO BELEN', '1', 5, 'B', '05', 'Alto Belén Cdra. 1', 'GONZALES MEDINA CENAIDA', '74066841', '951234567'],
+      [4, 'ALTO BELEN', '2', 4, 'B', '06', 'Alto Belén Cdra. 1', 'FERNANDEZ TOMOSH JOSÉ G.', '44048771', '961234567'],
+      [5, 'COCOCHO', '14', 4, 'C', '12', 'Sector Cococho Parte Alta', 'RÍOS GÓMEZ MANUEL ANTONIO', '43890123', '981234567'],
+      [6, 'LOS EUCALIPTOS', '5', 2, 'D', '08', 'Los Eucaliptos Mz D Lt 8', 'TAPIA DELGADO JORGE LUIS', '48901234', '942987654']
+    ];
+
+    const ws1 = xlsx.utils.aoa_to_sheet(rowsHoja1);
+    ws1['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 9 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 9 } }
+    ];
+    ws1['!cols'] = [
+      { wch: 6 },
+      { wch: 22 },
+      { wch: 16 },
+      { wch: 16 },
+      { wch: 8 },
+      { wch: 8 },
+      { wch: 32 },
+      { wch: 34 },
+      { wch: 14 },
+      { wch: 18 }
+    ];
+    xlsx.utils.book_append_sheet(wb, ws1, 'Todos_Los_Sectores');
+
+    const buffer = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="Plantilla_Padron_Beneficiarios_EPS_Moyobamba.xlsx"');
+    res.send(buffer);
+  } catch (error: any) {
+    console.error('Error generando plantilla Excel:', error);
+    res.status(500).json({ message: 'Error al generar plantilla', error: error.message });
   }
 };
 
