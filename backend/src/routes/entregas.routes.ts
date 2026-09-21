@@ -6,6 +6,7 @@ const router = Router();
 
 router.get('/', entregasController.getAllEntregas);
 router.get('/export-excel', entregasController.exportarEntregasExcel);
+router.get('/export-pdf', entregasController.exportarFormatoPdf);
 router.get('/:id/pdf', entregasController.generarActaPdf);
 router.post('/sync', entregasController.syncEntregas);
 router.delete('/:id', verifyToken, requireRole(['ADMIN']), entregasController.deleteEntrega);

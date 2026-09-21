@@ -80,31 +80,51 @@ export default function EntregasPage() {
     }
   };
 
-  const filtered = entregas.filter(
-    (e) =>
+  const [selectedFecha, setSelectedFecha] = useState('');
+
+  const filtered = entregas.filter((e) => {
+    const matchesSearch =
+      !searchTerm ||
       e.nombres_apellidos?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       e.dni?.includes(searchTerm) ||
       e.sector?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      e.local_id?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+      e.local_id?.toLowerCase().includes(searchTerm.toLowerCase());
+
+    const deliveryDateStr = (e.fecha_captura || e.fecha_hora || '').slice(0, 10);
+    const matchesFecha = !selectedFecha || deliveryDateStr === selectedFecha;
+
+    return matchesSearch && matchesFecha;
+  });
 
   const paginatedData = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
+  const queryParams = new URLSearchParams();
+  if (searchTerm) queryParams.append('search', searchTerm);
+  if (selectedFecha) queryParams.append('fecha', selectedFecha);
+  const queryString = queryParams.toString() ? `?${queryParams.toString()}` : '';
+
   return (
     <Layout>
-      <div className="module-header">
+      <div className="module-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 14 }}>
         <div>
-          <h1>Planilla de Entregas y Evidencia en Campo</h1>
-          <p>Trazabilidad con foto obligatoria, saldos pendientes de entrega y coordenadas satelitales - EPS Moyobamba</p>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#eff6ff', color: '#1d4ed8', border: '1px solid #dbeafe', padding: '3px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700, marginBottom: 6 }}>
+            <span>📋 FORMATO OFICIAL DE ENTREGA DE AGUA</span>
+            <span>•</span>
+            <span>EPS MOYOBAMBA S.A.</span>
+          </div>
+          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800 }}>Planilla de Entregas y Evidencia en Campo</h1>
+          <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: 13 }}>
+            Trazabilidad con firma digital, geolocalización satelital y formato oficial normativo de reparto en cisternas
+          </p>
         </div>
-        <div className="module-actions">
-          <button className="btn-secondary" onClick={fetchEntregas}>
+        <div className="module-actions" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button className="btn-secondary" onClick={fetchEntregas} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             🔄 Actualizar
           </button>
         </div>
       </div>
 
-      <div className="filters-card">
+      <div className="filters-card" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10, background: '#ffffff', padding: '14px 18px', borderRadius: 12, border: '1px solid #e2e8f0', marginBottom: 18 }}>
         <input
           type="text"
           placeholder="🔍 Buscar por Beneficiario, DNI, Sector o Local ID..."
@@ -114,32 +134,103 @@ export default function EntregasPage() {
             setCurrentPage(1);
           }}
           className="search-input"
-          style={{ width: 360 }}
+          style={{ minWidth: 260, flex: '1 1 260px' }}
         />
-        <span className="badge-count">Total: {filtered.length} entregas</span>
-        <a
-          href={`${API_BASE_URL}/api/v1/entregas/export-excel${searchTerm ? `?search=${encodeURIComponent(searchTerm)}` : ''}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="btn-action-compact"
-          style={{
-            padding: '7px 14px',
-            fontSize: 12.5,
-            borderRadius: 8,
-            fontWeight: 700,
-            textDecoration: 'none',
-            color: '#15803d',
-            background: '#f0fdf4',
-            border: '1px solid #bbf7d0',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 6,
-            marginLeft: 'auto'
-          }}
-          title="Descargar Planilla de Fiscalización de Entregas en Excel"
-        >
-          📊 Exportar Planilla Excel
-        </a>
+
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: '#475569' }}>Fecha:</span>
+          <input
+            type="date"
+            value={selectedFecha}
+            onChange={(e) => {
+              setSelectedFecha(e.target.value);
+              setCurrentPage(1);
+            }}
+            style={{
+              padding: '6px 10px',
+              borderRadius: 8,
+              border: '1px solid #cbd5e1',
+              fontSize: 12,
+              color: '#1e293b',
+              fontWeight: 600,
+              background: '#f8fafc'
+            }}
+          />
+          {selectedFecha ? (
+            <button
+              type="button"
+              onClick={() => setSelectedFecha('')}
+              style={{
+                background: '#fee2e2',
+                border: '1px solid #fca5a5',
+                color: '#b91c1c',
+                borderRadius: 6,
+                padding: '4px 8px',
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: 'pointer'
+              }}
+              title="Limpiar fecha"
+            >
+              ✕
+            </button>
+          ) : null}
+        </div>
+
+        <span className="badge-count" style={{ background: '#f1f5f9', color: '#334155', fontWeight: 700, padding: '6px 12px', borderRadius: 8, fontSize: 12 }}>
+          Total: {filtered.length} entregas
+        </span>
+
+        {/* Botones Oficiales Formato PDF y Formato Excel */}
+        <div style={{ display: 'flex', gap: 8, marginLeft: 'auto', flexWrap: 'wrap' }}>
+          <a
+            href={`${API_BASE_URL}/api/v1/entregas/export-pdf${queryString}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-action-compact"
+            style={{
+              padding: '8px 14px',
+              fontSize: 12.5,
+              borderRadius: 8,
+              fontWeight: 700,
+              textDecoration: 'none',
+              color: '#0369a1',
+              background: '#f0f9ff',
+              border: '1px solid #bae6fd',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+            }}
+            title="Descargar FORMATO DE ENTREGA DE AGUA Oficial en PDF (Hoja membretada con firmas y cuadrícula reglamentaria)"
+          >
+            <span>📄</span> Formato Oficial PDF
+          </a>
+
+          <a
+            href={`${API_BASE_URL}/api/v1/entregas/export-excel${queryString}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-action-compact"
+            style={{
+              padding: '8px 14px',
+              fontSize: 12.5,
+              borderRadius: 8,
+              fontWeight: 700,
+              textDecoration: 'none',
+              color: '#15803d',
+              background: '#f0fdf4',
+              border: '1px solid #bbf7d0',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+            }}
+            title="Descargar FORMATO DE ENTREGA DE AGUA Oficial en Excel (Estructura idéntica al documento físico)"
+          >
+            <span>📊</span> Formato Oficial Excel
+          </a>
+        </div>
       </div>
 
       <div className="table-card">

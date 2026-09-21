@@ -378,23 +378,33 @@ export const generarActaPdf = async (req: Request, res: Response) => {
 };
 
 /**
- * Exportar Planilla Consolidada de Entregas de Campo a Excel (.xlsx)
+ * Exportar Formato Oficial de Entrega de Agua en PDF (Ficha Paisaje A4 con cuadrícula, firmas y metadatos)
  */
-export const exportarEntregasExcel = async (req: Request, res: Response) => {
+export const exportarFormatoPdf = async (req: Request, res: Response) => {
   try {
-    const { search, programacion_id } = req.query;
+    const { search, programacion_id, cisterna_id, fecha } = req.query;
 
     let whereClauses: string[] = [];
     let params: any[] = [];
 
     if (search) {
       params.push(`%${String(search).trim()}%`);
-      whereClauses.push(`(b.dni ILIKE $${params.length} OR b.nombres_apellidos ILIKE $${params.length} OR b.sector_aahh ILIKE $${params.length} OR e.local_id ILIKE $${params.length})`);
+      whereClauses.push(`(b.dni ILIKE $${params.length} OR b.nombres_apellidos ILIKE $${params.length} OR b.sector_aahh ILIKE $${params.length} OR b.sector ILIKE $${params.length} OR e.local_id ILIKE $${params.length})`);
     }
 
     if (programacion_id) {
       params.push(programacion_id);
       whereClauses.push(`e.programacion_id = $${params.length}`);
+    }
+
+    if (cisterna_id) {
+      params.push(cisterna_id);
+      whereClauses.push(`COALESCE(e.cisterna_id, p.cisterna_id) = $${params.length}`);
+    }
+
+    if (fecha) {
+      params.push(fecha);
+      whereClauses.push(`(DATE(e.fecha_captura) = $${params.length} OR DATE(e.fecha_hora) = $${params.length})`);
     }
 
     const whereStr = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
@@ -404,84 +414,450 @@ export const exportarEntregasExcel = async (req: Request, res: Response) => {
         e.*, 
         b.nombres_apellidos, 
         b.dni, 
-        COALESCE(b.calle_direccion, b.direccion, '') as direccion, 
-        COALESCE(b.sector_aahh, b.sector, '') as sector, 
-        b.num_miembros, 
+        COALESCE(b.mz, '-') as mz,
+        COALESCE(b.lt, '-') as lt,
+        COALESCE(b.calle_direccion, b.direccion, 'ALTO BELEN') as direccion, 
+        COALESCE(b.sector_aahh, b.sector, 'LOS EUCALIPTOS') as sector, 
+        COALESCE(b.num_miembros, 1) as num_miembros, 
         b.telefono,
-        c.placa as cisterna_placa,
-        p.zona, 
-        p.fecha as fecha_programacion
+        COALESCE(c.placa, 'CAT - 849') as cisterna_placa,
+        COALESCE(c.capacidad_m3, 19) as cisterna_capacidad_m3,
+        COALESCE(p.zona, b.sector_aahh, b.sector, 'LOS EUCALIPTOS') as zona, 
+        p.fecha as fecha_programacion,
+        COALESCE(CONCAT(cond.nombres, ' ', cond.apellidos), 'Carlos Iván Ruiz Chupillón') as conductor_nombre,
+        COALESCE(CONCAT(ayud.nombres, ' ', ayud.apellidos), 'Ing. SANDRO SORIA CHUQUIZUTA') as supervisor_nombre
       FROM entregas_agua e
       LEFT JOIN beneficiarios b ON e.beneficiario_id = b.id
       LEFT JOIN programaciones p ON e.programacion_id = p.id
-      LEFT JOIN cisternas c ON e.cisterna_id = c.id
+      LEFT JOIN cisternas c ON COALESCE(e.cisterna_id, p.cisterna_id) = c.id
+      LEFT JOIN personal_operativo cond ON COALESCE(e.conductor_id, p.conductor_id) = cond.id
+      LEFT JOIN personal_operativo ayud ON p.ayudante_id = ayud.id
       ${whereStr}
-      ORDER BY e.fecha_hora DESC
+      ORDER BY e.fecha_hora ASC, e.id ASC
     `;
 
     const result = await query(sql, params);
     const entregas = result.rows;
 
+    const first = entregas[0] || {};
+    const capCisterna = first.cisterna_capacidad_m3 ? `${Math.round(Number(first.cisterna_capacidad_m3))} m3` : '19 m3';
+    const placaCisterna = first.cisterna_placa || 'CAT - 849';
+    const conductorNombre = (first.conductor_nombre && first.conductor_nombre.trim()) || 'Carlos Iván Ruiz Chupillón';
+    const supervisorNombre = (first.supervisor_nombre && first.supervisor_nombre.trim()) || 'Ing. SANDRO SORIA CHUQUIZUTA';
+    const zonaDistribucion = first.zona || first.sector || 'LOS EUCALIPTOS';
+    
+    let fechaStr = '31-08-2026';
+    if (first.fecha_captura || first.fecha_hora) {
+      const d = new Date(first.fecha_captura || first.fecha_hora);
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      fechaStr = `${day}-${month}-${year}`;
+    }
+
+    const doc = new PDFDocument({
+      size: 'A4',
+      layout: 'landscape',
+      margin: 28,
+      bufferPages: true
+    });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="Formato_Entrega_Agua_${fechaStr.replace(/-/g, '')}.pdf"`);
+    doc.pipe(res);
+
+    const startX = 28;
+    const totalWidth = 785;
+    const halfWidth = totalWidth / 2; // 392.5
+
+    // Ancho de columnas de la tabla (Suma exacta = 785)
+    // N°: 25, Mz: 28, Lt: 32, DIRECCIÓN: 155, Jefe de familia: 175, Hab: 55, Litros: 70, DNI: 75, FIRMA: 170
+    const colWidths = [25, 28, 32, 155, 175, 55, 70, 75, 170];
+
+    const drawHeader = (pageNumber: number) => {
+      // 1. Título Centrado
+      doc.font('Helvetica-Bold').fontSize(12.5).fillColor('#000000')
+         .text('FORMATO DE ENTREGA DE AGUA', startX, 24, { width: totalWidth, align: 'center' });
+
+      // 2. Cuadro de Metadatos
+      const boxY = 42;
+      const boxH = 68;
+      const rowH = boxH / 5; // 13.6
+
+      doc.rect(startX, boxY, totalWidth, boxH).stroke('#000000');
+      doc.moveTo(startX + halfWidth, boxY).lineTo(startX + halfWidth, boxY + boxH).stroke('#000000');
+
+      // Líneas horizontales interiores
+      for (let i = 1; i < 5; i++) {
+        const yLine = boxY + i * rowH;
+        doc.moveTo(startX, yLine).lineTo(startX + halfWidth, yLine).stroke('#000000');
+        doc.moveTo(startX + halfWidth, yLine).lineTo(startX + totalWidth, yLine).stroke('#000000');
+      }
+
+      // Contenido Columna Izquierda
+      const drawMetaLeft = (rowIdx: number, label: string, value: string) => {
+        const y = boxY + rowIdx * rowH + 3.5;
+        doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#000000').text(label, startX + 5, y, { width: 115 });
+        doc.font('Helvetica').fontSize(7.5).fillColor('#000000').text(value, startX + 120, y, { width: halfWidth - 125 });
+      };
+
+      // Contenido Columna Derecha
+      const drawMetaRight = (rowIdx: number, label: string, value: string) => {
+        const y = boxY + rowIdx * rowH + 3.5;
+        doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#000000').text(label, startX + halfWidth + 5, y, { width: 105 });
+        doc.font('Helvetica').fontSize(7.5).fillColor('#000000').text(value, startX + halfWidth + 110, y, { width: halfWidth - 115 });
+      };
+
+      drawMetaLeft(0, 'Cap. de camión cisterna:', capCisterna);
+      drawMetaLeft(1, 'Región:', 'SAN MARTIN');
+      drawMetaLeft(2, 'Provincia:', 'MOYOBAMBA');
+      drawMetaLeft(3, 'N.A. Conductor:', conductorNombre);
+      drawMetaLeft(4, 'Fecha:', fechaStr);
+
+      drawMetaRight(0, 'Placa:', placaCisterna);
+      drawMetaRight(1, 'Distrito:', 'MOYOBAMBA');
+      drawMetaRight(2, 'Zona de distribución:', zonaDistribucion);
+      drawMetaRight(3, 'N.A. Supervisor:', supervisorNombre);
+      drawMetaRight(4, '', '');
+
+      // 3. Cabecera de la Tabla
+      const tableHeadY = 114;
+      const headH = 24;
+
+      doc.rect(startX, tableHeadY, totalWidth, headH).fillAndStroke('#f8fafc', '#000000');
+
+      let curX = startX;
+      for (let i = 0; i < colWidths.length - 1; i++) {
+        curX += colWidths[i];
+        doc.moveTo(curX, tableHeadY).lineTo(curX, tableHeadY + headH).stroke('#000000');
+      }
+
+      // Textos de cabecera
+      curX = startX;
+      doc.fillColor('#000000').font('Helvetica-Bold').fontSize(7.5);
+
+      doc.text('N°', curX, tableHeadY + 8, { width: colWidths[0], align: 'center' });
+      curX += colWidths[0];
+
+      doc.text('Mz', curX, tableHeadY + 8, { width: colWidths[1], align: 'center' });
+      curX += colWidths[1];
+
+      doc.text('N° de Lt', curX, tableHeadY + 8, { width: colWidths[2], align: 'center' });
+      curX += colWidths[2];
+
+      // DIRECCIÓN con subtítulo calle/dirección/cuadra/N°
+      doc.text('DIRECCIÓN', curX, tableHeadY + 3, { width: colWidths[3], align: 'center' });
+      doc.font('Helvetica').fontSize(6).text('calle/dirección/cuadra/N°', curX, tableHeadY + 13, { width: colWidths[3], align: 'center' });
+      doc.font('Helvetica-Bold').fontSize(7.5);
+      curX += colWidths[3];
+
+      doc.text('Jefe de familia', curX + 4, tableHeadY + 8, { width: colWidths[4] - 8, align: 'center' });
+      curX += colWidths[4];
+
+      doc.text('N° de\nhabitantes', curX, tableHeadY + 4, { width: colWidths[5], align: 'center' });
+      curX += colWidths[5];
+
+      doc.text('Agua\notorgada (lts)', curX, tableHeadY + 4, { width: colWidths[6], align: 'center' });
+      curX += colWidths[6];
+
+      doc.text('DNI', curX, tableHeadY + 8, { width: colWidths[7], align: 'center' });
+      curX += colWidths[7];
+
+      doc.text('FIRMA', curX, tableHeadY + 8, { width: colWidths[8], align: 'center' });
+    };
+
+    const rowsPerPage = 17;
+    const totalItems = entregas.length > 0 ? entregas.length : 17; // Al menos 17 filas vacías si no hay datos
+    let currentPage = 1;
+    let currentY = 138;
+    const rowHeight = 22.5;
+
+    drawHeader(currentPage);
+
+    let totalHabitantes = 0;
+    let totalLitros = 0;
+
+    for (let idx = 0; idx < totalItems; idx++) {
+      const e = entregas[idx];
+
+      // Salto de página si se supera el límite por hoja
+      if (idx > 0 && idx % rowsPerPage === 0) {
+        doc.addPage();
+        currentPage++;
+        drawHeader(currentPage);
+        currentY = 138;
+      }
+
+      // Dibujar contorno de la fila
+      doc.rect(startX, currentY, totalWidth, rowHeight).stroke('#000000');
+
+      // Líneas verticales de columnas
+      let curColX = startX;
+      for (let c = 0; c < colWidths.length - 1; c++) {
+        curColX += colWidths[c];
+        doc.moveTo(curColX, currentY).lineTo(curColX, currentY + rowHeight).stroke('#000000');
+      }
+
+      if (e) {
+        const hab = Number(e.num_miembros) || 1;
+        const litros = Number(e.litros_entregados) || 0;
+        totalHabitantes += hab;
+        totalLitros += litros;
+
+        let curX = startX;
+        doc.fillColor('#000000').font('Helvetica').fontSize(7.5);
+
+        // N°
+        doc.text(String(idx + 1), curX, currentY + 7, { width: colWidths[0], align: 'center' });
+        curX += colWidths[0];
+
+        // Mz
+        doc.text(String(e.mz || '-'), curX, currentY + 7, { width: colWidths[1], align: 'center' });
+        curX += colWidths[1];
+
+        // Lt
+        doc.text(String(e.lt || '-'), curX, currentY + 7, { width: colWidths[2], align: 'center' });
+        curX += colWidths[2];
+
+        // DIRECCIÓN
+        doc.text(String(e.direccion || 'ALTO BELEN').slice(0, 34), curX + 4, currentY + 7, { width: colWidths[3] - 8, align: 'left' });
+        curX += colWidths[3];
+
+        // Jefe de familia
+        doc.font('Helvetica-Bold').text(String(e.nombres_apellidos || '').toUpperCase().slice(0, 38), curX + 4, currentY + 7, { width: colWidths[4] - 8, align: 'left' });
+        doc.font('Helvetica');
+        curX += colWidths[4];
+
+        // Habitantes
+        doc.text(String(hab), curX, currentY + 7, { width: colWidths[5], align: 'center' });
+        curX += colWidths[5];
+
+        // Agua otorgada (lts)
+        doc.font('Helvetica-Bold').text(String(litros), curX, currentY + 7, { width: colWidths[6], align: 'center' });
+        doc.font('Helvetica');
+        curX += colWidths[6];
+
+        // DNI
+        doc.text(String(e.dni || ''), curX, currentY + 7, { width: colWidths[7], align: 'center' });
+        curX += colWidths[7];
+
+        // FIRMA (Incrustación de firma digital si existe)
+        if (e.firma_base64 && typeof e.firma_base64 === 'string' && e.firma_base64.startsWith('data:image')) {
+          try {
+            const base64Data = e.firma_base64.replace(/^data:image\/\w+;base64,/, '');
+            const imgBuffer = Buffer.from(base64Data, 'base64');
+            doc.image(imgBuffer, curX + 15, currentY + 2, { fit: [colWidths[8] - 30, rowHeight - 4], align: 'center', valign: 'center' });
+          } catch (err) {
+            doc.fontSize(6.5).font('Helvetica-Oblique').fillColor('#64748b')
+               .text('[Firma Digital]', curX, currentY + 7, { width: colWidths[8], align: 'center' });
+          }
+        }
+      }
+
+      currentY += rowHeight;
+    }
+
+    // Pie de página institucional (Firma y sello EPS MOYOBAMBA S.A.)
+    const footerY = Math.max(currentY + 12, 530);
+
+    doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#000000')
+       .text('EPS MOYOBAMBA S.A.', startX, footerY);
+    
+    // Línea de firma
+    doc.moveTo(startX, footerY + 26).lineTo(startX + 180, footerY + 26).stroke('#000000');
+    doc.font('Helvetica').fontSize(7.5).fillColor('#000000')
+       .text('ING. JOSÉ ELOY MAGUIÑA ALZAMORA', startX, footerY + 30);
+    doc.fontSize(6.5).fillColor('#475569')
+       .text('Supervisor de Operaciones y Distribución', startX, footerY + 40);
+
+    // Resumen de Totales a la derecha
+    const totalBoxX = startX + totalWidth - 260;
+    doc.rect(totalBoxX, footerY, 260, 36).stroke('#000000');
+    doc.font('Helvetica-Bold').fontSize(8).fillColor('#000000')
+       .text('TOTAL DE AGUA OTORGADA:', totalBoxX + 8, footerY + 6)
+       .text(`${totalLitros.toLocaleString('es-PE')} Litros`, totalBoxX + 160, footerY + 6);
+    doc.font('Helvetica').fontSize(7.5).fillColor('#334155')
+       .text('Beneficiarios atendidos:', totalBoxX + 8, footerY + 20)
+       .text(`${entregas.length} familias (${totalHabitantes} hab.)`, totalBoxX + 160, footerY + 20);
+
+    doc.end();
+  } catch (error: any) {
+    console.error('Error generando Formato de Entrega PDF:', error);
+    res.status(500).json({ message: 'Error generando Formato de Entrega PDF', error: error.message });
+  }
+};
+
+/**
+ * Exportar Formato Oficial de Entrega de Agua en Excel (.xlsx) con idéntica estructura al documento impreso
+ */
+export const exportarEntregasExcel = async (req: Request, res: Response) => {
+  try {
+    const { search, programacion_id, cisterna_id, fecha } = req.query;
+
+    let whereClauses: string[] = [];
+    let params: any[] = [];
+
+    if (search) {
+      params.push(`%${String(search).trim()}%`);
+      whereClauses.push(`(b.dni ILIKE $${params.length} OR b.nombres_apellidos ILIKE $${params.length} OR b.sector_aahh ILIKE $${params.length} OR b.sector ILIKE $${params.length} OR e.local_id ILIKE $${params.length})`);
+    }
+
+    if (programacion_id) {
+      params.push(programacion_id);
+      whereClauses.push(`e.programacion_id = $${params.length}`);
+    }
+
+    if (cisterna_id) {
+      params.push(cisterna_id);
+      whereClauses.push(`COALESCE(e.cisterna_id, p.cisterna_id) = $${params.length}`);
+    }
+
+    if (fecha) {
+      params.push(fecha);
+      whereClauses.push(`(DATE(e.fecha_captura) = $${params.length} OR DATE(e.fecha_hora) = $${params.length})`);
+    }
+
+    const whereStr = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+
+    const sql = `
+      SELECT 
+        e.*, 
+        b.nombres_apellidos, 
+        b.dni, 
+        COALESCE(b.mz, '-') as mz,
+        COALESCE(b.lt, '-') as lt,
+        COALESCE(b.calle_direccion, b.direccion, 'ALTO BELEN') as direccion, 
+        COALESCE(b.sector_aahh, b.sector, 'LOS EUCALIPTOS') as sector, 
+        COALESCE(b.num_miembros, 1) as num_miembros, 
+        b.telefono,
+        COALESCE(c.placa, 'CAT - 849') as cisterna_placa,
+        COALESCE(c.capacidad_m3, 19) as cisterna_capacidad_m3,
+        COALESCE(p.zona, b.sector_aahh, b.sector, 'LOS EUCALIPTOS') as zona, 
+        p.fecha as fecha_programacion,
+        COALESCE(CONCAT(cond.nombres, ' ', cond.apellidos), 'Carlos Iván Ruiz Chupillón') as conductor_nombre,
+        COALESCE(CONCAT(ayud.nombres, ' ', ayud.apellidos), 'Ing. SANDRO SORIA CHUQUIZUTA') as supervisor_nombre
+      FROM entregas_agua e
+      LEFT JOIN beneficiarios b ON e.beneficiario_id = b.id
+      LEFT JOIN programaciones p ON e.programacion_id = p.id
+      LEFT JOIN cisternas c ON COALESCE(e.cisterna_id, p.cisterna_id) = c.id
+      LEFT JOIN personal_operativo cond ON COALESCE(e.conductor_id, p.conductor_id) = cond.id
+      LEFT JOIN personal_operativo ayud ON p.ayudante_id = ayud.id
+      ${whereStr}
+      ORDER BY e.fecha_hora ASC, e.id ASC
+    `;
+
+    const result = await query(sql, params);
+    const entregas = result.rows;
+
+    const first = entregas[0] || {};
+    const capCisterna = first.cisterna_capacidad_m3 ? `${Math.round(Number(first.cisterna_capacidad_m3))} m3` : '19 m3';
+    const placaCisterna = first.cisterna_placa || 'CAT - 849';
+    const conductorNombre = (first.conductor_nombre && first.conductor_nombre.trim()) || 'Carlos Iván Ruiz Chupillón';
+    const supervisorNombre = (first.supervisor_nombre && first.supervisor_nombre.trim()) || 'Ing. SANDRO SORIA CHUQUIZUTA';
+    const zonaDistribucion = first.zona || first.sector || 'LOS EUCALIPTOS';
+    
+    let fechaStr = '31-08-2026';
+    if (first.fecha_captura || first.fecha_hora) {
+      const d = new Date(first.fecha_captura || first.fecha_hora);
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      fechaStr = `${day}-${month}-${year}`;
+    }
+
     const wb = xlsx.utils.book_new();
 
+    // Filas estructuradas idénticas a la ficha oficial
     const rows: any[][] = [
-      ['PLANILLA DE FISCALIZACIÓN Y ACTAS DE ENTREGA DE AGUA EN CAMPO'],
-      ['PROGRAMA NACIONAL DE SANEAMIENTO URBANO (PNSU) • EPS MOYOBAMBA S.A.'],
-      [`CONVENIO N° 023-2026/VIVIENDA/VMCS/PNSU/DE • TOTAL ENTREGAS AUDITADAS: ${entregas.length}`],
-      [],
-      ['N°', 'ID ENTREGA', 'FECHA Y HORA', 'BENEFICIARIO', 'DNI', 'SECTOR / AA.HH.', 'DIRECCIÓN', 'LITROS ENTREGADOS', 'SALDO PENDIENTE', 'CISTERNA', 'LATITUD', 'LONGITUD', 'ESTADO', 'ACREDITACIÓN']
+      ['FORMATO DE ENTREGA DE AGUA'], // Fila 1 (A1:I1)
+      [], // Fila 2
+      ['Cap. de camión cisterna:', capCisterna, '', '', 'Placa:', placaCisterna, '', '', ''], // Fila 3
+      ['Región:', 'SAN MARTIN', '', '', 'Distrito:', 'MOYOBAMBA', '', '', ''], // Fila 4
+      ['Provincia:', 'MOYOBAMBA', '', '', 'Zona de distribución:', zonaDistribucion, '', '', ''], // Fila 5
+      ['N.A. Conductor:', conductorNombre, '', '', 'N.A. Supervisor:', supervisorNombre, '', '', ''], // Fila 6
+      ['Fecha:', fechaStr, '', '', '', '', '', '', ''], // Fila 7
+      [], // Fila 8
+      ['N°', 'Mz', 'N° de Lt', 'DIRECCIÓN', 'Jefe de familia', 'N° de habitantes', 'Agua otorgada (lts)', 'DNI', 'FIRMA'], // Fila 9
+      ['', '', '', 'calle/dirección/cuadra/N°', '', '', '', '', ''] // Fila 10
     ];
 
+    let totalHabitantes = 0;
     let totalLitros = 0;
+
     entregas.forEach((e: any, idx: number) => {
-      const litros = Number(e.litros_entregados || 0);
+      const hab = Number(e.num_miembros) || 1;
+      const litros = Number(e.litros_entregados) || 0;
+      totalHabitantes += hab;
       totalLitros += litros;
+
       rows.push([
         idx + 1,
-        `#${e.id}`,
-        e.fecha_hora ? new Date(e.fecha_hora).toLocaleString('es-PE') : '-',
-        e.nombres_apellidos,
-        e.dni,
-        e.sector,
-        e.direccion,
+        e.mz || '-',
+        e.lt || '-',
+        e.direccion || 'ALTO BELEN',
+        (e.nombres_apellidos || '').toUpperCase(),
+        hab,
         litros,
-        Number(e.saldo_pendiente || 0),
-        e.cisterna_placa || '-',
-        e.latitud || '-',
-        e.longitud || '-',
-        e.estado_entrega || 'COMPLETO',
-        e.foto_url ? 'FOTO REGISTRADA' : (e.firma_base64 ? 'FIRMA DIGITAL' : 'VERIFICADO')
+        e.dni || '',
+        e.firma_base64 ? 'FIRMADO DIGITALMENTE' : ''
       ]);
     });
 
+    // Filas vacías si hay pocas entregas para simular la ficha de 17 reglones
+    if (entregas.length < 17) {
+      for (let f = entregas.length + 1; f <= 17; f++) {
+        rows.push([f, '-', '-', '', '', '', '', '', '']);
+      }
+    }
+
     rows.push([]);
-    rows.push(['TOTALES', '', '', `${entregas.length} Actas`, '', '', '', totalLitros, '', '', '', '', '', '']);
+    rows.push(['TOTALES', '', '', '', `${entregas.length} Familias`, totalHabitantes, totalLitros, '', '']);
+    rows.push([]);
+    rows.push(['EPS MOYOBAMBA S.A.']);
+    rows.push(['______________________________________']);
+    rows.push(['ING. JOSÉ ELOY MAGUIÑA ALZAMORA']);
+    rows.push(['Supervisor de Operaciones y Distribución']);
 
     const ws = xlsx.utils.aoa_to_sheet(rows);
-    ws['!cols'] = [
-      { wch: 6 },
-      { wch: 12 },
-      { wch: 22 },
-      { wch: 32 },
-      { wch: 12 },
-      { wch: 24 },
-      { wch: 28 },
-      { wch: 16 },
-      { wch: 16 },
-      { wch: 14 },
-      { wch: 14 },
-      { wch: 14 },
-      { wch: 14 },
-      { wch: 18 }
+
+    // Configuración de rangos combinados (merges)
+    ws['!merges'] = [
+      // Título
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 8 } },
+      // Metadatos
+      { s: { r: 2, c: 1 }, e: { r: 2, c: 3 } }, // Valor Cap
+      { s: { r: 2, c: 5 }, e: { r: 2, c: 8 } }, // Valor Placa
+      { s: { r: 3, c: 1 }, e: { r: 3, c: 3 } }, // Valor Región
+      { s: { r: 3, c: 5 }, e: { r: 3, c: 8 } }, // Valor Distrito
+      { s: { r: 4, c: 1 }, e: { r: 4, c: 3 } }, // Valor Provincia
+      { s: { r: 4, c: 5 }, e: { r: 4, c: 8 } }, // Valor Zona
+      { s: { r: 5, c: 1 }, e: { r: 5, c: 3 } }, // Valor Conductor
+      { s: { r: 5, c: 5 }, e: { r: 5, c: 8 } }, // Valor Supervisor
+      { s: { r: 6, c: 1 }, e: { r: 6, c: 3 } }  // Valor Fecha
     ];
-    xlsx.utils.book_append_sheet(wb, ws, 'Planilla_Entregas');
+
+    // Ancho de columnas óptimo
+    ws['!cols'] = [
+      { wch: 6 },  // N°
+      { wch: 8 },  // Mz
+      { wch: 10 }, // Lt
+      { wch: 28 }, // Dirección
+      { wch: 34 }, // Jefe de familia
+      { wch: 16 }, // Habitantes
+      { wch: 18 }, // Agua otorgada
+      { wch: 14 }, // DNI
+      { wch: 22 }  // Firma
+    ];
+
+    xlsx.utils.book_append_sheet(wb, ws, 'Formato_Entrega');
 
     const buffer = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename="Planilla_Entregas_Campo_EPS_${new Date().toISOString().slice(0, 10)}.xlsx"`);
+    res.setHeader('Content-Disposition', `attachment; filename="Formato_Entrega_Agua_${fechaStr.replace(/-/g, '')}.xlsx"`);
     res.send(buffer);
   } catch (error: any) {
-    console.error('Error exportando entregas a Excel:', error);
-    res.status(500).json({ message: 'Error exportando entregas a Excel', error: error.message });
+    console.error('Error exportando Formato de Entrega a Excel:', error);
+    res.status(500).json({ message: 'Error exportando Formato de Entrega a Excel', error: error.message });
   }
 };
+
