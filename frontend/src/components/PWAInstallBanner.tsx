@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { dialogAlert } from '../context/DialogContext';
 
 export default function PWAInstallBanner() {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -16,6 +17,7 @@ export default function PWAInstallBanner() {
       e.preventDefault();
       setDeferredPrompt(e);
       setIsInstallable(true);
+      console.log('[PWA] Evento beforeinstallprompt capturado');
     };
 
     const handleAppInstalled = () => {
@@ -36,7 +38,12 @@ export default function PWAInstallBanner() {
 
   const handleInstallClick = async () => {
     if (!deferredPrompt) {
-      alert('Para instalar en iPhone/iPad: Presione el botón "Compartir" (cuadrado con flecha) y seleccione "Agregar al inicio".');
+      await dialogAlert({
+        title: 'Instalar en iPhone / iPad',
+        message: 'Para instalar en tu dispositivo iOS: presione el botón "Compartir" (ícono cuadrado con flecha hacia arriba) en Safari y seleccione "Agregar a Inicio".',
+        type: 'info',
+        icon: '📲',
+      });
       return;
     }
 

@@ -4,6 +4,7 @@ import Pagination from '../components/Pagination';
 import DaysOfWeekSelector from '../components/DaysOfWeekSelector';
 import MultiSectorSelector, { type SectorItem } from '../components/MultiSectorSelector';
 import api, { API_BASE_URL } from '../config/api';
+import { dialogConfirm, dialogAlert } from '../context/DialogContext';
 import './Modules.css';
 
 interface Programacion {
@@ -271,15 +272,29 @@ export default function ProgramacionesPage() {
 
   const handleDespacharVales = async () => {
     if (!selectedProgForVales) return;
-    if (!window.confirm(`¿Confirmas el despacho masivo multicanal (WhatsApp + SMS + Email) para la programación #${selectedProgForVales.id}?`)) return;
+    const ok = await dialogConfirm({
+      title: '¿Despachar vales digitales?',
+      message: `¿Confirmas el despacho masivo multicanal (WhatsApp + SMS + Email) para la programación #${selectedProgForVales.id}?`,
+      type: 'info',
+      confirmText: 'Sí, despachar',
+    });
+    if (!ok) return;
 
     try {
       setDispatching(true);
       const res = await api.post(`/programaciones/${selectedProgForVales.id}/despachar-vales`);
-      alert(`✅ ${res.data.message}\nResumen: WhatsApp: ${res.data.resumen.whatsappEnviados} | SMS: ${res.data.resumen.smsEnviados} | Correo: ${res.data.resumen.correoEnviados}`);
+      await dialogAlert({
+        title: 'Despacho Completado',
+        message: `✅ ${res.data.message}\nResumen:\n• WhatsApp: ${res.data.resumen.whatsappEnviados}\n• SMS: ${res.data.resumen.smsEnviados}\n• Correo: ${res.data.resumen.correoEnviados}`,
+        type: 'success',
+      });
       fetchVales(selectedProgForVales.id);
     } catch (error: any) {
-      alert(`❌ Error al despachar vales: ${error.response?.data?.message || error.message}`);
+      await dialogAlert({
+        title: 'Error al despachar vales',
+        message: `❌ ${error.response?.data?.message || error.message}`,
+        type: 'danger',
+      });
     } finally {
       setDispatching(false);
     }
@@ -291,10 +306,18 @@ export default function ProgramacionesPage() {
     try {
       setRetrying(true);
       const res = await api.post(`/programaciones/${selectedProgForVales.id}/reintentar-vales-fallidos`);
-      alert(`✅ ${res.data.message}`);
+      await dialogAlert({
+        title: 'Reintento Exitoso',
+        message: `✅ ${res.data.message}`,
+        type: 'success',
+      });
       fetchVales(selectedProgForVales.id);
     } catch (error: any) {
-      alert(`❌ Error al reintentar: ${error.response?.data?.message || error.message}`);
+      await dialogAlert({
+        title: 'Error al reintentar',
+        message: `❌ ${error.response?.data?.message || error.message}`,
+        type: 'danger',
+      });
     } finally {
       setRetrying(false);
     }
@@ -303,7 +326,11 @@ export default function ProgramacionesPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (formData.selectedSectores.length === 0) {
-      alert('Debe marcar al menos un sector / AA.HH. para la programación.');
+      await dialogAlert({
+        title: 'Sector requerido',
+        message: 'Debe marcar al menos un sector / AA.HH. para la programación.',
+        type: 'warning',
+      });
       return;
     }
 
@@ -323,25 +350,49 @@ export default function ProgramacionesPage() {
     try {
       if (editingProg) {
         await api.put(`/programaciones/${editingProg.id}`, payload);
-        alert('✅ Programación actualizada exitosamente');
+        await dialogAlert({
+          title: 'Programación actualizada',
+          message: '✅ Programación actualizada exitosamente',
+          type: 'success',
+        });
       } else {
         await api.post('/programaciones', payload);
-        alert('✅ Programación creada exitosamente con los sectores seleccionados');
+        await dialogAlert({
+          title: 'Programación creada',
+          message: '✅ Programación creada exitosamente con los sectores seleccionados',
+          type: 'success',
+        });
       }
       setModalOpen(false);
       fetchProgramaciones();
     } catch (error: any) {
-      alert(`❌ Error: ${error.response?.data?.message || error.message}`);
+      await dialogAlert({
+        title: 'Error al guardar programación',
+        message: `❌ Error: ${error.response?.data?.message || error.message}`,
+        type: 'danger',
+      });
     }
   };
 
   const handleDelete = async (id: number) => {
-    if (!window.confirm('¿Estás seguro de eliminar esta programación?')) return;
+    const ok = await dialogConfirm({
+      title: '¿Eliminar programación?',
+      message: '¿Estás seguro de eliminar esta programación? Esta acción cancelará las asignaciones correspondientes.',
+      type: 'danger',
+      confirmText: 'Sí, eliminar',
+      cancelText: 'Cancelar',
+    });
+    if (!ok) return;
+
     try {
       await api.delete(`/programaciones/${id}`);
       fetchProgramaciones();
     } catch (error: any) {
-      alert('Error al eliminar');
+      await dialogAlert({
+        title: 'Error al eliminar',
+        message: 'No se pudo eliminar la programación. Verifique que no tenga entregas asociadas.',
+        type: 'danger',
+      });
     }
   };
 

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import Pagination from '../components/Pagination';
 import api, { API_BASE_URL } from '../config/api';
+import { dialogConfirm, dialogAlert } from '../context/DialogContext';
 import './Modules.css';
 
 interface Entrega {
@@ -35,7 +36,7 @@ export default function EntregasPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSignature, setSelectedSignature] = useState<string | null>(null);
-  const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
+  const [selectedPhoto, setSelectedPhoto] = useState<{ url: string; entrega?: Entrega } | null>(null);
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -58,12 +59,24 @@ export default function EntregasPage() {
   };
 
   const handleDeleteEntrega = async (id: number) => {
-    if (!window.confirm('¿Estás seguro de eliminar este registro de entrega?')) return;
+    const ok = await dialogConfirm({
+      title: '¿Eliminar entrega?',
+      message: '¿Estás seguro de eliminar este registro de entrega? Esta acción no se puede deshacer.',
+      type: 'danger',
+      confirmText: 'Sí, eliminar',
+      cancelText: 'Cancelar',
+    });
+    if (!ok) return;
+
     try {
       await api.delete(`/entregas/${id}`);
       fetchEntregas();
     } catch (error: any) {
-      alert('Error al eliminar entrega');
+      await dialogAlert({
+        title: 'Error al eliminar',
+        message: 'No se pudo eliminar el registro de entrega.',
+        type: 'danger',
+      });
     }
   };
 
@@ -243,7 +256,7 @@ export default function EntregasPage() {
                     <td>
                       {e.foto_url ? (
                         <img
-                          src={`${API_BASE_URL}${e.foto_url}`}
+                          src={`${API_BASE_URL}${e.foto_url}?t=${new Date(e.fecha_hora).getTime() || 1}`}
                           alt="Evidencia"
                           style={{
                             width: 44,
@@ -253,8 +266,8 @@ export default function EntregasPage() {
                             border: '1px solid #cbd5e1',
                             cursor: 'pointer',
                           }}
-                          onClick={() => setSelectedPhoto(`${API_BASE_URL}${e.foto_url}`)}
-                          title="Clic para ampliar foto"
+                          onClick={() => setSelectedPhoto({ url: `${API_BASE_URL}${e.foto_url}`, entrega: e })}
+                          title="Clic para ampliar foto con membrete oficial"
                         />
                       ) : (
                         <span style={{ color: '#dc2626', fontSize: 11, fontWeight: 700 }}>Sin foto</span>
@@ -332,16 +345,41 @@ export default function EntregasPage() {
       {/* MODAL VER FOTO DE EVIDENCIA */}
       {selectedPhoto && (
         <div className="modal-overlay" onClick={() => setSelectedPhoto(null)}>
-          <div className="modal-content" style={{ maxWidth: 560, textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+          <div className="modal-content" style={{ maxWidth: 640, textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>📸 Fotografía de Evidencia en Campo</h2>
+              <h2>📸 Fotografía de Evidencia en Campo (Membretada)</h2>
               <button className="close-btn" onClick={() => setSelectedPhoto(null)}>✕</button>
             </div>
-            <div style={{ background: '#0f172a', padding: 12, borderRadius: 12, overflow: 'hidden' }}>
-              <img src={selectedPhoto} alt="Evidencia en grande" style={{ maxWidth: '100%', maxHeight: 420, borderRadius: 8 }} />
+            
+            {selectedPhoto.entrega && (
+              <div style={{
+                background: '#f1f5f9',
+                border: '1px solid #cbd5e1',
+                borderRadius: 8,
+                padding: '8px 14px',
+                marginBottom: 12,
+                fontSize: 12,
+                textAlign: 'left',
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: '4px 12px'
+              }}>
+                <div><strong>👤 Beneficiario:</strong> {selectedPhoto.entrega.nombres_apellidos} (DNI: {selectedPhoto.entrega.dni})</div>
+                <div><strong>🚛 Cisterna:</strong> {selectedPhoto.entrega.cisterna_placa || 'N/A'}</div>
+                <div><strong>📍 Sector:</strong> {selectedPhoto.entrega.sector} - {selectedPhoto.entrega.direccion}</div>
+                <div><strong>🌐 Coordenadas:</strong> Lat {selectedPhoto.entrega.latitud}, Long {selectedPhoto.entrega.longitud}</div>
+              </div>
+            )}
+
+            <div style={{ background: '#0f172a', padding: 10, borderRadius: 12, overflow: 'hidden' }}>
+              <img 
+                src={`${selectedPhoto.url}?t=${Date.now()}`} 
+                alt="Evidencia en campo membretada" 
+                style={{ maxWidth: '100%', maxHeight: 480, borderRadius: 8, display: 'block', margin: '0 auto' }} 
+              />
             </div>
             <div className="modal-footer" style={{ justifyContent: 'center' }}>
-              <a href={selectedPhoto} target="_blank" rel="noopener noreferrer" className="btn-primary">
+              <a href={selectedPhoto.url} target="_blank" rel="noopener noreferrer" className="btn-primary">
                 🔍 Ver en tamaño original
               </a>
               <button className="btn-secondary" onClick={() => setSelectedPhoto(null)}>

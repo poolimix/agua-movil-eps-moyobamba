@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import Pagination from '../components/Pagination';
 import api from '../config/api';
+import { dialogConfirm, dialogAlert } from '../context/DialogContext';
 import './Modules.css';
 
 interface Cisterna {
@@ -91,7 +92,11 @@ export default function CisternasPage() {
 
   const handleCapturarGpsNavegador = () => {
     if (!navigator.geolocation) {
-      alert('La geolocalización no es compatible con este navegador.');
+      dialogAlert({
+        title: 'Geolocalización no disponible',
+        message: 'La geolocalización no es compatible con este navegador o dispositivo.',
+        type: 'warning',
+      });
       return;
     }
     setGettingGps(true);
@@ -106,7 +111,11 @@ export default function CisternasPage() {
       },
       (err) => {
         setGettingGps(false);
-        alert('No se pudo obtener la ubicación GPS: ' + err.message);
+        dialogAlert({
+          title: 'Error de Ubicación',
+          message: 'No se pudo obtener la ubicación GPS: ' + err.message,
+          type: 'danger',
+        });
       },
       { enableHighAccuracy: true, timeout: 10000 }
     );
@@ -152,25 +161,49 @@ export default function CisternasPage() {
     try {
       if (editingId) {
         await api.put(`/cisternas/${editingId}`, formData);
-        alert('✅ Cisterna actualizada exitosamente');
+        await dialogAlert({
+          title: 'Cisterna actualizada',
+          message: '✅ Cisterna actualizada exitosamente',
+          type: 'success',
+        });
       } else {
         await api.post('/cisternas', formData);
-        alert('✅ Cisterna registrada exitosamente');
+        await dialogAlert({
+          title: 'Cisterna registrada',
+          message: '✅ Cisterna registrada exitosamente',
+          type: 'success',
+        });
       }
       setModalOpen(false);
       fetchCisternas();
     } catch (error: any) {
-      alert(`❌ Error: ${error.response?.data?.message || error.message}`);
+      await dialogAlert({
+        title: 'Error en cisterna',
+        message: `❌ Error: ${error.response?.data?.message || error.message}`,
+        type: 'danger',
+      });
     }
   };
 
   const handleDelete = async (id: number) => {
-    if (!window.confirm('¿Estás seguro de eliminar esta cisterna?')) return;
+    const ok = await dialogConfirm({
+      title: '¿Eliminar cisterna?',
+      message: '¿Estás seguro de eliminar esta cisterna del parque automotor?',
+      type: 'danger',
+      confirmText: 'Sí, eliminar',
+      cancelText: 'Cancelar',
+    });
+    if (!ok) return;
+
     try {
       await api.delete(`/cisternas/${id}`);
       fetchCisternas();
     } catch (error: any) {
-      alert('Error al eliminar');
+      await dialogAlert({
+        title: 'Error al eliminar',
+        message: 'No se pudo eliminar la cisterna. Verifique que no esté vinculada a programaciones.',
+        type: 'danger',
+      });
     }
   };
 

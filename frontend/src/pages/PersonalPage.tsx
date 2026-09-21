@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import Pagination from '../components/Pagination';
 import api from '../config/api';
+import { dialogConfirm, dialogAlert } from '../context/DialogContext';
 import './Modules.css';
 
 interface Personal {
@@ -96,32 +97,60 @@ export default function PersonalPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (formData.dni.trim().length !== 8) {
-      alert('El DNI debe tener exactamente 8 dígitos numéricos.');
+      await dialogAlert({
+        title: 'DNI Inválido',
+        message: 'El DNI debe tener exactamente 8 dígitos numéricos.',
+        type: 'warning',
+      });
       return;
     }
 
     try {
       if (editingId) {
         await api.put(`/personal/${editingId}`, formData);
-        alert('✅ Personal actualizado exitosamente');
+        await dialogAlert({
+          title: 'Personal actualizado',
+          message: '✅ Personal actualizado exitosamente',
+          type: 'success',
+        });
       } else {
         await api.post('/personal', formData);
-        alert('✅ Personal registrado exitosamente');
+        await dialogAlert({
+          title: 'Personal registrado',
+          message: '✅ Personal registrado exitosamente',
+          type: 'success',
+        });
       }
       setModalOpen(false);
       fetchPersonal();
     } catch (error: any) {
-      alert(`❌ Error: ${error.response?.data?.message || error.message}`);
+      await dialogAlert({
+        title: 'Error en personal',
+        message: `❌ Error: ${error.response?.data?.message || error.message}`,
+        type: 'danger',
+      });
     }
   };
 
   const handleDelete = async (id: number) => {
-    if (!window.confirm('¿Está seguro de eliminar este registro de personal?')) return;
+    const ok = await dialogConfirm({
+      title: '¿Eliminar personal?',
+      message: '¿Está seguro de eliminar este registro de personal del padrón?',
+      type: 'danger',
+      confirmText: 'Sí, eliminar',
+      cancelText: 'Cancelar',
+    });
+    if (!ok) return;
+
     try {
       await api.delete(`/personal/${id}`);
       fetchPersonal();
     } catch (error: any) {
-      alert('Error al eliminar personal');
+      await dialogAlert({
+        title: 'Error al eliminar',
+        message: 'No se pudo eliminar el registro de personal.',
+        type: 'danger',
+      });
     }
   };
 

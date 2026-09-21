@@ -536,35 +536,41 @@ export const exportarBeneficiariosExcel = async (req: Request, res: Response) =>
 
     if (search) {
       params.push(`%${String(search).trim()}%`);
-      whereClauses.push(`(dni ILIKE $${params.length} OR nombres_apellidos ILIKE $${params.length} OR calle_direccion ILIKE $${params.length})`);
+      whereClauses.push(`(b.dni ILIKE $${params.length} OR b.nombres_apellidos ILIKE $${params.length} OR b.calle_direccion ILIKE $${params.length} OR b.direccion ILIKE $${params.length})`);
     }
 
     if (sector) {
       params.push(String(sector).trim());
-      whereClauses.push(`COALESCE(sector_aahh, sector) = $${params.length}`);
+      whereClauses.push(`COALESCE(b.sector_aahh, b.sector) = $${params.length}`);
     }
 
     const whereStr = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
 
     const sql = `
       SELECT 
-        id,
-        dni,
-        nombres_apellidos,
-        COALESCE(distrito, 'Moyobamba') as distrito,
-        COALESCE(sector_aahh, sector, '') as sector,
-        COALESCE(mz, '') as mz,
-        COALESCE(lt, '') as lt,
-        COALESCE(calle_direccion, direccion, '') as direccion,
-        COALESCE(num_miembros, 1) as num_miembros,
-        COALESCE(telefono, '') as telefono,
-        latitud,
-        longitud,
-        (COALESCE(num_miembros, 1) * ${DOTACION_POR_HABITANTE}) as dotacion_diaria_litros,
-        estado_servicio
-      FROM beneficiarios
+        b.id,
+        b.dni,
+        b.nombres_apellidos,
+        COALESCE(b.distrito, 'Moyobamba') as distrito,
+        COALESCE(b.sector_aahh, b.sector, '') as sector,
+        COALESCE(b.mz, '') as mz,
+        COALESCE(b.lt, '') as lt,
+        COALESCE(b.calle_direccion, b.direccion, '') as direccion,
+        COALESCE(b.num_miembros, 1) as num_miembros,
+        COALESCE(b.telefono, '') as telefono,
+        e.latitud,
+        e.longitud,
+        (COALESCE(b.num_miembros, 1) * ${DOTACION_POR_HABITANTE}) as dotacion_diaria_litros,
+        'ACTIVO' as estado_servicio
+      FROM beneficiarios b
+      LEFT JOIN LATERAL (
+        SELECT ea.latitud, ea.longitud 
+        FROM entregas_agua ea 
+        WHERE ea.beneficiario_id = b.id AND ea.latitud IS NOT NULL 
+        ORDER BY ea.id DESC LIMIT 1
+      ) e ON TRUE
       ${whereStr}
-      ORDER BY COALESCE(sector_aahh, sector) ASC, nombres_apellidos ASC
+      ORDER BY COALESCE(b.sector_aahh, b.sector) ASC, b.nombres_apellidos ASC
     `;
 
     const result = await query(sql, params);

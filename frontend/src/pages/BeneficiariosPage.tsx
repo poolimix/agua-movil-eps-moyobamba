@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import Layout from '../components/Layout';
 import Pagination from '../components/Pagination';
 import api, { API_BASE_URL } from '../config/api';
+import { dialogConfirm, dialogAlert } from '../context/DialogContext';
 import './Modules.css';
 
 interface Beneficiario {
@@ -156,32 +157,58 @@ export default function BeneficiariosPage() {
     setModalOpen(true);
   };
 
-  const handleSubmitBeneficiario = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       if (editingBeneficiario) {
         await api.put(`/beneficiarios/${editingBeneficiario.id}`, formData);
-        alert('✅ Beneficiario actualizado exitosamente');
+        await dialogAlert({
+          title: 'Beneficiario actualizado',
+          message: '✅ Beneficiario actualizado exitosamente',
+          type: 'success',
+        });
       } else {
         await api.post('/beneficiarios', formData);
-        alert('✅ Beneficiario registrado exitosamente');
+        await dialogAlert({
+          title: 'Beneficiario registrado',
+          message: '✅ Beneficiario registrado exitosamente',
+          type: 'success',
+        });
       }
       setModalOpen(false);
       fetchBeneficiarios();
       fetchSectores();
     } catch (error: any) {
-      alert(`❌ Error al guardar: ${error.response?.data?.message || error.message}`);
+      await dialogAlert({
+        title: 'Error al guardar beneficiario',
+        message: `❌ Error al guardar: ${error.response?.data?.message || error.message}`,
+        type: 'danger',
+      });
     }
   };
 
+  const handleSubmitBeneficiario = handleSubmit;
+
   const handleDeleteBeneficiario = async (id: number) => {
-    if (!window.confirm('¿Estás seguro de eliminar este beneficiario?')) return;
+    const ok = await dialogConfirm({
+      title: '¿Eliminar beneficiario?',
+      message: '¿Estás seguro de eliminar este beneficiario? Esta acción removerá sus registros asociados.',
+      type: 'danger',
+      confirmText: 'Sí, eliminar',
+      cancelText: 'Cancelar',
+    });
+    if (!ok) return;
+
     try {
       await api.delete(`/beneficiarios/${id}`);
       fetchBeneficiarios();
       fetchSectores();
     } catch (error: any) {
-      alert('Error al eliminar');
+      await dialogAlert({
+        title: 'Error al eliminar',
+        message: 'No se pudo eliminar el beneficiario. Verifique que no posea entregas históricas.',
+        type: 'danger',
+      });
     }
   };
 
@@ -196,9 +223,17 @@ export default function BeneficiariosPage() {
       setFormData({ ...formData, sector_aahh: res.data.nombre });
       setQuickSectorName('');
       setQuickSectorOpen(false);
-      alert(`✅ Sector "${res.data.nombre}" agregado exitosamente`);
+      await dialogAlert({
+        title: 'Sector Agregado',
+        message: `✅ Sector "${res.data.nombre}" agregado exitosamente`,
+        type: 'success',
+      });
     } catch (error: any) {
-      alert(`❌ Error al agregar sector: ${error.response?.data?.message || error.message}`);
+      await dialogAlert({
+        title: 'Error al agregar sector',
+        message: `❌ Error al agregar sector: ${error.response?.data?.message || error.message}`,
+        type: 'danger',
+      });
     }
   };
 
@@ -207,27 +242,51 @@ export default function BeneficiariosPage() {
     try {
       if (editingSector) {
         await api.put(`/sectores/${editingSector.id}`, newSectorForm);
-        alert('✅ Sector actualizado correctamente');
+        await dialogAlert({
+          title: 'Sector actualizado',
+          message: '✅ Sector actualizado correctamente',
+          type: 'success',
+        });
       } else {
         await api.post('/sectores', newSectorForm);
-        alert('✅ Sector creado correctamente');
+        await dialogAlert({
+          title: 'Sector creado',
+          message: '✅ Sector creado correctamente',
+          type: 'success',
+        });
       }
       setNewSectorForm({ nombre: '', distrito: 'Moyobamba', descripcion: '' });
       setEditingSector(null);
       fetchSectores();
       fetchBeneficiarios();
     } catch (error: any) {
-      alert(`❌ Error: ${error.response?.data?.message || error.message}`);
+      await dialogAlert({
+        title: 'Error en sector',
+        message: `❌ Error: ${error.response?.data?.message || error.message}`,
+        type: 'danger',
+      });
     }
   };
 
   const handleDeleteSector = async (id: number, nombre: string) => {
-    if (!window.confirm(`¿Estás seguro de eliminar el sector "${nombre}"?`)) return;
+    const ok = await dialogConfirm({
+      title: '¿Eliminar sector?',
+      message: `¿Estás seguro de eliminar el sector "${nombre}"?`,
+      type: 'danger',
+      confirmText: 'Sí, eliminar',
+      cancelText: 'Cancelar',
+    });
+    if (!ok) return;
+
     try {
       await api.delete(`/sectores/${id}`);
       fetchSectores();
     } catch (error: any) {
-      alert('Error al eliminar sector');
+      await dialogAlert({
+        title: 'Error al eliminar sector',
+        message: 'No se pudo eliminar el sector porque contiene beneficiarios asignados.',
+        type: 'danger',
+      });
     }
   };
 
@@ -244,11 +303,19 @@ export default function BeneficiariosPage() {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       setImportSummary(res.data);
-      alert(`✅ ${res.data.message}\nTotal Volumen Estimado: ${res.data.totalM3} m³ (${res.data.totalLitros} Litros)`);
+      await dialogAlert({
+        title: 'Padrón Importado',
+        message: `✅ ${res.data.message}\nTotal Volumen Estimado: ${res.data.totalM3} m³ (${res.data.totalLitros} Litros)`,
+        type: 'success',
+      });
       fetchBeneficiarios();
       fetchSectores();
     } catch (error: any) {
-      alert(`❌ Error al importar: ${error.response?.data?.message || error.message}`);
+      await dialogAlert({
+        title: 'Error al importar padrón',
+        message: `❌ Error al importar: ${error.response?.data?.message || error.message}`,
+        type: 'danger',
+      });
     } finally {
       setImporting(false);
       if (fileInputRef.current) fileInputRef.current.value = '';

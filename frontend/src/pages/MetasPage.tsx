@@ -3,6 +3,7 @@ import Layout from '../components/Layout';
 import DaysOfWeekSelector from '../components/DaysOfWeekSelector';
 import Pagination from '../components/Pagination';
 import api from '../config/api';
+import { dialogAlert } from '../context/DialogContext';
 import './Modules.css';
 
 interface SectorMeta {
@@ -74,11 +75,19 @@ export default function MetasPage() {
         meta_semanal_litros: editFormData.meta_semanal_litros,
         dias_entrega: editFormData.dias_entrega,
       });
-      alert('✅ Meta y días de entrega actualizados correctamente');
+      await dialogAlert({
+        title: 'Meta Actualizada',
+        message: '✅ Meta y días de entrega actualizados correctamente',
+        type: 'success',
+      });
       setEditingSector(null);
       fetchMetas();
     } catch (error: any) {
-      alert(`❌ Error al actualizar: ${error.response?.data?.message || error.message}`);
+      await dialogAlert({
+        title: 'Error al actualizar',
+        message: `❌ Error al actualizar: ${error.response?.data?.message || error.message}`,
+        type: 'danger',
+      });
     }
   };
 

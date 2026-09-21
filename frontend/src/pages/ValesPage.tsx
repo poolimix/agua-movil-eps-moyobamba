@@ -3,6 +3,7 @@ import QRCode from 'qrcode';
 import Layout from '../components/Layout';
 import Pagination from '../components/Pagination';
 import api from '../config/api';
+import { dialogConfirm, dialogAlert } from '../context/DialogContext';
 import './Modules.css';
 
 interface Vale {
@@ -72,14 +73,30 @@ export default function ValesPage() {
   };
 
   const handleCambiarEstado = async (id: number, nuevoEstado: string) => {
-    if (!confirm(`¿Está seguro de cambiar el estado del vale a "${nuevoEstado}"?`)) return;
+    const ok = await dialogConfirm({
+      title: 'Cambiar estado del vale',
+      message: `¿Está seguro de cambiar el estado del vale a "${nuevoEstado}"?`,
+      type: 'warning',
+      confirmText: 'Sí, cambiar',
+      cancelText: 'Cancelar',
+    });
+    if (!ok) return;
+
     try {
       await api.patch(`/vales/${id}/estado`, { estado: nuevoEstado });
-      alert('Estado actualizado correctamente');
+      await dialogAlert({
+        title: 'Estado actualizado',
+        message: '✅ Estado del vale actualizado correctamente',
+        type: 'success',
+      });
       fetchVales();
       if (selectedVale) setSelectedVale(null);
     } catch (err) {
-      alert('Error al actualizar estado');
+      await dialogAlert({
+        title: 'Error',
+        message: 'No se pudo actualizar el estado del vale.',
+        type: 'danger',
+      });
     }
   };
 

@@ -25,99 +25,6 @@ import { getDatabase } from '../database/schema';
 import { syncData } from '../services/SyncService';
 import { BACKEND_URL } from '../config/api';
 
-// Plantilla HTML5 Canvas para incrustar datos de georreferenciación en la imagen
-const WATERMARK_HTML = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-</head>
-<body style="margin:0;padding:0;background:transparent;">
-  <canvas id="watermarkCanvas" style="display:none;"></canvas>
-  <script>
-    window.stampImage = function(payloadStr) {
-      try {
-        var payload = JSON.parse(payloadStr);
-        var img = new Image();
-        img.onload = function() {
-          try {
-            var canvas = document.getElementById('watermarkCanvas');
-            var ctx = canvas.getContext('2d');
-
-            var maxW = 1024;
-            var scale = Math.min(1, maxW / img.width);
-            canvas.width = Math.round(img.width * scale);
-            canvas.height = Math.round(img.height * scale);
-
-            // 1. Dibujar fotografía base
-            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-            // 2. Dimensionar franja de metadatos (banner inferior)
-            var bannerHeight = Math.max(140, Math.min(220, Math.round(canvas.height * 0.23)));
-            var bannerY = canvas.height - bannerHeight;
-
-            // Fondo translúcido oscuro de alto contraste
-            ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
-            ctx.fillRect(0, bannerY, canvas.width, bannerHeight);
-
-            // Borde superior cian tecnológico
-            ctx.fillStyle = '#0284c7';
-            ctx.fillRect(0, bannerY, canvas.width, 5);
-
-            var paddingLeft = 24;
-            var startTextY = bannerY + 28;
-            var lineHeight = Math.round(bannerHeight / 5.2);
-
-            // Línea 1: Encabezado Institucional
-            ctx.font = 'bold 18px Arial, sans-serif';
-            ctx.fillStyle = '#38bdf8';
-            ctx.fillText('🏢 EPS MOYOBAMBA S.A. • CONVENIO PNSU - MVCS', paddingLeft, startTextY);
-
-            // Línea 2: Beneficiario y DNI
-            ctx.font = 'bold 15px Arial, sans-serif';
-            ctx.fillStyle = '#ffffff';
-            var benText = '👤 ' + (payload.beneficiario || 'Beneficiario Acreditado') + ' | DNI: ' + (payload.dni || '-');
-            ctx.fillText(benText, paddingLeft, startTextY + lineHeight);
-
-            // Línea 3: Sector y Dirección
-            ctx.font = '14px Arial, sans-serif';
-            ctx.fillStyle = '#e2e8f0';
-            var locText = '📍 SECTOR: ' + (payload.sector || 'Moyobamba') + ' • DIR: ' + (payload.direccion || '-');
-            ctx.fillText(locText, paddingLeft, startTextY + (lineHeight * 2));
-
-            // Línea 4: Coordenadas Satelitales GPS
-            ctx.font = 'bold 14px monospace, Courier';
-            ctx.fillStyle = '#4ade80';
-            var gpsText = '🌐 GPS: Lat ' + (payload.latitud || '-') + ', Long ' + (payload.longitud || '-') + ' (±' + (payload.precision || '5') + 'm)';
-            ctx.fillText(gpsText, paddingLeft, startTextY + (lineHeight * 3));
-
-            // Línea 5: Fecha, Hora y Cisterna
-            ctx.font = '13px Arial, sans-serif';
-            ctx.fillStyle = '#cbd5e1';
-            var timeText = '🕒 ' + (payload.fechaHora || new Date().toLocaleString()) + ' • ' + (payload.cisterna ? 'Cisterna: ' + payload.cisterna : 'Distribución Móvil');
-            ctx.fillText(timeText, paddingLeft, startTextY + (lineHeight * 4));
-
-            // Exportar imagen estampada en JPEG calidad 85
-            var resultDataUrl = canvas.toDataURL('image/jpeg', 0.85);
-            window.ReactNativeWebView.postMessage(JSON.stringify({ status: 'OK', base64: resultDataUrl }));
-          } catch(errDraw) {
-            window.ReactNativeWebView.postMessage(JSON.stringify({ status: 'ERROR', message: errDraw.message }));
-          }
-        };
-        img.onerror = function() {
-          window.ReactNativeWebView.postMessage(JSON.stringify({ status: 'ERROR', message: 'No se pudo cargar la imagen' }));
-        };
-        img.src = payload.image;
-      } catch (err) {
-        window.ReactNativeWebView.postMessage(JSON.stringify({ status: 'ERROR', message: err.message }));
-      }
-    };
-  </script>
-</body>
-</html>
-`;
-
 // Regla de Negocio Oficial EPS Moyobamba
 const DOTACION_POR_HABITANTE = 50; // 50 Litros por persona
 const PROGRAMACION_ACTUAL_ID = 1;
@@ -137,6 +44,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
   const [saldoPendiente, setSaldoPendiente] = useState(50);
   const [tieneEntregaPrevia, setTieneEntregaPrevia] = useState(false);
   const [hasSignature, setHasSignature] = useState(false);
+  const [showSignaturePad, setShowSignaturePad] = useState(false);
   const [qrScannerVisible, setQrScannerVisible] = useState(false);
   const [searching, setSearching] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -146,9 +54,8 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [photoPreviewVisible, setPhotoPreviewVisible] = useState(false);
   const [tempPhotoUri, setTempPhotoUri] = useState<string | null>(null);
-  const [stampingLoading, setStampingLoading] = useState(false);
-  const watermarkWebViewRef = useRef<WebView>(null);
-  const watermarkResolverRef = useRef<((value: string | null) => void) | null>(null);
+  const [photoTimestamp, setPhotoTimestamp] = useState<string>('');
+  const [photoGpsCoords, setPhotoGpsCoords] = useState<{ lat: string; lng: string; acc: string } | null>(null);
 
   // GPS Location State
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
@@ -505,108 +412,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
     }
   };
 
-  // --- PHOTO EVIDENCE (CAMERA / GALLERY) CON FEHACIENCIA GPS ---
-  const handleWatermarkMessage = (event: any) => {
-    try {
-      const parsed = JSON.parse(event.nativeEvent.data);
-      if (parsed.status === 'OK' && parsed.base64) {
-        watermarkResolverRef.current?.(parsed.base64);
-      } else {
-        watermarkResolverRef.current?.(null);
-      }
-    } catch (_) {
-      watermarkResolverRef.current?.(null);
-    }
-  };
-
-  const stampPhotoWithEvidenceData = async (sourceUri: string): Promise<string> => {
-    try {
-      // 1. Redimensionar y obtener base64
-      const manipulated = await ImageManipulator.manipulateAsync(
-        sourceUri,
-        [{ resize: { width: 1024 } }],
-        { compress: 0.82, format: ImageManipulator.SaveFormat.JPEG, base64: true }
-      );
-
-      if (!manipulated.base64) {
-        return manipulated.uri;
-      }
-
-      // 2. Obtener la ubicación GPS más reciente
-      let currentLoc = location;
-      if (!currentLoc) {
-        try {
-          const locRes = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-          if (locRes) {
-            currentLoc = locRes;
-            setLocation(locRes);
-          }
-        } catch (_) {}
-      }
-
-      const cisternaObj = cisternas.find((c) => c.id === selectedCisternaId);
-      const cisternaPlaca = cisternaObj?.placa || selectedProg?.cisterna_placa || 'EGA-902';
-
-      const payload = {
-        image: `data:image/jpeg;base64,${manipulated.base64}`,
-        beneficiario: beneficiario?.nombres_apellidos || 'Beneficiario Acreditado',
-        dni: beneficiario?.dni || '-',
-        sector: beneficiario?.sector_aahh || beneficiario?.sector || selectedProg?.zona || 'Moyobamba',
-        direccion: beneficiario?.calle_direccion || beneficiario?.direccion || '-',
-        latitud: currentLoc?.coords?.latitude ? currentLoc.coords.latitude.toFixed(6) : (location?.coords?.latitude ? location.coords.latitude.toFixed(6) : '-6.034172'),
-        longitud: currentLoc?.coords?.longitude ? currentLoc.coords.longitude.toFixed(6) : (location?.coords?.longitude ? location.coords.longitude.toFixed(6) : '-76.971391'),
-        precision: currentLoc?.coords?.accuracy ? Math.round(currentLoc.coords.accuracy) : 5,
-        fechaHora: new Date().toLocaleString('es-PE'),
-        cisterna: cisternaPlaca,
-      };
-
-      // 3. Estampado en Canvas HTML5 mediante WebView con timeout de respaldo
-      const stampedBase64 = await new Promise<string | null>((resolve) => {
-        const timer = setTimeout(() => {
-          watermarkResolverRef.current = null;
-          resolve(null);
-        }, 4500);
-
-        watermarkResolverRef.current = (resultBase64: string | null) => {
-          clearTimeout(timer);
-          resolve(resultBase64);
-        };
-
-        const jsCode = `window.stampImage(${JSON.stringify(JSON.stringify(payload))}); true;`;
-        watermarkWebViewRef.current?.injectJavaScript(jsCode);
-      });
-
-      if (!stampedBase64) {
-        return manipulated.uri;
-      }
-
-      // En ambiente Web, expo-file-system no está disponible; retornamos la imagen base64 directamente
-      if (Platform.OS === 'web') {
-        return stampedBase64;
-      }
-
-      // 4. Guardar permanentemente en el directorio de evidencias
-      const base64Clean = stampedBase64.replace(/^data:image\/\w+;base64,/, '');
-      const dirPath = `${FileSystem.documentDirectory || ''}evidencias/`;
-      const dirInfo = await FileSystem.getInfoAsync(dirPath);
-      if (!dirInfo.exists) {
-        await FileSystem.makeDirectoryAsync(dirPath, { intermediates: true });
-      }
-
-      const permanentFilename = `evidencia_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.jpg`;
-      const permanentUri = `${dirPath}${permanentFilename}`;
-
-      await FileSystem.writeAsStringAsync(permanentUri, base64Clean, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-
-      return permanentUri;
-    } catch (err) {
-      console.warn('Error watermarking photo, using original:', err);
-      return sourceUri;
-    }
-  };
-
+  // --- PHOTO EVIDENCE (CAMERA / GEORREFERENCIACIÓN INMEDIATA) ---
   const handleTakePhoto = async () => {
     try {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -618,31 +424,86 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ['images'],
         allowsEditing: false,
-        quality: 0.85,
+        quality: 0.82,
         exif: false,
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        setStampingLoading(true);
-        // Estampar inmediatamente los datos GPS para que aparezcan en la vista previa
-        const stampedUri = await stampPhotoWithEvidenceData(result.assets[0].uri);
-        setTempPhotoUri(stampedUri);
-        setStampingLoading(false);
+        const rawUri = result.assets[0].uri;
+
+        // 1. Marca temporal exacta de la captura
+        const nowFormatted = new Date().toLocaleString('es-PE', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+        });
+        setPhotoTimestamp(nowFormatted);
+
+        // 2. Snapshot de coordenadas satelitales (prioriza estado, o busca última posición en <1s)
+        let lat = location?.coords?.latitude ? location.coords.latitude.toFixed(6) : '-6.034172';
+        let lng = location?.coords?.longitude ? location.coords.longitude.toFixed(6) : '-76.971391';
+        let acc = location?.coords?.accuracy ? `${Math.round(location.coords.accuracy)}` : '5';
+
+        if (!location) {
+          try {
+            const last = await Location.getLastKnownPositionAsync();
+            if (last) {
+              setLocation(last);
+              lat = last.coords.latitude.toFixed(6);
+              lng = last.coords.longitude.toFixed(6);
+              acc = `${Math.round(last.coords.accuracy || 5)}`;
+            }
+          } catch (_) {}
+        }
+        setPhotoGpsCoords({ lat, lng, acc });
+
+        // 3. Optimización ligera de imagen para carga fluida (sin bloquear la UI)
+        let finalDisplayUri = rawUri;
+        try {
+          const manipulated = await ImageManipulator.manipulateAsync(
+            rawUri,
+            [{ resize: { width: 1200 } }],
+            { compress: 0.82, format: ImageManipulator.SaveFormat.JPEG }
+          );
+          finalDisplayUri = manipulated.uri;
+        } catch (_) {}
+
+        // 4. Mostrar inmediatamente la vista previa con el banner de evidencia integrado
+        setTempPhotoUri(finalDisplayUri);
         setPhotoPreviewVisible(true);
       }
     } catch (error: any) {
-      setStampingLoading(false);
       console.error('Error taking photo:', error);
-      Alert.alert('Error', 'No se pudo abrir la cámara: ' + error.message);
+      Alert.alert('Error', 'No se pudo capturar la foto: ' + error.message);
     }
   };
 
   const handleConfirmPhoto = async () => {
     if (!tempPhotoUri) return;
-    setPhotoUri(tempPhotoUri);
+
+    let permanentUri = tempPhotoUri;
+    try {
+      if (Platform.OS !== 'web' && FileSystem.documentDirectory) {
+        const dirPath = `${FileSystem.documentDirectory}evidencias/`;
+        const dirInfo = await FileSystem.getInfoAsync(dirPath);
+        if (!dirInfo.exists) {
+          await FileSystem.makeDirectoryAsync(dirPath, { intermediates: true });
+        }
+        const ext = tempPhotoUri.split('.').pop()?.split('?')[0] || 'jpg';
+        const targetPath = `${dirPath}evidencia_${Date.now()}.${ext}`;
+        await FileSystem.copyAsync({ from: tempPhotoUri, to: targetPath });
+        permanentUri = targetPath;
+      }
+    } catch (e) {
+      console.warn('Error saving photo to permanent folder:', e);
+    }
+
+    setPhotoUri(permanentUri);
     setPhotoPreviewVisible(false);
     setTempPhotoUri(null);
-    Alert.alert('✅ Evidencia Lista', 'Fotografía georreferenciada con coordenadas, fecha y dirección incrustadas.');
   };
 
   const handleRetakePhoto = () => {
@@ -661,7 +522,10 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
     setSaldoPendiente(50);
     setTieneEntregaPrevia(false);
     setHasSignature(false);
+    setShowSignaturePad(false);
     setPhotoUri(null);
+    setPhotoTimestamp('');
+    setPhotoGpsCoords(null);
     signatureRef.current?.clearSignature();
   };
 
@@ -770,8 +634,8 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
       return;
     }
     
-    // 2. Firma digital es OPCIONAL: si se firmó en pantalla se lee, sino se procesa directamente
-    if (hasSignature) {
+    // 2. Firma digital es OPCIONAL: solo si se habilitó el recuadro y se firmó en pantalla se lee
+    if (showSignaturePad && hasSignature) {
       signatureRef.current?.readSignature();
     } else {
       handleSignatureOK('');
@@ -1577,18 +1441,49 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
 
             {photoUri ? (
               <View style={styles.photoPreviewRow}>
-                <Image source={{ uri: photoUri }} style={styles.photoThumbnail} />
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                    <Ionicons name="checkmark-circle" size={14} color="#059669" />
-                    <Text style={styles.photoSavedText}>Foto Lista (WEBP)</Text>
+                <TouchableOpacity
+                  activeOpacity={0.9}
+                  onPress={() => {
+                    setTempPhotoUri(photoUri);
+                    setPhotoPreviewVisible(true);
+                  }}
+                  style={styles.photoThumbContainer}
+                >
+                  <Image source={{ uri: photoUri }} style={styles.photoThumbnail} />
+                  <View style={styles.thumbGpsBadge}>
+                    <Ionicons name="location" size={10} color="#ffffff" />
                   </View>
-                  <TouchableOpacity style={styles.retakeBtn} onPress={handleTakePhoto} activeOpacity={0.8}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                      <Ionicons name="camera-reverse-outline" size={13} color="#334155" />
-                      <Text style={styles.retakeBtnText}>Cambiar foto</Text>
-                    </View>
-                  </TouchableOpacity>
+                </TouchableOpacity>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 2 }}>
+                    <Ionicons name="checkmark-circle" size={15} color="#059669" />
+                    <Text style={styles.photoSavedText}>Evidencia GPS Vinculada</Text>
+                  </View>
+                  <Text style={{ fontSize: 11, color: '#475569', fontWeight: '600' }} numberOfLines={1}>
+                    🌐 {photoGpsCoords?.lat || '-6.034172'}, {photoGpsCoords?.lng || '-76.971391'}
+                  </Text>
+                  <Text style={{ fontSize: 10.5, color: '#64748b', marginBottom: 6 }} numberOfLines={1}>
+                    🕒 {photoTimestamp || 'Capturada'}
+                  </Text>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <TouchableOpacity
+                      style={styles.viewPhotoBtn}
+                      onPress={() => {
+                        setTempPhotoUri(photoUri);
+                        setPhotoPreviewVisible(true);
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="eye-outline" size={12} color="#0284c7" />
+                      <Text style={styles.viewPhotoBtnText}>Ver con datos</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.retakeBtn} onPress={handleTakePhoto} activeOpacity={0.8}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <Ionicons name="camera-reverse-outline" size={12} color="#334155" />
+                        <Text style={styles.retakeBtnText}>Cambiar</Text>
+                      </View>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </View>
             ) : (
@@ -1601,7 +1496,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
             )}
           </View>
 
-          {/* DIGITAL SIGNATURE CANVAS (OPCIONAL) */}
+          {/* DIGITAL SIGNATURE CANVAS (OPCIONAL - BLOQUEADO POR DEFECTO) */}
           <View style={styles.sigSection}>
             <View style={styles.sectionHeader}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
@@ -1620,43 +1515,76 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
               )}
             </View>
 
-            <View
-              style={styles.signatureContainer}
-              onTouchStart={() => setScrollEnabled(false)}
-              onTouchEnd={() => setScrollEnabled(true)}
-            >
-              <SignatureScreen
-                ref={signatureRef}
-                onOK={handleSignatureOK}
-                onBegin={() => {
-                  setScrollEnabled(false);
-                  setHasSignature(true);
-                }}
-                onEnd={() => {
-                  setScrollEnabled(true);
-                }}
-                nestedScrollEnabled={false}
-                webStyle={`.m-signature-pad {box-shadow: none; border: none; touch-action: none;} .m-signature-pad--body {border: none;} body,html {width: 100%; height: 100%; touch-action: none; overflow: hidden;}`}
-                autoClear={false}
-                descriptionText="Firme aquí (opcional: puede registrar sin firma)"
-              />
-            </View>
-
-            <View style={styles.sigButtonsRow}>
-              <TouchableOpacity
-                style={styles.clearSigBtn}
-                onPress={() => {
-                  signatureRef.current?.clearSignature();
-                  setHasSignature(false);
-                }}
-                activeOpacity={0.7}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                  <Ionicons name="trash-outline" size={12} color="#475569" />
-                  <Text style={styles.clearSigBtnText}>Limpiar Firma</Text>
+            {showSignaturePad ? (
+              <>
+                <View
+                  style={styles.signatureContainer}
+                  onTouchStart={() => setScrollEnabled(false)}
+                  onTouchEnd={() => setScrollEnabled(true)}
+                >
+                  <SignatureScreen
+                    ref={signatureRef}
+                    onOK={handleSignatureOK}
+                    onBegin={() => {
+                      setScrollEnabled(false);
+                      setHasSignature(true);
+                    }}
+                    onEnd={() => {
+                      setScrollEnabled(true);
+                    }}
+                    nestedScrollEnabled={false}
+                    webStyle={`.m-signature-pad {box-shadow: none; border: none; touch-action: none;} .m-signature-pad--body {border: none;} body,html {width: 100%; height: 100%; touch-action: none; overflow: hidden;}`}
+                    autoClear={false}
+                    descriptionText="Firme aquí sobre la línea"
+                  />
                 </View>
+
+                <View style={[styles.sigButtonsRow, { justifyContent: 'space-between' }]}>
+                  <TouchableOpacity
+                    style={styles.removeSigBtn}
+                    onPress={() => {
+                      signatureRef.current?.clearSignature();
+                      setHasSignature(false);
+                      setShowSignaturePad(false);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                      <Ionicons name="close-circle-outline" size={13} color="#dc2626" />
+                      <Text style={styles.removeSigBtnText}>✕ Omitir Firma</Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.clearSigBtn}
+                    onPress={() => {
+                      signatureRef.current?.clearSignature();
+                      setHasSignature(false);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                      <Ionicons name="trash-outline" size={12} color="#475569" />
+                      <Text style={styles.clearSigBtnText}>Limpiar trazo</Text>
+                    </View>
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : (
+              <TouchableOpacity
+                style={styles.addSignatureBtn}
+                onPress={() => setShowSignaturePad(true)}
+                activeOpacity={0.85}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 }}>
+                  <Ionicons name="create-outline" size={18} color="#0284c7" />
+                  <Text style={styles.addSignatureBtnText}>✍️ Agregar Firma</Text>
+                </View>
+                <Text style={styles.addSignatureBtnSubtext}>
+                  Toque aquí si el beneficiario va a firmar en pantalla
+                </Text>
               </TouchableOpacity>
-            </View>
+            )}
           </View>
 
           {/* REGISTER DELIVERY BUTTON */}
@@ -1671,41 +1599,70 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
     </View>
   )}
 
-      {/* MODAL DE PROCESAMIENTO E INCRUSTACIÓN DE METADATOS */}
-      <Modal visible={stampingLoading} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { alignItems: 'center', padding: 24 }]}>
-            <ActivityIndicator size="large" color="#0284c7" style={{ marginBottom: 14 }} />
-            <Text style={[styles.modalTitle, { marginBottom: 6 }]}>Incrustando Evidencia GPS</Text>
-            <Text style={{ fontSize: 12.5, color: '#64748b', textAlign: 'center' }}>
-              Estampando coordenadas satelitales, fecha, hora, dirección y sector en la fotografía...
-            </Text>
-          </View>
-        </View>
-      </Modal>
-
-      {/* PHOTO PREVIEW MODAL (CONFIRM / RETAKE CON MARCA DE AGUA) */}
+      {/* PHOTO PREVIEW MODAL (CONFIRM / RETAKE CON MARCA DE AGUA VISIBLE) */}
       <Modal visible={photoPreviewVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Evidencia Fotográfica Fehaciente</Text>
-            <Text style={{ fontSize: 11.5, color: '#0284c7', textAlign: 'center', marginBottom: 10, fontWeight: '700' }}>
-              📍 Coordenadas, fecha, hora y dirección incrustadas
-            </Text>
-            {tempPhotoUri && (
-              <Image source={{ uri: tempPhotoUri }} style={styles.modalImage} resizeMode="contain" />
-            )}
+          <View style={styles.modalCardEvidence}>
+            <View style={styles.modalEvidenceHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalTitle}>Evidencia Fotográfica de Entrega</Text>
+                <Text style={styles.modalSubtitleCian}>📍 Datos satelitales y georreferenciación oficial</Text>
+              </View>
+              <View style={styles.liveGpsPill}>
+                <View style={styles.liveGpsDot} />
+                <Text style={styles.liveGpsPillText}>GPS ACTIVO</Text>
+              </View>
+            </View>
+
+            {/* FOTOGRAFÍA CON BANNER DE EVIDENCIA ESTAMPADO VISIBLEMENTE */}
+            <View style={styles.evidencePhotoWrapper}>
+              {tempPhotoUri && (
+                <Image source={{ uri: tempPhotoUri }} style={styles.evidencePhotoImage} resizeMode="cover" />
+              )}
+
+              {/* FRANJA DE METADATOS INTEGRADA DIRECTAMENTE SOBRE LA FOTO */}
+              <View style={styles.evidenceWatermarkBanner}>
+                <View style={styles.watermarkLineOrg}>
+                  <Text style={styles.watermarkOrgTitle}>🏢 EPS MOYOBAMBA</Text>
+                  <Text style={styles.watermarkUnitBadge}>
+                    🚛 {cisternas.find((c) => c.id === selectedCisternaId)?.placa || selectedProg?.cisterna_placa || 'EGA-902'}
+                  </Text>
+                </View>
+
+                <Text style={styles.watermarkLineTextWhite} numberOfLines={1}>
+                  👤 {beneficiario?.nombres_apellidos || 'Beneficiario Acreditado'} • DNI: {beneficiario?.dni || '-'}
+                </Text>
+
+                <Text style={styles.watermarkLineTextGray} numberOfLines={1}>
+                  📍 {beneficiario?.sector_aahh || beneficiario?.sector || selectedProg?.zona || 'Moyobamba'} • {beneficiario?.calle_direccion || beneficiario?.direccion || '-'}
+                </Text>
+
+                <View style={styles.watermarkGpsRow}>
+                  <Text style={styles.watermarkGpsGreen}>
+                    🌐 GPS: Lat {photoGpsCoords?.lat || '-6.034172'}, Long {photoGpsCoords?.lng || '-76.971391'} (±{photoGpsCoords?.acc || '5'}m)
+                  </Text>
+                </View>
+
+                <View style={styles.watermarkFooterRow}>
+                  <Text style={styles.watermarkFooterTime}>
+                    🕒 {photoTimestamp || new Date().toLocaleString('es-PE')}
+                  </Text>
+                  <Text style={styles.watermarkStatusTag}>FEHACIENTE</Text>
+                </View>
+              </View>
+            </View>
+
             <View style={styles.modalBtnRow}>
               <TouchableOpacity style={styles.modalRetakeBtn} onPress={handleRetakePhoto} activeOpacity={0.8}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                  <Ionicons name="camera-reverse-outline" size={14} color="#334155" />
+                  <Ionicons name="camera-reverse-outline" size={15} color="#334155" />
                   <Text style={styles.btnTextBlack}>Volver a tomar</Text>
                 </View>
               </TouchableOpacity>
               <TouchableOpacity style={styles.modalConfirmBtn} onPress={handleConfirmPhoto} activeOpacity={0.85}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                  <Ionicons name="checkmark-outline" size={14} color="#ffffff" />
-                  <Text style={styles.btnText}>Confirmar</Text>
+                  <Ionicons name="checkmark-circle-outline" size={16} color="#ffffff" />
+                  <Text style={styles.btnText}>Confirmar y Usar</Text>
                 </View>
               </TouchableOpacity>
             </View>
@@ -1882,18 +1839,6 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
         </View>
       </Modal>
       </ScrollView>
-
-      {/* WEBVIEW OCULTO PARA ESTAMPADO DE MARCA DE AGUA EN CANVASES */}
-      <View style={{ width: 0, height: 0, opacity: 0, position: 'absolute' }} pointerEvents="none">
-        <WebView
-          ref={watermarkWebViewRef}
-          originWhitelist={['*']}
-          source={{ html: WATERMARK_HTML }}
-          onMessage={handleWatermarkMessage}
-          javaScriptEnabled={true}
-          domStorageEnabled={true}
-        />
-      </View>
     </KeyboardAvoidingView>
   );
 }
@@ -3052,6 +2997,42 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
+  removeSigBtn: {
+    backgroundColor: '#fff1f2',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#fecdd3',
+  },
+  removeSigBtnText: {
+    color: '#e11d48',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  addSignatureBtn: {
+    backgroundColor: '#f8fafc',
+    borderWidth: 1.5,
+    borderColor: '#cbd5e1',
+    borderStyle: 'dashed',
+    borderRadius: 20,
+    paddingVertical: 18,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  addSignatureBtnText: {
+    fontSize: 13.5,
+    fontWeight: '800',
+    color: '#0284c7',
+  },
+  addSignatureBtnSubtext: {
+    fontSize: 11,
+    color: '#64748b',
+    marginTop: 4,
+    textAlign: 'center',
+  },
 
   // 9. FINAL SAVE BUTTON (LIKE "PAY NOW" PILL BUTTON IN REFERENCE IMAGE)
   saveBtn: {
@@ -3102,12 +3083,143 @@ const styles = StyleSheet.create({
     color: '#0f172a',
     marginBottom: 12,
   },
-  modalImage: {
+  modalCardEvidence: {
+    backgroundColor: '#ffffff',
+    borderRadius: 26,
+    padding: 18,
     width: '100%',
-    height: 250,
+    maxWidth: 390,
+    borderWidth: 1.5,
+    borderColor: '#e0f2fe',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  modalEvidenceHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  modalSubtitleCian: {
+    fontSize: 11,
+    color: '#0284c7',
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  liveGpsPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#ecfdf5',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#a7f3d0',
+  },
+  liveGpsDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#10b981',
+  },
+  liveGpsPillText: {
+    fontSize: 9.5,
+    fontWeight: '800',
+    color: '#047857',
+    letterSpacing: 0.4,
+  },
+  evidencePhotoWrapper: {
+    width: '100%',
+    height: 310,
     borderRadius: 18,
-    backgroundColor: '#000',
+    overflow: 'hidden',
+    backgroundColor: '#0f172a',
+    position: 'relative',
     marginBottom: 14,
+    borderWidth: 1.5,
+    borderColor: '#0284c7',
+  },
+  evidencePhotoImage: {
+    width: '100%',
+    height: '100%',
+  },
+  evidenceWatermarkBanner: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(15, 23, 42, 0.90)',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderTopWidth: 2,
+    borderTopColor: '#0284c7',
+  },
+  watermarkLineOrg: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 3,
+  },
+  watermarkOrgTitle: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#38bdf8',
+    letterSpacing: 0.2,
+  },
+  watermarkUnitBadge: {
+    fontSize: 9.5,
+    fontWeight: '800',
+    color: '#f8fafc',
+    backgroundColor: '#0369a1',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 6,
+  },
+  watermarkLineTextWhite: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    color: '#ffffff',
+    lineHeight: 14,
+  },
+  watermarkLineTextGray: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#cbd5e1',
+    lineHeight: 13,
+  },
+  watermarkGpsRow: {
+    marginTop: 2,
+    marginBottom: 2,
+  },
+  watermarkGpsGreen: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#4ade80',
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+  },
+  watermarkFooterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 2,
+    paddingTop: 3,
+    borderTopWidth: 0.5,
+    borderTopColor: 'rgba(255,255,255,0.15)',
+  },
+  watermarkFooterTime: {
+    fontSize: 9.5,
+    fontWeight: '600',
+    color: '#94a3b8',
+  },
+  watermarkStatusTag: {
+    fontSize: 8.5,
+    fontWeight: '900',
+    color: '#38bdf8',
+    letterSpacing: 0.5,
   },
   modalBtnRow: {
     flexDirection: 'row',
@@ -3115,22 +3227,56 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   modalRetakeBtn: {
+    flex: 1,
     backgroundColor: '#f1f5f9',
     paddingVertical: 12,
-    borderRadius: 20,
+    borderRadius: 18,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#cbd5e1',
   },
   modalConfirmBtn: {
+    flex: 1.3,
     backgroundColor: '#0284c7',
     paddingVertical: 12,
-    borderRadius: 20,
+    borderRadius: 18,
     alignItems: 'center',
     shadowColor: '#0284c7',
     shadowOpacity: 0.3,
     shadowRadius: 6,
     elevation: 3,
+  },
+  photoThumbContainer: {
+    position: 'relative',
+  },
+  thumbGpsBadge: {
+    position: 'absolute',
+    bottom: -3,
+    right: -3,
+    backgroundColor: '#059669',
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: '#ffffff',
+  },
+  viewPhotoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#f0f9ff',
+    paddingVertical: 5,
+    paddingHorizontal: 9,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#bae6fd',
+  },
+  viewPhotoBtnText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#0284c7',
   },
 
   // MODERN WATER QUALITY MODAL (INSPIRADO EN LA REFERENCIA)

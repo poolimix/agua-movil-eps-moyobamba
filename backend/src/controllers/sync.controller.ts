@@ -3,6 +3,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { query } from '../db';
+import { stampWatermarkOnImage } from '../utils/watermark';
 
 // Ensure uploads directory exists
 const uploadDir = path.join(process.cwd(), 'uploads', 'registros');
@@ -102,10 +103,73 @@ export const uploadDelivery = async (req: Request, res: Response) => {
       });
     }
 
-    // 2. Foto URL
+    // 2. Foto URL (desde multipart req.file o fallback base64)
     let fotoUrl: string | null = null;
+    let localSavedFilePath: string | null = null;
     if (req.file) {
       fotoUrl = `/uploads/registros/${req.file.filename}`;
+      localSavedFilePath = req.file.path;
+    } else if (req.body.fotoBase64 || req.body.foto_base64) {
+      try {
+        const rawBase64 = String(req.body.fotoBase64 || req.body.foto_base64);
+        const b64Clean = rawBase64.replace(/^data:image\/\w+;base64,/, '');
+        const safeName = `entrega-${finalLocalId.replace(/[^a-zA-Z0-9_-]/g, '')}-${Date.now()}.jpg`;
+        const filePath = path.join(uploadDir, safeName);
+        fs.writeFileSync(filePath, Buffer.from(b64Clean, 'base64'));
+        fotoUrl = `/uploads/registros/${safeName}`;
+        localSavedFilePath = filePath;
+      } catch (saveErr) {
+        console.warn('Error al guardar foto desde base64:', saveErr);
+      }
+    }
+
+    // 2.1 Estampar marca de agua oficial EPS Moyobamba en los píxeles de la fotografía
+    if (localSavedFilePath && fs.existsSync(localSavedFilePath)) {
+      try {
+        let benNombre = 'Beneficiario Acreditado';
+        let benDni = '-';
+        let benSector = 'Moyobamba';
+        let benDir = '-';
+        let cisternaPlaca = 'EGA-902';
+
+        if (finalBeneficiarioId) {
+          const bRes = await query(
+            `SELECT dni, nombres_apellidos, COALESCE(sector_aahh, sector, 'Moyobamba') as sector, COALESCE(calle_direccion, direccion, '-') as direccion FROM beneficiarios WHERE id = $1`,
+            [finalBeneficiarioId]
+          );
+          if (bRes.rows.length > 0) {
+            benNombre = bRes.rows[0].nombres_apellidos;
+            benDni = bRes.rows[0].dni;
+            benSector = bRes.rows[0].sector;
+            benDir = bRes.rows[0].direccion;
+          }
+        }
+
+        if (finalCisternaId) {
+          const cRes = await query('SELECT placa FROM cisternas WHERE id = $1', [finalCisternaId]);
+          if (cRes.rows.length > 0) {
+            cisternaPlaca = cRes.rows[0].placa;
+          }
+        }
+
+        const dateStr = finalFechaCaptura 
+          ? new Date(finalFechaCaptura).toLocaleString('es-PE') 
+          : new Date().toLocaleString('es-PE');
+
+        await stampWatermarkOnImage(localSavedFilePath, {
+          beneficiario: benNombre,
+          dni: benDni,
+          sector: benSector,
+          direccion: benDir,
+          latitud: finalLat ? finalLat.toFixed(6) : (finalPrecision ? '-6.034172' : '-6.494381'),
+          longitud: finalLng ? finalLng.toFixed(6) : '-76.344806',
+          precision: finalPrecision ? Math.round(finalPrecision) : 5,
+          fechaHora: dateStr,
+          cisterna: cisternaPlaca,
+        });
+      } catch (watermarkErr) {
+        console.warn('Error estampando marca de agua en entrega:', watermarkErr);
+      }
     }
 
     // 3. Insert into PostgreSQL

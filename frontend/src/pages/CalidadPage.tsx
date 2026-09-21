@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import Pagination from '../components/Pagination';
 import api from '../config/api';
+import { dialogAlert } from '../context/DialogContext';
 import './Modules.css';
 
 interface ControlCalidad {
@@ -88,7 +89,11 @@ export default function CalidadPage() {
       setSubmitting(true);
       const res = await api.post('/calidad/calidad', formData);
 
-      alert(res.data.message || 'Control registrado exitosamente');
+      await dialogAlert({
+        title: 'Control de Calidad',
+        message: res.data.message || '✅ Control registrado exitosamente',
+        type: 'success',
+      });
       setModalOpen(false);
       setFormData({
         cisterna_id: '',
@@ -103,7 +108,11 @@ export default function CalidadPage() {
       });
       fetchData();
     } catch (err: any) {
-      alert(err.message || 'Error registrando control');
+      await dialogAlert({
+        title: 'Error en control de calidad',
+        message: err.message || 'Error registrando control',
+        type: 'danger',
+      });
     } finally {
       setSubmitting(false);
     }

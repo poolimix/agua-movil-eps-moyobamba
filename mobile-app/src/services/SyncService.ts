@@ -61,32 +61,39 @@ export const syncData = async (): Promise<{ success: boolean; syncedCount: numbe
         if (entrega.fecha_ubicacion) formData.append('fechaUbicacion', String(entrega.fecha_ubicacion));
         formData.append('fechaCaptura', String(entrega.fecha_captura || entrega.fecha_hora || new Date().toISOString()));
 
-        // Attach Photo file if exists
+        // Attach Photo file (Compatible con Web y Expo Nativo moderno)
         if (entrega.foto_local_uri) {
-          if (Platform.OS === 'web') {
-            try {
-              const res = await fetch(entrega.foto_local_uri);
-              const blob = await res.blob();
-              (formData as any).append('foto', blob, 'evidencia.jpg');
-            } catch (errWeb) {
-              console.warn('Could not convert web photo to blob:', errWeb);
-            }
-          } else {
-            try {
-              const fileInfo = await FileSystem.getInfoAsync(entrega.foto_local_uri);
-              if (fileInfo?.exists) {
-                const filename = entrega.foto_local_uri.split('/').pop() || 'evidencia.jpg';
-                const match = /\.(\w+)$/.exec(filename);
-                const type = match ? `image/${match[1]}` : `image/jpeg`;
+          const filename = `evidencia_${entrega.id || Date.now()}.jpg`;
 
-                formData.append('foto', {
-                  uri: entrega.foto_local_uri,
-                  name: filename,
-                  type,
-                } as any);
+          // 1. Intentar adjuntar como Blob/File estándar para evitar 'Unsupported FormDataPart implementation'
+          try {
+            const res = await fetch(entrega.foto_local_uri);
+            const blob = await res.blob();
+            if (typeof File !== 'undefined') {
+              const file = new File([blob], filename, { type: 'image/jpeg' });
+              formData.append('foto', file);
+            } else {
+              (formData as any).append('foto', blob, filename);
+            }
+          } catch (blobErr) {
+            console.warn('No se pudo empaquetar foto como Blob/File:', blobErr);
+          }
+
+          // 2. Si es nativo, enviar además fotoBase64 como respaldo
+          if (Platform.OS !== 'web') {
+            try {
+              if (entrega.foto_local_uri.startsWith('data:image')) {
+                formData.append('fotoBase64', entrega.foto_local_uri);
+              } else {
+                const base64 = await FileSystem.readAsStringAsync(entrega.foto_local_uri, {
+                  encoding: FileSystem.EncodingType.Base64,
+                });
+                if (base64) {
+                  formData.append('fotoBase64', base64);
+                }
               }
             } catch (fsErr) {
-              console.warn('FileSystem error on native:', fsErr);
+              console.warn('No se pudo leer foto como base64:', fsErr);
             }
           }
         }
