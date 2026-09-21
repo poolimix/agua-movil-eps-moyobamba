@@ -111,18 +111,40 @@ export default function CalidadPage() {
 
   const getCloroBadge = (cloro: number) => {
     const val = Number(cloro);
-    if (val >= 0.5 && val <= 2.0) {
-      return <span style={{ background: '#dcfce7', color: '#15803d', padding: '4px 8px', borderRadius: 4, fontWeight: 700 }}>{val.toFixed(2)} ppm (Óptimo)</span>;
-    }
-    return <span style={{ background: '#fee2e2', color: '#b91c1c', padding: '4px 8px', borderRadius: 4, fontWeight: 700 }}>{val.toFixed(2)} ppm (Fuera de Rango)</span>;
+    const isOptimo = val >= 0.5 && val <= 2.0;
+    return (
+      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
+        <strong style={{ fontFamily: 'ui-monospace, monospace', fontSize: 13, color: isOptimo ? '#0f172a' : '#b91c1c' }}>
+          {val.toFixed(2)} ppm
+        </strong>
+        <span
+          className={`status-badge-compact ${isOptimo ? 'status-cumplido' : 'status-pendiente'}`}
+          style={{ padding: '2px 8px', fontSize: 11 }}
+        >
+          <span className={`status-dot-indicator ${isOptimo ? 'dot-green' : 'dot-red'}`} style={{ width: 6, height: 6 }} />
+          <span>{isOptimo ? 'Óptimo' : 'Alerta'}</span>
+        </span>
+      </div>
+    );
   };
 
   const getTurbiedadBadge = (turb: number) => {
     const val = Number(turb);
-    if (val <= 5.0) {
-      return <span style={{ background: '#dcfce7', color: '#15803d', padding: '4px 8px', borderRadius: 4, fontWeight: 700 }}>{val.toFixed(2)} NTU (Apto)</span>;
-    }
-    return <span style={{ background: '#fee2e2', color: '#b91c1c', padding: '4px 8px', borderRadius: 4, fontWeight: 700 }}>{val.toFixed(2)} NTU (No Apto)</span>;
+    const isApto = val <= 5.0;
+    return (
+      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
+        <strong style={{ fontFamily: 'ui-monospace, monospace', fontSize: 13, color: isApto ? '#0f172a' : '#b91c1c' }}>
+          {val.toFixed(2)} NTU
+        </strong>
+        <span
+          className={`status-badge-compact ${isApto ? 'status-cumplido' : 'status-pendiente'}`}
+          style={{ padding: '2px 8px', fontSize: 11 }}
+        >
+          <span className={`status-dot-indicator ${isApto ? 'dot-green' : 'dot-red'}`} style={{ width: 6, height: 6 }} />
+          <span>{isApto ? 'Apto' : 'No Apto'}</span>
+        </span>
+      </div>
+    );
   };
 
   const getEtapaBadge = (etapa?: string) => {
@@ -163,40 +185,7 @@ export default function CalidadPage() {
         <div className="module-header">
           <div>
             <h1 className="module-title">🧪 Control de Calidad del Agua (Cloro Residual y Turbiedad)</h1>
-            <p className="module-subtitle">Monitoreo organoléptico y fisicoquímico según TDR EPS Moyobamba y D.S. 031-2010-SA</p>
-          </div>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button className="btn-primary" onClick={() => setModalOpen(true)}>
-              + Nuevo Test de Calidad
-            </button>
-          </div>
-        </div>
-
-        {/* Normative Alert con Regla TDR */}
-        <div style={{
-          background: 'linear-gradient(135deg, #e0f2fe 0%, #f0fdf4 100%)',
-          border: '1.5px solid #38bdf8',
-          padding: '14px 18px',
-          borderRadius: 10,
-          marginBottom: 20,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 14,
-          fontSize: 13,
-          color: '#0369a1'
-        }}>
-          <span style={{ fontSize: 26 }}>📋</span>
-          <div>
-            <strong style={{ color: '#0c4a6e', fontSize: 13.5 }}>REGLA SANITARIA OBLIGATORIA DEL TDR (MÍNIMO 2 CONTROLES POR VIAJE):</strong>
-            <div style={{ color: '#334155', marginTop: 3, lineHeight: 1.4 }}>
-              Cada programación y reparto de cisterna exige como mínimo <strong>2 mediciones obligatorias</strong>: 
-              <br />
-              <strong>1. Al momento de cargar la cisterna</strong> en el punto de captación/surtidor (verificar $\ge$ 0.5 ppm antes de salir).
-              <br />
-              <strong>2. En el transcurso de la entrega en ruta</strong> en el grifo de distribución del sector.
-              <br />
-              <em>Asimismo, el operador o supervisor puede registrar <strong>controles adicionales ilimitados</strong> en cualquier momento del recorrido.</em>
-            </div>
+            <p className="module-subtitle">Monitoreo organoléptico y fisicoquímico</p>
           </div>
         </div>
 
@@ -249,57 +238,75 @@ export default function CalidadPage() {
         </div>
 
         {/* Table */}
-        <div style={{ background: '#fff', borderRadius: 8, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+        <div className="table-card">
           {loading ? (
-            <div style={{ padding: 40, textAlign: 'center', color: '#64748b' }}>Cargando registros de control de calidad...</div>
+            <div className="empty-state">
+              <span>⏳</span> Cargando registros de control de calidad...
+            </div>
           ) : controles.length === 0 ? (
-            <div style={{ padding: 40, textAlign: 'center', color: '#64748b' }}>No se encontraron registros de calidad.</div>
+            <div className="empty-state">
+              <span>🧪</span> No se encontraron registros de calidad.
+            </div>
           ) : (
             <>
-              <table className="data-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <table className="custom-table">
                 <thead>
-                  <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left', color: '#475569' }}>
-                    <th style={{ padding: '12px 16px' }}>FECHA Y HORA</th>
-                    <th style={{ padding: '12px 16px' }}>ETAPA (TDR) / PUNTO</th>
-                    <th style={{ padding: '12px 16px' }}>CISTERNA / CHOFER</th>
-                    <th style={{ padding: '12px 16px' }}>CLORO RESIDUAL</th>
-                    <th style={{ padding: '12px 16px' }}>TURBIEDAD</th>
-                    <th style={{ padding: '12px 16px' }}>ASPECTO ORGANOLÉPTICO</th>
-                    <th style={{ padding: '12px 16px' }}>ESTADO SANITARIO</th>
-                    <th style={{ padding: '12px 16px' }}>SUPERVISOR</th>
+                  <tr>
+                    <th style={{ whiteSpace: 'nowrap' }}>FECHA Y HORA</th>
+                    <th>ETAPA (TDR) / PUNTO</th>
+                    <th style={{ whiteSpace: 'nowrap' }}>CISTERNA / CHOFER</th>
+                    <th style={{ whiteSpace: 'nowrap', minWidth: 155 }}>CLORO RESIDUAL</th>
+                    <th style={{ whiteSpace: 'nowrap', minWidth: 155 }}>TURBIEDAD</th>
+                    <th>ASPECTO ORGANOLÉPTICO</th>
+                    <th style={{ whiteSpace: 'nowrap' }}>ESTADO SANITARIO</th>
+                    <th>SUPERVISOR</th>
                   </tr>
                 </thead>
                 <tbody>
                   {paginatedControles.map((c) => (
-                    <tr key={c.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '12px 16px', fontWeight: 600 }}>
-                        {new Date(c.fecha_hora).toLocaleString('es-PE')}
+                    <tr key={c.id}>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        <div style={{ fontWeight: 700, color: '#0f172a', fontSize: 13.5 }}>
+                          {isNaN(new Date(c.fecha_hora).getTime())
+                            ? c.fecha_hora
+                            : new Date(c.fecha_hora).toLocaleDateString('es-PE')}
+                        </div>
+                        <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 2, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          <span>🕒</span>
+                          <span>
+                            {isNaN(new Date(c.fecha_hora).getTime())
+                              ? ''
+                              : new Date(c.fecha_hora).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                          </span>
+                        </div>
                       </td>
-                      <td style={{ padding: '12px 16px' }}>
+                      <td>
                         {getEtapaBadge(c.etapa_control)}
-                        <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
+                        <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 4, minWidth: 160 }}>
                           📍 {c.punto_muestreo || 'Punto de entrega'}
                         </div>
                       </td>
-                      <td style={{ padding: '12px 16px' }}>
-                        <div style={{ fontWeight: 600, color: '#0284c7' }}>{c.cisterna_placa || 'Cisterna General'}</div>
-                        <div style={{ fontSize: 11, color: '#64748b' }}>{c.conductor_nombre || 'Conductor asignado'}</div>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        <div style={{ fontWeight: 700, color: '#0284c7' }}>🚛 {c.cisterna_placa || 'Cisterna General'}</div>
+                        <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 2 }}>{c.conductor_nombre || 'Conductor asignado'}</div>
                       </td>
-                      <td style={{ padding: '12px 16px' }}>{getCloroBadge(c.cloro_residual_ppm)}</td>
-                      <td style={{ padding: '12px 16px' }}>{getTurbiedadBadge(c.turbiedad_ntu)}</td>
-                      <td style={{ padding: '12px 16px', color: '#475569' }}>{c.aspecto_organoleptico}</td>
-                      <td style={{ padding: '12px 16px' }}>
+                      <td style={{ whiteSpace: 'nowrap' }}>{getCloroBadge(c.cloro_residual_ppm)}</td>
+                      <td style={{ whiteSpace: 'nowrap' }}>{getTurbiedadBadge(c.turbiedad_ntu)}</td>
+                      <td style={{ color: '#475569', minWidth: 120 }}>{c.aspecto_organoleptico}</td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
                         {c.conforme_sanitario ? (
-                          <span style={{ background: '#dcfce7', color: '#15803d', padding: '4px 8px', borderRadius: 4, fontWeight: 700 }}>
-                            ✓ CONFORME
+                          <span className="status-badge-compact status-cumplido">
+                            <span className="status-dot-indicator dot-green" />
+                            <span>Conforme</span>
                           </span>
                         ) : (
-                          <span style={{ background: '#fee2e2', color: '#b91c1c', padding: '4px 8px', borderRadius: 4, fontWeight: 700 }}>
-                            ✕ NO CONFORME
+                          <span className="status-badge-compact status-pendiente">
+                            <span className="status-dot-indicator dot-red" />
+                            <span>Alerta</span>
                           </span>
                         )}
                       </td>
-                      <td style={{ padding: '12px 16px', fontSize: 11, color: '#64748b' }}>
+                      <td style={{ fontSize: 12, color: '#64748b', minWidth: 120 }}>
                         {c.registrado_por}
                       </td>
                     </tr>

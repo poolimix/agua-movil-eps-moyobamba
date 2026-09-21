@@ -5,5 +5,6 @@ const router = Router();
 
 router.get('/', balanceController.getBalanceHidrico);
 router.get('/pdf', balanceController.exportarBalancePdf);
+router.get('/excel', balanceController.exportarBalanceExcel);
 
 export default router;

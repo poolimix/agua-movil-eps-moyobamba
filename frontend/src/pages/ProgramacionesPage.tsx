@@ -396,17 +396,17 @@ export default function ProgramacionesPage() {
       </div>
 
       <div className="table-card">
-        <table className="custom-table">
+        <table className="custom-table" style={{ minWidth: 1260 }}>
           <thead>
             <tr>
-              <th>ID / Fecha</th>
-              <th>Sectores Asignados</th>
-              <th>Cisterna y Cuadrilla</th>
-              <th>Viajes Programados</th>
-              <th>Estado</th>
-              <th>Avance Entregas</th>
-              <th>Control Sanitario (TDR)</th>
-              <th style={{ textAlign: 'center', minWidth: 230 }}>Acciones y Gestión</th>
+              <th style={{ minWidth: 100 }}>ID / Fecha</th>
+              <th style={{ minWidth: 260 }}>Sectores Asignados</th>
+              <th style={{ minWidth: 220 }}>Cisterna y Cuadrilla</th>
+              <th style={{ minWidth: 140 }}>Viajes Programados</th>
+              <th style={{ minWidth: 110 }}>Estado</th>
+              <th style={{ minWidth: 150 }}>Avance Entregas</th>
+              <th style={{ minWidth: 150 }}>Control Sanitario</th>
+              <th style={{ textAlign: 'center', minWidth: 220 }}>Acciones y Gestión</th>
             </tr>
           </thead>
           <tbody>
@@ -431,19 +431,37 @@ export default function ProgramacionesPage() {
                       {new Date(p.fecha).toLocaleDateString('es-PE')}
                     </div>
                   </td>
-                  <td>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, maxWidth: 220 }}>
-                      {p.zona.split(',').map((sec, idx) => (
-                        <span key={idx} className="badge-count" style={{ background: '#e0f2fe', color: '#0369a1', fontSize: 11.5, fontWeight: 700 }}>
-                          📍 {sec.trim()}
-                        </span>
-                      ))}
-                    </div>
-                    <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
-                      🗓️ {p.dias_semana || 'Lunes, Miércoles, Viernes'}
+                  <td style={{ minWidth: 260 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                        {p.zona.split(',').map((sec, idx) => (
+                          <span
+                            key={idx}
+                            className="badge-count"
+                            style={{
+                              background: '#e0f2fe',
+                              color: '#0369a1',
+                              fontSize: 11.5,
+                              fontWeight: 700,
+                              whiteSpace: 'normal',
+                              lineHeight: 1.35,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              maxWidth: '100%',
+                              wordBreak: 'break-word',
+                              padding: '4px 10px'
+                            }}
+                          >
+                            📍 {sec.trim()}
+                          </span>
+                        ))}
+                      </div>
+                      <div style={{ fontSize: 11, color: '#64748b', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
+                        🗓️ {p.dias_semana || 'Lunes, Miércoles, Viernes'}
+                      </div>
                     </div>
                   </td>
-                  <td>
+                  <td style={{ minWidth: 220 }}>
                     {p.cisterna_placa ? (
                       <div>
                         <span className="badge-count" style={{ background: '#dbeafe', color: '#1e40af', fontWeight: 800 }}>
@@ -513,9 +531,6 @@ export default function ProgramacionesPage() {
                         <span className="badge-count" style={{ background: '#fee2e2', color: '#b91c1c', fontWeight: 800, fontSize: 11 }}>
                           🔴 0/2 Sin Control
                         </span>
-                        <div style={{ fontSize: 10.5, color: '#991b1b', marginTop: 2 }}>
-                          Exigido por TDR
-                        </div>
                       </div>
                     )}
                   </td>
@@ -595,6 +610,26 @@ export default function ProgramacionesPage() {
                         title="Descargar Hoja de Ruta ANEXO 2 (PDF)"
                       >
                         📄 PDF
+                      </a>
+
+                      <a
+                        href={`${API_BASE_URL}/api/v1/programaciones/${p.id}/excel`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn-action-compact"
+                        style={{
+                          padding: '5px 9px',
+                          fontSize: 11.5,
+                          borderRadius: 6,
+                          fontWeight: 700,
+                          textDecoration: 'none',
+                          color: '#15803d',
+                          background: '#f0fdf4',
+                          border: '1px solid #bbf7d0'
+                        }}
+                        title="Descargar Hoja de Ruta ANEXO 2 (Excel)"
+                      >
+                        📊 Excel
                       </a>
                     </div>
                   </td>

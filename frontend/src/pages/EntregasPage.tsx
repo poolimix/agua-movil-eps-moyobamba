@@ -104,6 +104,29 @@ export default function EntregasPage() {
           style={{ width: 360 }}
         />
         <span className="badge-count">Total: {filtered.length} entregas</span>
+        <a
+          href={`${API_BASE_URL}/api/v1/entregas/export-excel${searchTerm ? `?search=${encodeURIComponent(searchTerm)}` : ''}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="btn-action-compact"
+          style={{
+            padding: '7px 14px',
+            fontSize: 12.5,
+            borderRadius: 8,
+            fontWeight: 700,
+            textDecoration: 'none',
+            color: '#15803d',
+            background: '#f0fdf4',
+            border: '1px solid #bbf7d0',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            marginLeft: 'auto'
+          }}
+          title="Descargar Planilla de Fiscalización de Entregas en Excel"
+        >
+          📊 Exportar Planilla Excel
+        </a>
       </div>
 
       <div className="table-card">
@@ -116,7 +139,7 @@ export default function EntregasPage() {
               <th>Sector / Zona</th>
               <th>Volumen y Saldo</th>
               <th>Ubicación GPS Satelital</th>
-              <th>Foto Evidencia (Obligatoria)</th>
+              <th>Foto</th>
               <th>Firma Digital</th>
               <th>Acciones</th>
             </tr>

@@ -523,3 +523,105 @@ export const importExcel = async (req: Request, res: Response) => {
     res.status(500).json({ message: 'Error interno al procesar archivo Excel', error: error.message });
   }
 };
+
+/**
+ * Exportar Padrón General de Beneficiarios (ANEXO 1) a Excel
+ */
+export const exportarBeneficiariosExcel = async (req: Request, res: Response) => {
+  try {
+    const { search, sector } = req.query;
+
+    let whereClauses: string[] = [];
+    let params: any[] = [];
+
+    if (search) {
+      params.push(`%${String(search).trim()}%`);
+      whereClauses.push(`(dni ILIKE $${params.length} OR nombres_apellidos ILIKE $${params.length} OR calle_direccion ILIKE $${params.length})`);
+    }
+
+    if (sector) {
+      params.push(String(sector).trim());
+      whereClauses.push(`COALESCE(sector_aahh, sector) = $${params.length}`);
+    }
+
+    const whereStr = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+
+    const sql = `
+      SELECT 
+        id,
+        dni,
+        nombres_apellidos,
+        COALESCE(distrito, 'Moyobamba') as distrito,
+        COALESCE(sector_aahh, sector, '') as sector,
+        COALESCE(mz, '') as mz,
+        COALESCE(lt, '') as lt,
+        COALESCE(calle_direccion, direccion, '') as direccion,
+        COALESCE(num_miembros, 1) as num_miembros,
+        COALESCE(telefono, '') as telefono,
+        latitud,
+        longitud,
+        (COALESCE(num_miembros, 1) * ${DOTACION_POR_HABITANTE}) as dotacion_diaria_litros,
+        estado_servicio
+      FROM beneficiarios
+      ${whereStr}
+      ORDER BY COALESCE(sector_aahh, sector) ASC, nombres_apellidos ASC
+    `;
+
+    const result = await query(sql, params);
+    const beneficiarios = result.rows;
+
+    const wb = xlsx.utils.book_new();
+
+    const rows: any[][] = [
+      ['PADRÓN GENERAL DE BENEFICIARIOS — CATASTRO OFICIAL ANEXO 1'],
+      ['PROGRAMA NACIONAL DE SANEAMIENTO URBANO (PNSU) • EPS MOYOBAMBA S.A.'],
+      [`CONVENIO N° 023-2026/VIVIENDA/VMCS/PNSU/DE • TOTAL FAMILIAS EMPADRONADAS: ${beneficiarios.length}`],
+      [],
+      ['N°', 'DNI', 'APELLIDOS Y NOMBRES', 'SECTOR / AA.HH.', 'MZ', 'LOTE', 'DIRECCIÓN / REFERENCIA', 'N° MIEMBROS', 'DOTACIÓN (L/DÍA)', 'TELÉFONO', 'LATITUD', 'LONGITUD', 'ESTADO']
+    ];
+
+    beneficiarios.forEach((b: any, idx: number) => {
+      rows.push([
+        idx + 1,
+        b.dni,
+        b.nombres_apellidos,
+        b.sector,
+        b.mz,
+        b.lt,
+        b.direccion,
+        Number(b.num_miembros || 1),
+        Number(b.dotacion_diaria_litros || 50),
+        b.telefono || '-',
+        b.latitud || '-',
+        b.longitud || '-',
+        b.estado_servicio || 'ACTIVO'
+      ]);
+    });
+
+    const ws = xlsx.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [
+      { wch: 6 },
+      { wch: 12 },
+      { wch: 34 },
+      { wch: 26 },
+      { wch: 8 },
+      { wch: 8 },
+      { wch: 32 },
+      { wch: 14 },
+      { wch: 18 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 12 }
+    ];
+    xlsx.utils.book_append_sheet(wb, ws, 'Padron_Beneficiarios');
+
+    const buffer = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="Padron_Beneficiarios_Anexo1_EPS_${new Date().toISOString().slice(0, 10)}.xlsx"`);
+    res.send(buffer);
+  } catch (error: any) {
+    console.error('Error exportando padrón a Excel:', error);
+    res.status(500).json({ message: 'Error exportando Excel', error: error.message });
+  }
+};

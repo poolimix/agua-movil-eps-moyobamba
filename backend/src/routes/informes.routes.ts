@@ -9,4 +9,7 @@ router.get('/mensual', informesController.getInformeMensual);
 // Endpoint de descarga de PDF oficial
 router.get('/mensual/pdf', informesController.exportarInformePdf);
 
+// Endpoint de descarga de Excel oficial
+router.get('/mensual/excel', informesController.exportarInformeExcel);
+
 export default router;

@@ -116,6 +116,26 @@
   background: #0369a1;
 }
 
+.btn-excel-acta {
+  background: #16a34a;
+  color: #ffffff;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 6px -1px rgba(22, 163, 74, 0.3);
+}
+
+.btn-excel-acta:hover {
+  background: #15803d;
+  box-shadow: 0 4px 10px -1px rgba(22, 163, 74, 0.4);
+}
+
 .btn-print {
   background: #0f172a;
   color: #ffffff;

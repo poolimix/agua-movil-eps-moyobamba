@@ -4,9 +4,11 @@ import { useAuth } from '../context/AuthContext';
 interface SidebarProps {
   isOpen?: boolean;
   onClose?: () => void;
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
-export default function Sidebar({ isOpen, onClose }: SidebarProps) {
+export default function Sidebar({ isOpen, onClose, isCollapsed = false, onToggleCollapse }: SidebarProps) {
   const { user, logout } = useAuth();
 
   const handleNavClick = () => {
@@ -29,48 +31,84 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   };
 
   return (
-    <aside className={`sidebar ${isOpen ? 'sidebar-open' : ''}`}>
+    <aside className={`sidebar ${isOpen ? 'sidebar-open' : ''} ${isCollapsed ? 'sidebar-collapsed' : ''}`}>
       <div className="sidebar-logo">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span className="sidebar-logo-icon">💧</span>
-          <div>
+        <div className="sidebar-brand-content">
+          <span className="sidebar-logo-icon" title="Agua Móvil - EPS Moyobamba">💧</span>
+          <div className="sidebar-brand-text">
             <h2>Agua Móvil</h2>
             <p>EPS Moyobamba</p>
           </div>
         </div>
-        {onClose && (
-          <button className="sidebar-close-btn" onClick={onClose} title="Cerrar menú">
-            ✕
-          </button>
-        )}
+
+        <div className="sidebar-header-actions">
+          {onToggleCollapse && (
+            <button
+              type="button"
+              className="sidebar-collapse-btn"
+              onClick={onToggleCollapse}
+              title={isCollapsed ? "Expandir menú lateral" : "Contraer menú lateral"}
+              aria-label={isCollapsed ? "Expandir menú" : "Contraer menú"}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                {isCollapsed ? (
+                  <polyline points="9 18 15 12 9 6" />
+                ) : (
+                  <polyline points="15 18 9 12 15 6" />
+                )}
+              </svg>
+            </button>
+          )}
+
+          {onClose && (
+            <button className="sidebar-close-btn" onClick={onClose} title="Cerrar menú">
+              ✕
+            </button>
+          )}
+        </div>
       </div>
 
       <nav className="sidebar-nav">
         {/* DASHBOARD */}
-        <NavLink to="/dashboard" onClick={handleNavClick} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+        <NavLink 
+          to="/dashboard" 
+          onClick={handleNavClick} 
+          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+          title="Dashboard"
+        >
           <span className="nav-icon">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
               <polyline points="9 22 9 12 15 12 15 22"/>
             </svg>
           </span>
-          <span>Dashboard</span>
+          <span className="nav-label">Dashboard</span>
         </NavLink>
 
         {/* METAS Y CUMPLIMIENTO */}
-        <NavLink to="/metas" onClick={handleNavClick} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+        <NavLink 
+          to="/metas" 
+          onClick={handleNavClick} 
+          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+          title="Metas y Cumplimiento"
+        >
           <span className="nav-icon">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="10"/>
               <circle cx="12" cy="12" r="6"/>
-              <circle cx="12" cy="12" r="2"/>
+              <circle cx="12" cy="2" r="2"/>
             </svg>
           </span>
-          <span>Metas y Cumplimiento</span>
+          <span className="nav-label">Metas y Cumplimiento</span>
         </NavLink>
 
         {/* BENEFICIARIOS */}
-        <NavLink to="/beneficiarios" onClick={handleNavClick} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+        <NavLink 
+          to="/beneficiarios" 
+          onClick={handleNavClick} 
+          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+          title="Beneficiarios (Padrón)"
+        >
           <span className="nav-icon">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
@@ -79,11 +117,16 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
             </svg>
           </span>
-          <span>Beneficiarios (Padrón)</span>
+          <span className="nav-label">Beneficiarios (Padrón)</span>
         </NavLink>
 
         {/* VALES DE CONSUMO */}
-        <NavLink to="/vales" onClick={handleNavClick} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+        <NavLink 
+          to="/vales" 
+          onClick={handleNavClick} 
+          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+          title="Vales de Consumo"
+        >
           <span className="nav-icon">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/>
@@ -92,11 +135,16 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               <path d="M13 11v2"/>
             </svg>
           </span>
-          <span>Vales de Consumo</span>
+          <span className="nav-label">Vales de Consumo</span>
         </NavLink>
 
         {/* CONTROL DE CALIDAD */}
-        <NavLink to="/calidad" onClick={handleNavClick} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+        <NavLink 
+          to="/calidad" 
+          onClick={handleNavClick} 
+          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+          title="Control de Calidad (Cloro)"
+        >
           <span className="nav-icon">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M10 2v7.31L4.65 17.5a2 2 0 0 0 1.68 2.5h11.34a2 2 0 0 0 1.68-2.5L14 9.31V2"/>
@@ -104,11 +152,16 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               <path d="M7 16h10"/>
             </svg>
           </span>
-          <span>Control de Calidad (Cloro)</span>
+          <span className="nav-label">Control de Calidad (Cloro)</span>
         </NavLink>
 
         {/* PROGRAMACIONES */}
-        <NavLink to="/programaciones" onClick={handleNavClick} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+        <NavLink 
+          to="/programaciones" 
+          onClick={handleNavClick} 
+          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+          title="Programaciones y Rutas"
+        >
           <span className="nav-icon">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect width="18" height="18" x="3" y="4" rx="2" ry="2"/>
@@ -118,21 +171,31 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               <path d="m9 16 2 2 4-4"/>
             </svg>
           </span>
-          <span>Programaciones</span>
+          <span className="nav-label">Programaciones</span>
         </NavLink>
 
         {/* ENTREGAS */}
-        <NavLink to="/entregas" onClick={handleNavClick} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+        <NavLink 
+          to="/entregas" 
+          onClick={handleNavClick} 
+          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+          title="Entregas de Agua"
+        >
           <span className="nav-icon">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"/>
             </svg>
           </span>
-          <span>Entregas de Agua</span>
+          <span className="nav-label">Entregas de Agua</span>
         </NavLink>
 
         {/* INFORMES OFICIALES */}
-        <NavLink to="/informes" onClick={handleNavClick} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+        <NavLink 
+          to="/informes" 
+          onClick={handleNavClick} 
+          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+          title="Informes Oficiales (PNSU)"
+        >
           <span className="nav-icon">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -142,11 +205,16 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               <polyline points="10 9 9 9 8 9"/>
             </svg>
           </span>
-          <span>Informes Oficiales</span>
+          <span className="nav-label">Informes Oficiales</span>
         </NavLink>
 
         {/* BALANCE HÍDRICO */}
-        <NavLink to="/balance" onClick={handleNavClick} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+        <NavLink 
+          to="/balance" 
+          onClick={handleNavClick} 
+          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+          title="Balance Hídrico"
+        >
           <span className="nav-icon">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/>
@@ -156,11 +224,16 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               <path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/>
             </svg>
           </span>
-          <span>Balance Hídrico</span>
+          <span className="nav-label">Balance Hídrico</span>
         </NavLink>
 
         {/* CISTERNAS */}
-        <NavLink to="/cisternas" onClick={handleNavClick} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+        <NavLink 
+          to="/cisternas" 
+          onClick={handleNavClick} 
+          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+          title="Flota de Cisternas"
+        >
           <span className="nav-icon">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/>
@@ -170,11 +243,16 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               <circle cx="7" cy="18" r="2"/>
             </svg>
           </span>
-          <span>Flota de Cisternas</span>
+          <span className="nav-label">Flota de Cisternas</span>
         </NavLink>
 
         {/* PERSONAL */}
-        <NavLink to="/personal" onClick={handleNavClick} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+        <NavLink 
+          to="/personal" 
+          onClick={handleNavClick} 
+          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+          title="Conductores y Personal"
+        >
           <span className="nav-icon">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M2 18a6 6 0 0 1 12 0"/>
@@ -182,7 +260,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               <path d="m17 11 2 2 4-4"/>
             </svg>
           </span>
-          <span>Conductores y Personal</span>
+          <span className="nav-label">Conductores y Personal</span>
         </NavLink>
       </nav>
 
@@ -192,6 +270,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
           alt="avatar"
           className="user-avatar"
           referrerPolicy="no-referrer"
+          title={user?.nombres || 'Usuario'}
         />
         <div className="user-info">
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -202,7 +281,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             <span className="user-email">{user?.email}</span>
           </div>
         </div>
-        <button className="logout-btn" onClick={logout} title="Cerrar sesión">
+        <button className="logout-btn" onClick={logout} title="Cerrar sesión" aria-label="Cerrar sesión">
           ⏻
         </button>
       </div>

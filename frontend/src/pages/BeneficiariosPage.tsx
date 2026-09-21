@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Layout from '../components/Layout';
 import Pagination from '../components/Pagination';
-import api from '../config/api';
+import api, { API_BASE_URL } from '../config/api';
 import './Modules.css';
 
 interface Beneficiario {
@@ -286,6 +286,16 @@ export default function BeneficiariosPage() {
           >
             📥 {importing ? 'Procesando...' : 'Importar Excel (ANEXO 1)'}
           </button>
+          <a
+            href={`${API_BASE_URL}/api/v1/beneficiarios/export-excel${searchTerm ? `?search=${encodeURIComponent(searchTerm)}` : ''}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-secondary"
+            style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, color: '#15803d', background: '#f0fdf4', borderColor: '#bbf7d0', fontWeight: 700 }}
+            title="Descargar Padrón Oficial Catastral (ANEXO 1) en Excel"
+          >
+            📊 Exportar Excel
+          </a>
           <button className="btn-secondary" onClick={() => setSectoresModalOpen(true)}>
             📍 Gestionar Sectores ({sectores.length})
           </button>
@@ -350,25 +360,27 @@ export default function BeneficiariosPage() {
             ) : (
               paginatedData.map((b) => (
                 <tr key={b.id}>
-                  <td><strong>{b.dni}</strong></td>
-                  <td>{b.nombres_apellidos}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}><strong style={{ fontFamily: 'ui-monospace, monospace', color: '#0f172a' }}>{b.dni}</strong></td>
+                  <td><div style={{ minWidth: 170, fontWeight: 600, color: '#0f172a' }}>{b.nombres_apellidos}</div></td>
                   <td>
-                    <span className="badge-count" style={{ background: '#e0f2fe', color: '#0369a1' }}>
-                      {b.sector_aahh || b.sector || 'Moyobamba'}
+                    <span className="badge-count" style={{ background: '#e0f2fe', color: '#0369a1', borderColor: '#bae6fd' }}>
+                      📍 {b.sector_aahh || b.sector || 'Moyobamba'}
                     </span>
                   </td>
                   <td>
-                    {b.num_vivienda ? `Viv. ${b.num_vivienda} ` : ''}
-                    {b.mz ? `(Mz ${b.mz} Lt ${b.lt})` : ''}
+                    <div style={{ minWidth: 120 }}>
+                      {b.num_vivienda ? `Viv. ${b.num_vivienda} ` : ''}
+                      {b.mz ? `(Mz ${b.mz} Lt ${b.lt})` : ''}
+                    </div>
                   </td>
-                  <td>{b.calle_direccion || b.direccion || '-'}</td>
-                  <td><strong>{b.num_miembros} hab.</strong></td>
-                  <td>
-                    <span className="badge-count" style={{ background: '#dcfce7', color: '#15803d' }}>
-                      {b.litros_sugeridos || (b.num_miembros * 50)} Lts
+                  <td><div style={{ minWidth: 140, color: '#475569' }}>{b.calle_direccion || b.direccion || '-'}</div></td>
+                  <td style={{ whiteSpace: 'nowrap' }}><strong>{b.num_miembros} hab.</strong></td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    <span className="badge-count" style={{ background: '#dcfce7', color: '#15803d', borderColor: '#bbf7d0' }}>
+                      💧 {b.litros_sugeridos || (b.num_miembros * 50)} Lts
                     </span>
                   </td>
-                  <td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
                     <button
                       className="btn-secondary"
                       style={{ padding: '5px 10px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
@@ -377,7 +389,7 @@ export default function BeneficiariosPage() {
                       📷 Ver QR
                     </button>
                   </td>
-                  <td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
                     <div style={{ display: 'flex', gap: 6 }}>
                       <button
                         className="btn-secondary"

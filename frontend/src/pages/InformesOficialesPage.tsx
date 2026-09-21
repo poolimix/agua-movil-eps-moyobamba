@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import api, { API_BASE_URL } from '../config/api';
 import './InformesOficialesPage.css';
@@ -120,10 +120,6 @@ export default function InformesOficialesPage() {
         {/* Cabecera Principal */}
         <header className="informes-header">
           <div className="informes-title-block">
-            <div className="convenio-badge">
-              <span className="badge-tag">CONVENIO N° 023-2026/VIVIENDA/VMCS/PNSU/DE</span>
-              <span className="badge-amount">Transferencia: S/ 586,912.74</span>
-            </div>
             <h1 className="informes-title">📑 Informes Oficiales</h1>
             <p className="informes-subtitle">
               Generador de Informes Mensuales (Anexo N° 2) y Cuadros Técnicos del Ministerio de Vivienda y EPS Moyobamba S.A.
@@ -151,9 +147,18 @@ export default function InformesOficialesPage() {
                 target="_blank"
                 rel="noopener noreferrer"
                 className="btn-export-pdf"
-                title="Descargar Informe Oficial en PDF"
+                title="Descargar Informe Oficial Completo en PDF"
               >
                 📄 Descargar PDF
+              </a>
+              <a
+                href={`${API_BASE_URL}/api/v1/informes/mensual/excel?mes=${mes}&anio=${anio}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-export-excel"
+                title="Descargar Informe Oficial en Excel (Libro con 5 Cuadros Técnicos)"
+              >
+                📊 Descargar Excel
               </a>
               <button type="button" className="btn-print" onClick={() => window.print()} title="Imprimir informe">
                 🖨️ Imprimir
@@ -223,28 +228,28 @@ export default function InformesOficialesPage() {
             className={`tab-btn ${activeTab === 'cuadro7' ? 'active' : ''}`}
             onClick={() => setActiveTab('cuadro7')}
           >
-            📊 Cuadro N° 7: Agua Semanal (m³)
+            📊 Agua Semanal (m³)
           </button>
           <button
             type="button"
             className={`tab-btn ${activeTab === 'cuadro1' ? 'active' : ''}`}
             onClick={() => setActiveTab('cuadro1')}
           >
-            👥 Cuadro N° 1: Población Atendida
+            👥 Población Atendida
           </button>
           <button
             type="button"
             className={`tab-btn ${activeTab === 'cuadro8' ? 'active' : ''}`}
             onClick={() => setActiveTab('cuadro8')}
           >
-            🧪 Cuadro N° 8: Registro de Cloro
+            🧪 Registro de Cloro
           </button>
           <button
             type="button"
             className={`tab-btn ${activeTab === 'cuadro6' ? 'active' : ''}`}
             onClick={() => setActiveTab('cuadro6')}
           >
-            🚛 Cuadro N° 6: Flota y Recorridos
+            🚛 Flota y Recorridos
           </button>
           <button
             type="button"
@@ -267,7 +272,7 @@ export default function InformesOficialesPage() {
               {activeTab === 'cuadro7' && (
                 <div className="table-official-wrapper">
                   <div className="official-table-header">
-                    <h3>Cuadro N° 7: Agua entregada a la población objetivo en el mes (m³)</h3>
+                    <h3>Agua entregada a la población objetivo en el mes (m³)</h3>
                     <span className="period-tag">MES DE {nombreMesSeleccionado} {anio}</span>
                   </div>
                   <table className="official-table">
@@ -356,7 +361,7 @@ export default function InformesOficialesPage() {
               {activeTab === 'cuadro1' && (
                 <div className="table-official-wrapper">
                   <div className="official-table-header">
-                    <h3>Cuadro N° 1: Población beneficiaria atendida en el mes</h3>
+                    <h3>Población beneficiaria atendida en el mes</h3>
                     <span className="period-tag">MES DE {nombreMesSeleccionado} {anio}</span>
                   </div>
                   <table className="official-table">
@@ -405,7 +410,7 @@ export default function InformesOficialesPage() {
               {activeTab === 'cuadro8' && (
                 <div className="table-official-wrapper">
                   <div className="official-table-header">
-                    <h3>Cuadro N° 8: Registro diario de medición de cloro en el agua</h3>
+                    <h3>Registro diario de medición de cloro en el agua</h3>
                     <span className="period-tag">Monitoreo obligatorio al Inicio y Fin de jornada</span>
                   </div>
                   <table className="official-table">
@@ -457,7 +462,7 @@ export default function InformesOficialesPage() {
               {activeTab === 'cuadro6' && (
                 <div className="table-official-wrapper">
                   <div className="official-table-header">
-                    <h3>Cuadro N° 6: Actividades realizadas en las cisternas utilizadas para la distribución</h3>
+                    <h3>Actividades realizadas en las cisternas utilizadas para la distribución</h3>
                     <span className="period-tag">Flota Operativa y Mantenimiento</span>
                   </div>
                   <table className="official-table">

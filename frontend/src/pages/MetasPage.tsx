@@ -107,11 +107,26 @@ export default function MetasPage() {
   const getStatusBadge = (estado: string) => {
     switch (estado) {
       case 'CUMPLIDO':
-        return <span style={{ background: '#dcfce7', color: '#15803d', padding: '4px 10px', borderRadius: 20, fontSize: 12, fontWeight: 700 }}>🟢 CUMPLIDO (100%)</span>;
+        return (
+          <span className="status-badge-compact status-cumplido" title="Estado: Cumplido al 100%">
+            <span className="status-dot-indicator dot-green" />
+            <span>Cumpl.</span>
+          </span>
+        );
       case 'EN_PROGRESO':
-        return <span style={{ background: '#fef3c7', color: '#b45309', padding: '4px 10px', borderRadius: 20, fontSize: 12, fontWeight: 700 }}>🟡 EN PROGRESO</span>;
+        return (
+          <span className="status-badge-compact status-progreso" title="Estado: En Progreso">
+            <span className="status-dot-indicator dot-amber" />
+            <span>Prog.</span>
+          </span>
+        );
       default:
-        return <span style={{ background: '#fee2e2', color: '#dc2626', padding: '4px 10px', borderRadius: 20, fontSize: 12, fontWeight: 700 }}>🔴 PENDIENTE</span>;
+        return (
+          <span className="status-badge-compact status-pendiente" title="Estado: Pendiente">
+            <span className="status-dot-indicator dot-red" />
+            <span>Pend.</span>
+          </span>
+        );
     }
   };
 
@@ -136,7 +151,7 @@ export default function MetasPage() {
       </div>
 
       {/* STATS METRIC CARDS */}
-      <div className="stats-grid" style={{ marginBottom: 24 }}>
+      <div className="stats-grid">
         <div className="stat-card" style={{ borderTopColor: '#0284c7' }}>
           <div className="stat-icon">🎯</div>
           <div>
@@ -171,30 +186,36 @@ export default function MetasPage() {
       </div>
 
       {/* GLOBAL PROGRESS BAR */}
-      <div style={{ background: '#ffffff', padding: 20, borderRadius: 16, marginBottom: 24, boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>
+      <div style={{ background: '#ffffff', padding: 22, borderRadius: 18, marginBottom: 24, border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(15, 23, 42, 0.04)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <span style={{ fontSize: 14, fontWeight: 800, color: '#0f172a' }}>
             Progreso Semanal EPS Moyobamba ({totalEntregadoM3} m³ de {totalMetaM3} m³)
           </span>
-          <span style={{ fontSize: 14, fontWeight: 800, color: getProgressBarColor(cumplimientoGlobal) }}>
+          <span style={{ fontSize: 14, fontWeight: 900, color: getProgressBarColor(cumplimientoGlobal) }}>
             {cumplimientoGlobal}% Cumplido
           </span>
         </div>
-        <div style={{ height: 12, background: '#e2e8f0', borderRadius: 6, overflow: 'hidden' }}>
+        <div style={{ height: 12, background: '#e2e8f0', borderRadius: 999, overflow: 'hidden' }}>
           <div
             style={{
               height: '100%',
               width: `${cumplimientoGlobal}%`,
               background: getProgressBarColor(cumplimientoGlobal),
-              borderRadius: 6,
-              transition: 'width 0.5s ease',
+              borderRadius: 999,
+              transition: 'width 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
             }}
           />
         </div>
-        <div style={{ display: 'flex', gap: 18, marginTop: 12, fontSize: 12.5, color: '#64748b' }}>
-          <span>🟢 Cumplidos: <strong>{totalCumplidos}</strong></span>
-          <span>🟡 En Progreso: <strong>{totalEnProgreso}</strong></span>
-          <span>🔴 Pendientes: <strong>{totalPendientes}</strong></span>
+        <div style={{ display: 'flex', gap: 20, marginTop: 12, fontSize: 12.5, color: '#64748b', flexWrap: 'wrap' }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ color: '#10b981', fontSize: 10 }}>●</span> Cumplidos: <strong style={{ color: '#0f172a' }}>{totalCumplidos}</strong>
+          </span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ color: '#f59e0b', fontSize: 10 }}>●</span> En Progreso: <strong style={{ color: '#0f172a' }}>{totalEnProgreso}</strong>
+          </span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ color: '#ef4444', fontSize: 10 }}>●</span> Pendientes: <strong style={{ color: '#0f172a' }}>{totalPendientes}</strong>
+          </span>
         </div>
       </div>
 
@@ -209,9 +230,8 @@ export default function MetasPage() {
             setCurrentPage(1);
           }}
           className="search-input"
-          style={{ width: 340 }}
         />
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           <select
             className="pagination-select"
             value={filterEstado}
@@ -221,9 +241,9 @@ export default function MetasPage() {
             }}
           >
             <option value="">Todos los Estados</option>
-            <option value="CUMPLIDO">🟢 Cumplidos</option>
-            <option value="EN_PROGRESO">🟡 En Progreso</option>
-            <option value="PENDIENTE">🔴 Pendientes</option>
+            <option value="CUMPLIDO">Cumplidos</option>
+            <option value="EN_PROGRESO">En Progreso</option>
+            <option value="PENDIENTE">Pendientes</option>
           </select>
           <span className="badge-count">Total: {filtered.length} sectores</span>
         </div>
@@ -241,7 +261,7 @@ export default function MetasPage() {
               <th>Entregado (Semana)</th>
               <th>Avance (%)</th>
               <th>Estado</th>
-              <th>Acciones</th>
+              <th style={{ textAlign: 'right' }}>Acciones</th>
             </tr>
           </thead>
           <tbody>
@@ -261,53 +281,92 @@ export default function MetasPage() {
               paginatedSectores.map((s) => (
                 <tr key={s.id}>
                   <td>
-                    <strong>{s.nombre}</strong>
-                    <div style={{ fontSize: 11, color: '#64748b' }}>{s.distrito}</div>
+                    <div style={{ minWidth: 140 }}>
+                      <strong style={{ fontSize: 14, color: '#0f172a' }}>{s.nombre}</strong>
+                      <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 2 }}>📍 {s.distrito}</div>
+                    </div>
                   </td>
                   <td>
-                    <strong>{s.total_habitantes} hab.</strong>
-                    <div style={{ fontSize: 11, color: '#64748b' }}>({s.total_beneficiarios} viviendas)</div>
+                    <div style={{ whiteSpace: 'nowrap' }}>
+                      <strong style={{ fontSize: 13.5 }}>{s.total_habitantes} hab.</strong>
+                      <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 2 }}>({s.total_beneficiarios} viviendas)</div>
+                    </div>
                   </td>
                   <td>
-                    <span className="badge-count" style={{ background: '#f1f5f9', color: '#334155', fontWeight: 600 }}>
-                      🗓️ {s.dias_entrega || 'Lunes, Miércoles, Viernes'}
-                    </span>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, maxWidth: 210 }}>
+                      {(s.dias_entrega || 'Lunes, Miércoles, Viernes')
+                        .split(',')
+                        .map((dia, dIdx) => (
+                          <span
+                            key={dIdx}
+                            className="badge-count"
+                            style={{
+                              background: '#f8fafc',
+                              color: '#334155',
+                              fontSize: 11.5,
+                              fontWeight: 600,
+                              padding: '3px 8px',
+                              borderColor: '#e2e8f0',
+                            }}
+                          >
+                            {dia.trim()}
+                          </span>
+                        ))}
+                    </div>
                   </td>
                   <td>
-                    <strong>{s.meta_semanal_m3} m³</strong>
-                    <div style={{ fontSize: 11, color: '#64748b' }}>{s.meta_semanal_litros.toLocaleString()} Lts</div>
+                    <div style={{ whiteSpace: 'nowrap' }}>
+                      <strong style={{ fontSize: 14 }}>{s.meta_semanal_m3} m³</strong>
+                      <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 2 }}>{s.meta_semanal_litros.toLocaleString()} Lts</div>
+                    </div>
                   </td>
                   <td>
-                    <span className="badge-count" style={{ background: s.litros_entregados_semana > 0 ? '#dcfce7' : '#f1f5f9', color: s.litros_entregados_semana > 0 ? '#15803d' : '#64748b', fontWeight: 700 }}>
-                      {s.m3_entregados_semana} m³ ({s.litros_entregados_semana.toLocaleString()} Lts)
-                    </span>
+                    <div style={{ whiteSpace: 'nowrap' }}>
+                      <span
+                        className="badge-count"
+                        style={{
+                          background: s.litros_entregados_semana > 0 ? '#dcfce7' : '#f8fafc',
+                          color: s.litros_entregados_semana > 0 ? '#15803d' : '#64748b',
+                          borderColor: s.litros_entregados_semana > 0 ? '#bbf7d0' : '#e2e8f0',
+                          fontWeight: 700,
+                        }}
+                      >
+                        {s.m3_entregados_semana} m³ ({s.litros_entregados_semana.toLocaleString()} L)
+                      </span>
+                    </div>
                   </td>
                   <td style={{ minWidth: 140 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <div style={{ flex: 1, height: 8, background: '#e2e8f0', borderRadius: 4, overflow: 'hidden' }}>
+                      <div style={{ flex: 1, height: 8, background: '#e2e8f0', borderRadius: 999, overflow: 'hidden' }}>
                         <div
                           style={{
                             height: '100%',
-                            width: `${s.porcentaje_cumplimiento}%`,
+                            width: `${Math.min(100, s.porcentaje_cumplimiento)}%`,
                             background: getProgressBarColor(s.porcentaje_cumplimiento),
-                            borderRadius: 4,
+                            borderRadius: 999,
+                            transition: 'width 0.5s ease',
                           }}
                         />
                       </div>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: getProgressBarColor(s.porcentaje_cumplimiento), width: 35 }}>
+                      <span style={{ fontSize: 12, fontWeight: 800, color: getProgressBarColor(s.porcentaje_cumplimiento), width: 36, textAlign: 'right' }}>
                         {s.porcentaje_cumplimiento}%
                       </span>
                     </div>
                   </td>
                   <td>{getStatusBadge(s.estado_cumplimiento)}</td>
-                  <td>
+                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                     <button
-                      className="btn-secondary"
-                      style={{ padding: '6px 12px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                      className="btn-action-compact"
                       onClick={() => handleOpenEdit(s)}
-                      title="Configurar Meta y Días"
+                      title={`Configurar Meta y Días de ${s.nombre}`}
                     >
-                      ⚙️ Configurar
+                      <span className="action-icon-wrap">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+                          <circle cx="12" cy="12" r="3" />
+                        </svg>
+                      </span>
+                      <span>Config.</span>
                     </button>
                   </td>
                 </tr>

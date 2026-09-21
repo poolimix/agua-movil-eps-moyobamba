@@ -165,13 +165,22 @@ export default function BalanceHidricoPage() {
 
             <div className="action-btns">
               <a
-                href={`${API_BASE_URL}/api/v1/balance/pdf`}
+                href={`${API_BASE_URL}/api/v1/balance/pdf${fechaInicio || fechaFin || cisternaId ? `?${new URLSearchParams({ ...(fechaInicio ? { fecha_inicio: fechaInicio } : {}), ...(fechaFin ? { fecha_fin: fechaFin } : {}), ...(cisternaId ? { cisterna_id: cisternaId } : {}) }).toString()}` : ''}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="btn-pdf-acta"
-                title="Descargar Acta Técnica de Conciliación en PDF"
+                title="Descargar Acta Técnica de Conciliación Completa en PDF"
               >
                 📄 Descargar Acta PDF
+              </a>
+              <a
+                href={`${API_BASE_URL}/api/v1/balance/excel${fechaInicio || fechaFin || cisternaId ? `?${new URLSearchParams({ ...(fechaInicio ? { fecha_inicio: fechaInicio } : {}), ...(fechaFin ? { fecha_fin: fechaFin } : {}), ...(cisternaId ? { cisterna_id: cisternaId } : {}) }).toString()}` : ''}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-excel-acta"
+                title="Descargar Auditoría de Balance Hídrico en Excel"
+              >
+                📊 Descargar Excel
               </a>
               <button type="button" className="btn-print" onClick={() => window.print()}>
                 🖨️ Imprimir

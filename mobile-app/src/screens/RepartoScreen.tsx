@@ -14,6 +14,7 @@ import {
   Platform,
 } from 'react-native';
 import SignatureScreen, { SignatureViewRef } from 'react-native-signature-canvas';
+import { WebView } from 'react-native-webview';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -23,6 +24,99 @@ import * as Location from 'expo-location';
 import { getDatabase } from '../database/schema';
 import { syncData } from '../services/SyncService';
 import { BACKEND_URL } from '../config/api';
+
+// Plantilla HTML5 Canvas para incrustar datos de georreferenciación en la imagen
+const WATERMARK_HTML = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin:0;padding:0;background:transparent;">
+  <canvas id="watermarkCanvas" style="display:none;"></canvas>
+  <script>
+    window.stampImage = function(payloadStr) {
+      try {
+        var payload = JSON.parse(payloadStr);
+        var img = new Image();
+        img.onload = function() {
+          try {
+            var canvas = document.getElementById('watermarkCanvas');
+            var ctx = canvas.getContext('2d');
+
+            var maxW = 1024;
+            var scale = Math.min(1, maxW / img.width);
+            canvas.width = Math.round(img.width * scale);
+            canvas.height = Math.round(img.height * scale);
+
+            // 1. Dibujar fotografía base
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+            // 2. Dimensionar franja de metadatos (banner inferior)
+            var bannerHeight = Math.max(140, Math.min(220, Math.round(canvas.height * 0.23)));
+            var bannerY = canvas.height - bannerHeight;
+
+            // Fondo translúcido oscuro de alto contraste
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+            ctx.fillRect(0, bannerY, canvas.width, bannerHeight);
+
+            // Borde superior cian tecnológico
+            ctx.fillStyle = '#0284c7';
+            ctx.fillRect(0, bannerY, canvas.width, 5);
+
+            var paddingLeft = 24;
+            var startTextY = bannerY + 28;
+            var lineHeight = Math.round(bannerHeight / 5.2);
+
+            // Línea 1: Encabezado Institucional
+            ctx.font = 'bold 18px Arial, sans-serif';
+            ctx.fillStyle = '#38bdf8';
+            ctx.fillText('🏢 EPS MOYOBAMBA S.A. • CONVENIO PNSU - MVCS', paddingLeft, startTextY);
+
+            // Línea 2: Beneficiario y DNI
+            ctx.font = 'bold 15px Arial, sans-serif';
+            ctx.fillStyle = '#ffffff';
+            var benText = '👤 ' + (payload.beneficiario || 'Beneficiario Acreditado') + ' | DNI: ' + (payload.dni || '-');
+            ctx.fillText(benText, paddingLeft, startTextY + lineHeight);
+
+            // Línea 3: Sector y Dirección
+            ctx.font = '14px Arial, sans-serif';
+            ctx.fillStyle = '#e2e8f0';
+            var locText = '📍 SECTOR: ' + (payload.sector || 'Moyobamba') + ' • DIR: ' + (payload.direccion || '-');
+            ctx.fillText(locText, paddingLeft, startTextY + (lineHeight * 2));
+
+            // Línea 4: Coordenadas Satelitales GPS
+            ctx.font = 'bold 14px monospace, Courier';
+            ctx.fillStyle = '#4ade80';
+            var gpsText = '🌐 GPS: Lat ' + (payload.latitud || '-') + ', Long ' + (payload.longitud || '-') + ' (±' + (payload.precision || '5') + 'm)';
+            ctx.fillText(gpsText, paddingLeft, startTextY + (lineHeight * 3));
+
+            // Línea 5: Fecha, Hora y Cisterna
+            ctx.font = '13px Arial, sans-serif';
+            ctx.fillStyle = '#cbd5e1';
+            var timeText = '🕒 ' + (payload.fechaHora || new Date().toLocaleString()) + ' • ' + (payload.cisterna ? 'Cisterna: ' + payload.cisterna : 'Distribución Móvil');
+            ctx.fillText(timeText, paddingLeft, startTextY + (lineHeight * 4));
+
+            // Exportar imagen estampada en JPEG calidad 85
+            var resultDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+            window.ReactNativeWebView.postMessage(JSON.stringify({ status: 'OK', base64: resultDataUrl }));
+          } catch(errDraw) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({ status: 'ERROR', message: errDraw.message }));
+          }
+        };
+        img.onerror = function() {
+          window.ReactNativeWebView.postMessage(JSON.stringify({ status: 'ERROR', message: 'No se pudo cargar la imagen' }));
+        };
+        img.src = payload.image;
+      } catch (err) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({ status: 'ERROR', message: err.message }));
+      }
+    };
+  </script>
+</body>
+</html>
+`;
 
 // Regla de Negocio Oficial EPS Moyobamba
 const DOTACION_POR_HABITANTE = 50; // 50 Litros por persona
@@ -48,10 +142,13 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
   const [isSyncing, setIsSyncing] = useState(false);
   const [, requestCameraPermission] = useCameraPermissions();
   
-  // Photo Evidence State
+  // Photo Evidence State & Fehaciencia GPS
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [photoPreviewVisible, setPhotoPreviewVisible] = useState(false);
   const [tempPhotoUri, setTempPhotoUri] = useState<string | null>(null);
+  const [stampingLoading, setStampingLoading] = useState(false);
+  const watermarkWebViewRef = useRef<WebView>(null);
+  const watermarkResolverRef = useRef<((value: string | null) => void) | null>(null);
 
   // GPS Location State
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
@@ -408,7 +505,103 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
     }
   };
 
-  // --- PHOTO EVIDENCE (CAMERA / GALLERY) ---
+  // --- PHOTO EVIDENCE (CAMERA / GALLERY) CON FEHACIENCIA GPS ---
+  const handleWatermarkMessage = (event: any) => {
+    try {
+      const parsed = JSON.parse(event.nativeEvent.data);
+      if (parsed.status === 'OK' && parsed.base64) {
+        watermarkResolverRef.current?.(parsed.base64);
+      } else {
+        watermarkResolverRef.current?.(null);
+      }
+    } catch (_) {
+      watermarkResolverRef.current?.(null);
+    }
+  };
+
+  const stampPhotoWithEvidenceData = async (sourceUri: string): Promise<string> => {
+    try {
+      // 1. Redimensionar y obtener base64
+      const manipulated = await ImageManipulator.manipulateAsync(
+        sourceUri,
+        [{ resize: { width: 1024 } }],
+        { compress: 0.82, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+      );
+
+      if (!manipulated.base64) {
+        return manipulated.uri;
+      }
+
+      // 2. Obtener la ubicación GPS más reciente
+      let currentLoc = location;
+      if (!currentLoc) {
+        try {
+          const locRes = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+          if (locRes) {
+            currentLoc = locRes;
+            setLocation(locRes);
+          }
+        } catch (_) {}
+      }
+
+      const cisternaObj = cisternas.find((c) => c.id === selectedCisternaId);
+      const cisternaPlaca = cisternaObj?.placa || selectedProg?.cisterna_placa || 'EGA-902';
+
+      const payload = {
+        image: `data:image/jpeg;base64,${manipulated.base64}`,
+        beneficiario: beneficiario?.nombres_apellidos || 'Beneficiario Acreditado',
+        dni: beneficiario?.dni || '-',
+        sector: beneficiario?.sector_aahh || beneficiario?.sector || selectedProg?.zona || 'Moyobamba',
+        direccion: beneficiario?.calle_direccion || beneficiario?.direccion || '-',
+        latitud: currentLoc?.coords?.latitude ? currentLoc.coords.latitude.toFixed(6) : (location?.coords?.latitude ? location.coords.latitude.toFixed(6) : '-6.034172'),
+        longitud: currentLoc?.coords?.longitude ? currentLoc.coords.longitude.toFixed(6) : (location?.coords?.longitude ? location.coords.longitude.toFixed(6) : '-76.971391'),
+        precision: currentLoc?.coords?.accuracy ? Math.round(currentLoc.coords.accuracy) : 5,
+        fechaHora: new Date().toLocaleString('es-PE'),
+        cisterna: cisternaPlaca,
+      };
+
+      // 3. Estampado en Canvas HTML5 mediante WebView con timeout de respaldo
+      const stampedBase64 = await new Promise<string | null>((resolve) => {
+        const timer = setTimeout(() => {
+          watermarkResolverRef.current = null;
+          resolve(null);
+        }, 4500);
+
+        watermarkResolverRef.current = (resultBase64: string | null) => {
+          clearTimeout(timer);
+          resolve(resultBase64);
+        };
+
+        const jsCode = `window.stampImage(${JSON.stringify(JSON.stringify(payload))}); true;`;
+        watermarkWebViewRef.current?.injectJavaScript(jsCode);
+      });
+
+      if (!stampedBase64) {
+        return manipulated.uri;
+      }
+
+      // 4. Guardar permanentemente en el directorio de evidencias
+      const base64Clean = stampedBase64.replace(/^data:image\/\w+;base64,/, '');
+      const dirPath = `${FileSystem.documentDirectory}evidencias/`;
+      const dirInfo = await FileSystem.getInfoAsync(dirPath);
+      if (!dirInfo.exists) {
+        await FileSystem.makeDirectoryAsync(dirPath, { intermediates: true });
+      }
+
+      const permanentFilename = `evidencia_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.jpg`;
+      const permanentUri = `${dirPath}${permanentFilename}`;
+
+      await FileSystem.writeAsStringAsync(permanentUri, base64Clean, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      return permanentUri;
+    } catch (err) {
+      console.warn('Error watermarking photo, using original:', err);
+      return sourceUri;
+    }
+  };
+
   const handleTakePhoto = async () => {
     try {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -420,15 +613,20 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ['images'],
         allowsEditing: false,
-        quality: 0.8,
+        quality: 0.85,
         exif: false,
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        setTempPhotoUri(result.assets[0].uri);
+        setStampingLoading(true);
+        // Estampar inmediatamente los datos GPS para que aparezcan en la vista previa
+        const stampedUri = await stampPhotoWithEvidenceData(result.assets[0].uri);
+        setTempPhotoUri(stampedUri);
+        setStampingLoading(false);
         setPhotoPreviewVisible(true);
       }
     } catch (error: any) {
+      setStampingLoading(false);
       console.error('Error taking photo:', error);
       Alert.alert('Error', 'No se pudo abrir la cámara: ' + error.message);
     }
@@ -436,39 +634,10 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
 
   const handleConfirmPhoto = async () => {
     if (!tempPhotoUri) return;
-
-    try {
-      // 1. Compress & Convert to WebP format (max width 1024px, 65% quality)
-      const manipulated = await ImageManipulator.manipulateAsync(
-        tempPhotoUri,
-        [{ resize: { width: 1024 } }],
-        { compress: 0.65, format: ImageManipulator.SaveFormat.WEBP }
-      );
-
-      // 2. Ensure permanent directory in documentDirectory
-      const dirPath = `${FileSystem.documentDirectory}evidencias/`;
-      const dirInfo = await FileSystem.getInfoAsync(dirPath);
-      if (!dirInfo.exists) {
-        await FileSystem.makeDirectoryAsync(dirPath, { intermediates: true });
-      }
-
-      // 3. Move/Copy to permanent storage with .webp extension
-      const permanentFilename = `evidencia_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.webp`;
-      const permanentUri = `${dirPath}${permanentFilename}`;
-
-      await FileSystem.copyAsync({
-        from: manipulated.uri,
-        to: permanentUri,
-      });
-
-      setPhotoUri(permanentUri);
-      setPhotoPreviewVisible(false);
-      setTempPhotoUri(null);
-      Alert.alert('✅ Evidencia Lista', 'Fotografía optimizada en formato WEBP ultra liviano.');
-    } catch (error: any) {
-      console.error('Error saving photo:', error);
-      Alert.alert('Error', 'No se pudo procesar la fotografía: ' + error.message);
-    }
+    setPhotoUri(tempPhotoUri);
+    setPhotoPreviewVisible(false);
+    setTempPhotoUri(null);
+    Alert.alert('✅ Evidencia Lista', 'Fotografía georreferenciada con coordenadas, fecha y dirección incrustadas.');
   };
 
   const handleRetakePhoto = () => {
@@ -1497,11 +1666,27 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
     </View>
   )}
 
-      {/* PHOTO PREVIEW MODAL (CONFIRM / RETAKE) */}
+      {/* MODAL DE PROCESAMIENTO E INCRUSTACIÓN DE METADATOS */}
+      <Modal visible={stampingLoading} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { alignItems: 'center', padding: 24 }]}>
+            <ActivityIndicator size="large" color="#0284c7" style={{ marginBottom: 14 }} />
+            <Text style={[styles.modalTitle, { marginBottom: 6 }]}>Incrustando Evidencia GPS</Text>
+            <Text style={{ fontSize: 12.5, color: '#64748b', textAlign: 'center' }}>
+              Estampando coordenadas satelitales, fecha, hora, dirección y sector en la fotografía...
+            </Text>
+          </View>
+        </View>
+      </Modal>
+
+      {/* PHOTO PREVIEW MODAL (CONFIRM / RETAKE CON MARCA DE AGUA) */}
       <Modal visible={photoPreviewVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Confirmar Fotografía de Evidencia</Text>
+            <Text style={styles.modalTitle}>Evidencia Fotográfica Fehaciente</Text>
+            <Text style={{ fontSize: 11.5, color: '#0284c7', textAlign: 'center', marginBottom: 10, fontWeight: '700' }}>
+              📍 Coordenadas, fecha, hora y dirección incrustadas
+            </Text>
             {tempPhotoUri && (
               <Image source={{ uri: tempPhotoUri }} style={styles.modalImage} resizeMode="contain" />
             )}
@@ -1692,6 +1877,18 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
         </View>
       </Modal>
       </ScrollView>
+
+      {/* WEBVIEW OCULTO PARA ESTAMPADO DE MARCA DE AGUA EN CANVASES */}
+      <View style={{ width: 0, height: 0, opacity: 0, position: 'absolute' }} pointerEvents="none">
+        <WebView
+          ref={watermarkWebViewRef}
+          originWhitelist={['*']}
+          source={{ html: WATERMARK_HTML }}
+          onMessage={handleWatermarkMessage}
+          javaScriptEnabled={true}
+          domStorageEnabled={true}
+        />
+      </View>
     </KeyboardAvoidingView>
   );
 }

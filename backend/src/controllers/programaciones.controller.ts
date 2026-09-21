@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import PDFDocument from 'pdfkit';
+import * as xlsx from 'xlsx';
 import { query } from '../db';
 
 export const getAllProgramaciones = async (req: Request, res: Response) => {
@@ -282,7 +283,30 @@ export const generatePdf = async (req: Request, res: Response) => {
     });
 
     doc.moveDown(1.5);
-    doc.fontSize(9).text(`Total de familias atendidas: ${entregas.length}  |  Total volumen entregado: ${entregas.reduce((acc, e) => acc + Number(e.litros_entregados || 0), 0).toLocaleString()} Litros`, { align: 'right' });
+    doc.fontSize(9).font('Helvetica-Bold').fillColor('#0f172a').text(
+      `Total de familias atendidas: ${entregas.length}  |  Total volumen entregado: ${entregas.reduce((acc, e) => acc + Number(e.litros_entregados || 0), 0).toLocaleString()} Litros`,
+      { align: 'right' }
+    );
+
+    const finalY = doc.y + 15;
+    if (finalY < 490) {
+      doc.fontSize(8).font('Helvetica');
+      doc.moveTo(100, finalY + 30).lineTo(320, finalY + 30).strokeColor('#64748b').stroke();
+      doc.text('Firma del Conductor de Cisterna', 100, finalY + 34, { width: 220, align: 'center' });
+      doc.fontSize(7).text(`Conductor: ${programacion.conductor_nombre || 'EPS Moyobamba'}`, 100, finalY + 44, { width: 220, align: 'center' });
+
+      doc.fontSize(8);
+      doc.moveTo(520, finalY + 30).lineTo(740, finalY + 30).strokeColor('#64748b').stroke();
+      doc.text('Firma del Supervisor de Campo / EPS', 520, finalY + 34, { width: 220, align: 'center' });
+      doc.fontSize(7).text('Convenio N° 023-2026/VIVIENDA/VMCS/PNSU/DE', 520, finalY + 44, { width: 220, align: 'center' });
+    }
+
+    const totalPages = doc.bufferedPageRange().count;
+    for (let i = 0; i < totalPages; i++) {
+      doc.switchToPage(i);
+      doc.fontSize(7).font('Helvetica').fillColor('#94a3b8');
+      doc.text(`EPS MOYOBAMBA S.A. • Anexo N° 2 (Hoja de Ruta de Campo) • Página ${i + 1} de ${totalPages}`, 40, 560, { align: 'center', width: 760 });
+    }
 
     doc.end();
   } catch (error: any) {
@@ -290,5 +314,100 @@ export const generatePdf = async (req: Request, res: Response) => {
     if (!res.headersSent) {
       res.status(500).json({ message: 'Internal server error', error: error.message });
     }
+  }
+};
+
+/**
+ * Exportar Hoja de Ruta ANEXO 2 en formato Excel (.xlsx)
+ */
+export const exportarProgramacionExcel = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const progResult = await query(`
+      SELECT 
+        p.*,
+        c.placa as cisterna_placa,
+        c.marca_modelo as cisterna_marca,
+        c.capacidad_m3 as cisterna_capacidad_m3,
+        CONCAT(pers.nombres, ' ', pers.apellidos) as conductor_nombre,
+        pers.licencia_conducir as conductor_licencia
+      FROM programaciones p
+      LEFT JOIN cisternas c ON p.cisterna_id = c.id
+      LEFT JOIN personal_operativo pers ON p.conductor_id = pers.id
+      WHERE p.id = $1
+    `, [id]);
+
+    if (progResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Programacion no encontrada' });
+    }
+    const prog = progResult.rows[0];
+
+    const entregasResult = await query(`
+      SELECT e.*, b.nombres_apellidos, b.dni, b.direccion, b.num_miembros, b.telefono, b.sector_aahh 
+      FROM entregas_agua e
+      JOIN beneficiarios b ON e.beneficiario_id = b.id
+      WHERE e.programacion_id = $1
+      ORDER BY b.nombres_apellidos ASC
+    `, [id]);
+    const entregas = entregasResult.rows;
+
+    const wb = xlsx.utils.book_new();
+
+    const rows: any[][] = [
+      ['HOJA DE RUTA Y PLANILLA DE ENTREGA DE AGUA — ANEXO 2 (PNSU / EPS MOYOBAMBA)'],
+      [`PROGRAMACIÓN N°: #${id} • FECHA: ${new Date(prog.fecha).toLocaleDateString('es-PE')}`],
+      [`ZONA / SECTOR: ${prog.zona} • CISTERNA: ${prog.cisterna_placa || '-'} (${prog.cisterna_capacidad_m3 || 15} m³)`],
+      [`CONDUCTOR: ${prog.conductor_nombre || 'Asignado'} (Lic: ${prog.conductor_licencia || '-'}) • VIAJES PROGRAMADOS: ${prog.viajes_estimados || 1}`],
+      [],
+      ['N°', 'JEFE DE FAMILIA', 'DNI', 'SECTOR / AA.HH.', 'DIRECCIÓN', 'HABITANTES', 'VOLUMEN (L)', 'SALDO (L)', 'ESTADO', 'HORA ENTREGA', 'VERIFICACIÓN']
+    ];
+
+    let totalLitros = 0;
+    entregas.forEach((e: any, idx: number) => {
+      const litros = Number(e.litros_entregados || 0);
+      totalLitros += litros;
+      const saldo = Number(e.saldo_pendiente || 0);
+      rows.push([
+        idx + 1,
+        e.nombres_apellidos,
+        e.dni,
+        e.sector_aahh || prog.zona,
+        e.direccion || '-',
+        Number(e.num_miembros || 1),
+        litros,
+        saldo,
+        saldo > 0 ? 'PARCIAL' : 'COMPLETO',
+        e.fecha_hora ? new Date(e.fecha_hora).toLocaleTimeString('es-PE') : '-',
+        e.foto_url ? 'FOTO Y GPS' : (e.firma_base64 ? 'FIRMA DIGITAL' : 'REGISTRADO')
+      ]);
+    });
+
+    rows.push([]);
+    rows.push(['TOTALES', `${entregas.length} Familias Atendidas`, '', '', '', '', totalLitros, '', '', '', '']);
+
+    const ws = xlsx.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [
+      { wch: 6 },
+      { wch: 32 },
+      { wch: 14 },
+      { wch: 25 },
+      { wch: 30 },
+      { wch: 12 },
+      { wch: 14 },
+      { wch: 12 },
+      { wch: 14 },
+      { wch: 15 },
+      { wch: 18 }
+    ];
+    xlsx.utils.book_append_sheet(wb, ws, `HojaRuta_Prog_${id}`);
+
+    const buffer = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="Hoja_Ruta_Anexo2_Prog_${id}.xlsx"`);
+    res.send(buffer);
+  } catch (error: any) {
+    console.error('Error exportando Excel de programación:', error);
+    res.status(500).json({ message: 'Error exportando Excel', error: error.message });
   }
 };

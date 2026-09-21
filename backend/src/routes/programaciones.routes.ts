@@ -6,6 +6,7 @@ const router = Router();
 
 router.get('/', programacionesController.getAllProgramaciones);
 router.get('/:id/pdf', programacionesController.generatePdf);
+router.get('/:id/excel', programacionesController.exportarProgramacionExcel);
 
 // Modificaciones protegidas por roles
 router.post('/', verifyToken, requireRole(['ADMIN', 'SUPERVISOR']), programacionesController.createProgramacion);

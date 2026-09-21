@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { query } from '../db';
 import PDFDocument from 'pdfkit';
+import * as xlsx from 'xlsx';
 import fs from 'fs';
 import path from 'path';
 
@@ -373,5 +374,114 @@ export const generarActaPdf = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error generando acta PDF:', error);
     res.status(500).json({ message: 'Error al generar acta en PDF', error: error.message });
+  }
+};
+
+/**
+ * Exportar Planilla Consolidada de Entregas de Campo a Excel (.xlsx)
+ */
+export const exportarEntregasExcel = async (req: Request, res: Response) => {
+  try {
+    const { search, programacion_id } = req.query;
+
+    let whereClauses: string[] = [];
+    let params: any[] = [];
+
+    if (search) {
+      params.push(`%${String(search).trim()}%`);
+      whereClauses.push(`(b.dni ILIKE $${params.length} OR b.nombres_apellidos ILIKE $${params.length} OR b.sector_aahh ILIKE $${params.length} OR e.local_id ILIKE $${params.length})`);
+    }
+
+    if (programacion_id) {
+      params.push(programacion_id);
+      whereClauses.push(`e.programacion_id = $${params.length}`);
+    }
+
+    const whereStr = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+
+    const sql = `
+      SELECT 
+        e.*, 
+        b.nombres_apellidos, 
+        b.dni, 
+        COALESCE(b.calle_direccion, b.direccion, '') as direccion, 
+        COALESCE(b.sector_aahh, b.sector, '') as sector, 
+        b.num_miembros, 
+        b.telefono,
+        c.placa as cisterna_placa,
+        p.zona, 
+        p.fecha as fecha_programacion
+      FROM entregas_agua e
+      LEFT JOIN beneficiarios b ON e.beneficiario_id = b.id
+      LEFT JOIN programaciones p ON e.programacion_id = p.id
+      LEFT JOIN cisternas c ON e.cisterna_id = c.id
+      ${whereStr}
+      ORDER BY e.fecha_hora DESC
+    `;
+
+    const result = await query(sql, params);
+    const entregas = result.rows;
+
+    const wb = xlsx.utils.book_new();
+
+    const rows: any[][] = [
+      ['PLANILLA DE FISCALIZACIÓN Y ACTAS DE ENTREGA DE AGUA EN CAMPO'],
+      ['PROGRAMA NACIONAL DE SANEAMIENTO URBANO (PNSU) • EPS MOYOBAMBA S.A.'],
+      [`CONVENIO N° 023-2026/VIVIENDA/VMCS/PNSU/DE • TOTAL ENTREGAS AUDITADAS: ${entregas.length}`],
+      [],
+      ['N°', 'ID ENTREGA', 'FECHA Y HORA', 'BENEFICIARIO', 'DNI', 'SECTOR / AA.HH.', 'DIRECCIÓN', 'LITROS ENTREGADOS', 'SALDO PENDIENTE', 'CISTERNA', 'LATITUD', 'LONGITUD', 'ESTADO', 'ACREDITACIÓN']
+    ];
+
+    let totalLitros = 0;
+    entregas.forEach((e: any, idx: number) => {
+      const litros = Number(e.litros_entregados || 0);
+      totalLitros += litros;
+      rows.push([
+        idx + 1,
+        `#${e.id}`,
+        e.fecha_hora ? new Date(e.fecha_hora).toLocaleString('es-PE') : '-',
+        e.nombres_apellidos,
+        e.dni,
+        e.sector,
+        e.direccion,
+        litros,
+        Number(e.saldo_pendiente || 0),
+        e.cisterna_placa || '-',
+        e.latitud || '-',
+        e.longitud || '-',
+        e.estado_entrega || 'COMPLETO',
+        e.foto_url ? 'FOTO REGISTRADA' : (e.firma_base64 ? 'FIRMA DIGITAL' : 'VERIFICADO')
+      ]);
+    });
+
+    rows.push([]);
+    rows.push(['TOTALES', '', '', `${entregas.length} Actas`, '', '', '', totalLitros, '', '', '', '', '', '']);
+
+    const ws = xlsx.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [
+      { wch: 6 },
+      { wch: 12 },
+      { wch: 22 },
+      { wch: 32 },
+      { wch: 12 },
+      { wch: 24 },
+      { wch: 28 },
+      { wch: 16 },
+      { wch: 16 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 18 }
+    ];
+    xlsx.utils.book_append_sheet(wb, ws, 'Planilla_Entregas');
+
+    const buffer = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="Planilla_Entregas_Campo_EPS_${new Date().toISOString().slice(0, 10)}.xlsx"`);
+    res.send(buffer);
+  } catch (error: any) {
+    console.error('Error exportando entregas a Excel:', error);
+    res.status(500).json({ message: 'Error exportando entregas a Excel', error: error.message });
   }
 };

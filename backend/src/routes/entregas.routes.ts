@@ -5,6 +5,7 @@ import { verifyToken, requireRole } from '../middleware/auth.middleware';
 const router = Router();
 
 router.get('/', entregasController.getAllEntregas);
+router.get('/export-excel', entregasController.exportarEntregasExcel);
 router.get('/:id/pdf', entregasController.generarActaPdf);
 router.post('/sync', entregasController.syncEntregas);
 router.delete('/:id', verifyToken, requireRole(['ADMIN']), entregasController.deleteEntrega);

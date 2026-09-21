@@ -7,6 +7,7 @@ const router = Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
 router.get('/', beneficiariosController.getAllBeneficiarios);
+router.get('/export-excel', beneficiariosController.exportarBeneficiariosExcel);
 router.get('/buscar/:dni', beneficiariosController.getBeneficiarioByDni);
 
 // Rutas de administración y edición protegidas por rol

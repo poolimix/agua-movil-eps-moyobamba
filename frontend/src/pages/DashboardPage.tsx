@@ -892,7 +892,21 @@ export default function DashboardPage() {
                 ) : (
                   ultimasEntregas.map((ent) => (
                     <tr key={ent.id}>
-                      <td className="font-mono text-muted">{ent.fecha_hora}</td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        <div style={{ fontWeight: 700, color: '#0f172a', fontSize: 13 }}>
+                          {isNaN(new Date(ent.fecha_hora).getTime())
+                            ? (ent.fecha_hora?.split(' ')[0] || ent.fecha_hora)
+                            : new Date(ent.fecha_hora).toLocaleDateString('es-PE')}
+                        </div>
+                        <div style={{ fontSize: 11, color: '#64748b', marginTop: 2, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          <span>🕒</span>
+                          <span>
+                            {isNaN(new Date(ent.fecha_hora).getTime())
+                              ? (ent.fecha_hora?.split(' ')[1] || '')
+                              : new Date(ent.fecha_hora).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      </td>
                       <td>
                         <div className="user-cell">
                           <span className="avatar-mini">👤</span>
