@@ -187,63 +187,295 @@ export default function CalidadPage() {
 
   const paginatedControles = controles.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
+  const totalControlesNum = Number(stats?.total_controles) || 0;
+  const conformesNum = Number(stats?.conformes) || 0;
+  const pctConformidad = totalControlesNum > 0 
+    ? Math.round((conformesNum / totalControlesNum) * 100) 
+    : 100;
+  const cloroPromedio = parseFloat(stats?.promedio_cloro_ppm || '0.00');
+  const turbiedadPromedio = parseFloat(stats?.promedio_turbiedad_ntu || '0.00');
+  const isCloroOptimo = cloroPromedio >= 0.5 && cloroPromedio <= 2.0;
+  const isTurbiedadOptima = turbiedadPromedio < 5.0;
+
   return (
     <Layout>
       <div className="module-container">
-        {/* Header */}
-        <div className="module-header">
+        {/* Header con Badge Normativo y Acción */}
+        <div className="module-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
           <div>
-            <h1 className="module-title">🧪 Control de Calidad del Agua (Cloro Residual y Turbiedad)</h1>
-            <p className="module-subtitle">Monitoreo organoléptico y fisicoquímico</p>
-          </div>
-        </div>
-
-        {/* Stats Cards */}
-        <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginBottom: 24 }}>
-          <div className="stat-card" style={{ background: '#fff', padding: 16, borderRadius: 8, border: '1px solid #e2e8f0' }}>
-            <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>TOTAL REGISTROS</div>
-            <div style={{ fontSize: 24, fontWeight: 800, color: '#0f172a', marginTop: 4 }}>{stats?.total_controles || 0}</div>
-            <div style={{ fontSize: 11, color: '#10b981', marginTop: 4 }}>✓ {stats?.conformes || 0} Aptos para consumo</div>
-          </div>
-          <div className="stat-card" style={{ background: '#fff', padding: 16, borderRadius: 8, border: '1px solid #e2e8f0' }}>
-            <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>PROMEDIO CLORO RESIDUAL</div>
-            <div style={{ fontSize: 24, fontWeight: 800, color: '#0284c7', marginTop: 4 }}>{stats?.promedio_cloro_ppm || '0.00'} ppm</div>
-            <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>Rango óptimo: 0.5 - 2.0 ppm</div>
-          </div>
-          <div className="stat-card" style={{ background: '#fff', padding: 16, borderRadius: 8, border: '1px solid #e2e8f0' }}>
-            <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>PROMEDIO TURBIEDAD</div>
-            <div style={{ fontSize: 24, fontWeight: 800, color: '#6366f1', marginTop: 4 }}>{stats?.promedio_turbiedad_ntu || '0.00'} NTU</div>
-            <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>Límite máximo: &lt; 5.0 NTU</div>
-          </div>
-          <div className="stat-card" style={{ background: '#fff', padding: 16, borderRadius: 8, border: '1px solid #e2e8f0' }}>
-            <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>CONFORMIDAD SANITARIA</div>
-            <div style={{ fontSize: 24, fontWeight: 800, color: '#16a34a', marginTop: 4 }}>
-              {stats?.total_controles && Number(stats.total_controles) > 0 
-                ? `${Math.round((Number(stats.conformes) / Number(stats.total_controles)) * 100)}%` 
-                : '100%'}
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#eff6ff', color: '#1d4ed8', border: '1px solid #dbeafe', padding: '3px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700, marginBottom: 6 }}>
+              <span>🛡️ D.S. 031-2010-SA</span>
+              <span>•</span>
+              <span>FISCALIZACIÓN SANITARIA EPS MOYOBAMBA</span>
             </div>
-            <div style={{ fontSize: 11, color: '#16a34a', marginTop: 4 }}>Acreditado ante PNSU</div>
+            <h1 className="module-title" style={{ margin: 0 }}>🧪 Control de Calidad del Agua (Cloro y Turbiedad)</h1>
+            <p className="module-subtitle" style={{ margin: '4px 0 0' }}>
+              Monitoreo organoléptico y fisicoquímico fehaciente en surtidor, ruta y punto de entrega
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <button 
+              type="button" 
+              className="btn-primary"
+              onClick={() => setModalOpen(true)}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 18px', borderRadius: 10, fontSize: 13, fontWeight: 700 }}
+            >
+              <span style={{ fontSize: 16 }}>➕</span>
+              <span>Registrar Ensayo Sanitario</span>
+            </button>
           </div>
         </div>
 
-        {/* Filter Toolbar */}
-        <div style={{ display: 'flex', gap: 12, marginBottom: 16, background: '#fff', padding: 12, borderRadius: 8, border: '1px solid #e2e8f0' }}>
-          <select 
-            value={filtroCisterna} 
-            onChange={(e) => {
-              setFiltroCisterna(e.target.value);
-              setCurrentPage(1);
-            }}
-            style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: 13 }}
-          >
-            <option value="">Todas las Cisternas</option>
-            {cisternas.map((c) => (
-              <option key={c.id} value={c.id}>Cisterna: {c.placa} ({c.capacidad_m3} m³)</option>
-            ))}
-          </select>
-          <button className="btn-secondary" onClick={() => { setCurrentPage(1); fetchData(); }} style={{ padding: '8px 14px', fontSize: 13 }}>
-            🔄 Actualizar
-          </button>
+        {/* Modern High-End Stats Cards */}
+        <div className="stats-grid" style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+          gap: 16,
+          marginBottom: 24
+        }}>
+          {/* CARD 1: TOTAL REGISTROS */}
+          <div style={{
+            background: '#ffffff',
+            borderRadius: 16,
+            border: '1px solid #e2e8f0',
+            boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.05)',
+            padding: '18px 20px',
+            position: 'relative',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+          }}>
+            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: 'linear-gradient(90deg, #3b82f6, #60a5fa)' }} />
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <span style={{ fontSize: 11, fontWeight: 800, color: '#64748b', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                  Total Ensayos
+                </span>
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: '#eff6ff', border: '1px solid #dbeafe', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>
+                  📋
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 8 }}>
+                <span style={{ fontSize: 32, fontWeight: 900, color: '#0f172a', lineHeight: 1 }}>
+                  {totalControlesNum}
+                </span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8' }}>muestras evaluadas</span>
+              </div>
+            </div>
+            <div>
+              <div style={{ width: '100%', height: 4, background: '#f1f5f9', borderRadius: 999, overflow: 'hidden', marginBottom: 8 }}>
+                <div style={{ width: `${pctConformidad}%`, height: '100%', background: '#10b981', borderRadius: 999 }} />
+              </div>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#ecfdf5', color: '#065f46', border: '1px solid #a7f3d0', padding: '3px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700 }}>
+                <span>✓</span>
+                <span>{conformesNum} Aptos para consumo</span>
+              </div>
+            </div>
+          </div>
+
+          {/* CARD 2: PROMEDIO CLORO RESIDUAL */}
+          <div style={{
+            background: '#ffffff',
+            borderRadius: 16,
+            border: '1px solid #e2e8f0',
+            boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.05)',
+            padding: '18px 20px',
+            position: 'relative',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+          }}>
+            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: 'linear-gradient(90deg, #0284c7, #38bdf8)' }} />
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <span style={{ fontSize: 11, fontWeight: 800, color: '#64748b', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                  Cloro Residual Libre
+                </span>
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: '#f0f9ff', border: '1px solid #e0f2fe', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>
+                  💧
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 8 }}>
+                <span style={{ fontSize: 32, fontWeight: 900, color: '#0284c7', lineHeight: 1 }}>
+                  {stats?.promedio_cloro_ppm || '0.00'}
+                </span>
+                <span style={{ fontSize: 14, fontWeight: 800, color: '#0369a1' }}>ppm</span>
+              </div>
+            </div>
+            <div>
+              <div style={{ width: '100%', height: 4, background: '#f1f5f9', borderRadius: 999, overflow: 'hidden', marginBottom: 8 }}>
+                <div style={{ width: `${Math.min(100, (cloroPromedio / 2.0) * 100)}%`, height: '100%', background: isCloroOptimo ? '#0284c7' : '#ef4444', borderRadius: 999 }} />
+              </div>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: isCloroOptimo ? '#f0f9ff' : '#fef2f2', color: isCloroOptimo ? '#0369a1' : '#991b1b', border: `1px solid ${isCloroOptimo ? '#bae6fd' : '#fecaca'}`, padding: '3px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700 }}>
+                <span>{isCloroOptimo ? '✓' : '⚠️'}</span>
+                <span>Rango óptimo: 0.5 - 2.0 ppm</span>
+              </div>
+            </div>
+          </div>
+
+          {/* CARD 3: PROMEDIO TURBIEDAD */}
+          <div style={{
+            background: '#ffffff',
+            borderRadius: 16,
+            border: '1px solid #e2e8f0',
+            boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.05)',
+            padding: '18px 20px',
+            position: 'relative',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+          }}>
+            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: 'linear-gradient(90deg, #6366f1, #818cf8)' }} />
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <span style={{ fontSize: 11, fontWeight: 800, color: '#64748b', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                  Turbiedad Promedio
+                </span>
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: '#eef2ff', border: '1px solid #e0e7ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>
+                  🔬
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 8 }}>
+                <span style={{ fontSize: 32, fontWeight: 900, color: '#4f46e5', lineHeight: 1 }}>
+                  {stats?.promedio_turbiedad_ntu || '0.00'}
+                </span>
+                <span style={{ fontSize: 14, fontWeight: 800, color: '#4338ca' }}>NTU</span>
+              </div>
+            </div>
+            <div>
+              <div style={{ width: '100%', height: 4, background: '#f1f5f9', borderRadius: 999, overflow: 'hidden', marginBottom: 8 }}>
+                <div style={{ width: `${Math.min(100, (turbiedadPromedio / 5.0) * 100)}%`, height: '100%', background: isTurbiedadOptima ? '#6366f1' : '#ef4444', borderRadius: 999 }} />
+              </div>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#eef2ff', color: '#3730a3', border: '1px solid #c7d2fe', padding: '3px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700 }}>
+                <span>{isTurbiedadOptima ? '✓' : '⚠️'}</span>
+                <span>Límite reglamentario: &lt; 5.0 NTU</span>
+              </div>
+            </div>
+          </div>
+
+          {/* CARD 4: CONFORMIDAD SANITARIA */}
+          <div style={{
+            background: '#ffffff',
+            borderRadius: 16,
+            border: '1px solid #e2e8f0',
+            boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.05)',
+            padding: '18px 20px',
+            position: 'relative',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+          }}>
+            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: 'linear-gradient(90deg, #10b981, #34d399)' }} />
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <span style={{ fontSize: 11, fontWeight: 800, color: '#64748b', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                  Conformidad Sanitaria
+                </span>
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: '#ecfdf5', border: '1px solid #d1fae5', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>
+                  🛡️
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 8 }}>
+                <span style={{ fontSize: 32, fontWeight: 900, color: '#059669', lineHeight: 1 }}>
+                  {pctConformidad}%
+                </span>
+                <span style={{ fontSize: 12, fontWeight: 800, color: '#10b981', textTransform: 'uppercase' }}>Apto PNSU</span>
+              </div>
+            </div>
+            <div>
+              <div style={{ width: '100%', height: 4, background: '#f1f5f9', borderRadius: 999, overflow: 'hidden', marginBottom: 8 }}>
+                <div style={{ width: `${pctConformidad}%`, height: '100%', background: 'linear-gradient(90deg, #10b981, #059669)', borderRadius: 999 }} />
+              </div>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#ecfdf5', color: '#065f46', border: '1px solid #a7f3d0', padding: '3px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700 }}>
+                <span>🏅</span>
+                <span>Acreditado ante PNSU y MINSA</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Filter Toolbar Modernizado */}
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 12,
+          marginBottom: 20,
+          background: '#ffffff',
+          padding: '12px 18px',
+          borderRadius: 14,
+          border: '1px solid #e2e8f0',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: '#334155', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span>🔍</span> Filtrar por Unidad:
+            </span>
+            <select 
+              value={filtroCisterna} 
+              onChange={(e) => {
+                setFiltroCisterna(e.target.value);
+                setCurrentPage(1);
+              }}
+              style={{
+                padding: '8px 14px',
+                borderRadius: 10,
+                border: '1px solid #cbd5e1',
+                fontSize: 13,
+                fontWeight: 600,
+                color: '#0f172a',
+                background: '#f8fafc',
+                cursor: 'pointer'
+              }}
+            >
+              <option value="">Todas las Cisternas del Parque</option>
+              {cisternas.map((c) => (
+                <option key={c.id} value={c.id}>🚛 Cisterna {c.placa} ({c.capacidad_m3} m³)</option>
+              ))}
+            </select>
+
+            {filtroCisterna && (
+              <button
+                type="button"
+                onClick={() => { setFiltroCisterna(''); setCurrentPage(1); }}
+                style={{
+                  background: '#fee2e2',
+                  border: '1px solid #fca5a5',
+                  color: '#b91c1c',
+                  borderRadius: 8,
+                  padding: '6px 12px',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+              >
+                ✕ Limpiar Filtro
+              </button>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            <span style={{ fontSize: 12, color: '#64748b' }}>
+              Mostrando <strong>{controles.length}</strong> ensayos
+            </span>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => { setCurrentPage(1); fetchData(); }}
+              style={{ padding: '8px 14px', fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            >
+              🔄 Actualizar Datos
+            </button>
+          </div>
         </div>
 
         {/* Table */}

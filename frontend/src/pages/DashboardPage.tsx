@@ -1,8 +1,13 @@
-import { useEffect, useState, useId } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Layout from '../components/Layout';
 import api from '../config/api';
 import FleetLiveMap from '../components/FleetLiveMap';
+import VolumeTripsTrendChart from '../components/dashboard/VolumeTripsTrendChart';
+import SectorCoverageBulletList from '../components/dashboard/SectorCoverageBulletList';
+import SanitaryControlRunChart from '../components/dashboard/SanitaryControlRunChart';
+import ValesRedemptionGauge from '../components/dashboard/ValesRedemptionGauge';
+import { sanitizeOperationalDate, validateDriverAssignmentSanity } from '../utils/dashboardSanitizer';
 import './DashboardPage.css';
 
 interface SectorItem {
@@ -38,6 +43,9 @@ interface EntregaReciente {
   beneficiario: string;
   dni: string;
   sector: string;
+  cisterna_placa?: string;
+  latitud?: number | string | null;
+  longitud?: number | string | null;
   sincronizado: number;
   foto_url: string;
 }
@@ -47,8 +55,8 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
-  const [activeTooltip, setActiveTooltip] = useState<any>(null);
-  const chartId = useId();
+  const [selectedCisternaPlaca, setSelectedCisternaPlaca] = useState<string | null>(null);
+  const [mapFocusCoords, setMapFocusCoords] = useState<{ lat: number; lng: number; label?: string } | null>(null);
 
   // Date Range Filter States
   const [startDate, setStartDate] = useState<string>('');
@@ -253,14 +261,19 @@ export default function DashboardPage() {
   const calidadHistorico: CalidadHistoricoItem[] = data?.calidadHistorico || [];
   const ultimasEntregas: EntregaReciente[] = data?.ultimasEntregas || [];
 
-  // Cálculos para gráfico de barras de tendencia
-  const maxLitrosTendencia = Math.max(...tendencia.map(t => t.litros), 1000);
+  // Normalización de fechas para gráfico de tendencia (date-fns)
+  const tendenciaSaneada = tendencia.map((t) => ({
+    ...t,
+    fecha: sanitizeOperationalDate(t.fecha).formattedDisplay,
+  }));
 
-  // Cálculos para el Donut de Vales
-  const totalValesContados = Math.max(vales.total_vales, 1);
-  const pctCanjeados = Math.min(100, Math.round((vales.entregados / totalValesContados) * 100));
-  const pctPendientes = Math.max(0, 100 - pctCanjeados);
-  const strokeDashoffset = 251.2 - (251.2 * pctCanjeados) / 100;
+  // Validación de integridad operativa de la flota
+  const driverAlerts = validateDriverAssignmentSanity(cisternasUbicaciones);
+
+  // Sincronización Map-to-Table: Filtrado interactivo por cisterna seleccionada
+  const entregasFiltradas = selectedCisternaPlaca
+    ? ultimasEntregas.filter((e) => e.cisterna_placa === selectedCisternaPlaca)
+    : ultimasEntregas;
 
   return (
     <Layout>
@@ -539,333 +552,138 @@ export default function DashboardPage() {
           </div>
         </section>
 
+        {/* FLEET OPERATIONAL INTEGRITY ALERT (SI EXISTE INCONSISTENCIA) */}
+        {driverAlerts.length > 0 && (
+          <div style={{
+            background: '#fef2f2',
+            border: '1px solid #fecaca',
+            borderRadius: 14,
+            padding: '12px 18px',
+            marginBottom: 16,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            color: '#b91c1c',
+            fontSize: 13,
+            fontWeight: 600,
+          }}>
+            <span style={{ fontSize: 20 }}>⚠️</span>
+            <div>
+              <strong style={{ display: 'block', color: '#991b1b', marginBottom: 2 }}>Alerta de Integridad de Flota:</strong>
+              {driverAlerts.map((msg, i) => (
+                <div key={i}>{msg}</div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* ROW OF MAIN CHARTS */}
         <div className="charts-main-grid">
-          {/* CHART 1: TENDENCIA TEMPORAL (COMBO BARRA + LINEA) */}
+          {/* CHART 1: TENDENCIA TEMPORAL (COMBO BARRA + LINEA CON DOBLE EJE Y RATIO EFICIENCIA) */}
           <div className="chart-panel">
             <div className="panel-header">
               <div>
-                <h2 className="panel-title">📊 Tendencia de Reparto de Agua (Litros y Viajes)</h2>
-                <p className="panel-subtitle">Volumen fiscalizado y número de entregas realizadas por fecha</p>
-              </div>
-              <div className="legend-pills">
-                <span className="legend-pill pill-bar"><span className="legend-dot dot-cyan"></span> Litros Repartidos</span>
-                <span className="legend-pill pill-line"><span className="legend-dot dot-amber"></span> Entregas</span>
+                <h2 className="panel-title">📊 Tendencia de Reparto de Agua (Litros vs. Viajes)</h2>
+                <p className="panel-subtitle">Doble eje: Volumen fiscalizado (barras) vs. Despachos realizados (línea) y ratio de eficiencia</p>
               </div>
             </div>
 
-            <div className="chart-wrapper">
-              {tendencia.length === 0 ? (
-                <div className="chart-empty">No hay registros de reparto para el periodo seleccionado</div>
-              ) : (
-                <div className="svg-chart-container">
-                  <svg className="responsive-svg" viewBox="0 0 600 240" preserveAspectRatio="none">
-                    <defs>
-                      <linearGradient id={`${chartId}-barGradient`} x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#0284c7" stopOpacity="0.85" />
-                        <stop offset="100%" stopColor="#38bdf8" stopOpacity="0.2" />
-                      </linearGradient>
-                      <linearGradient id={`${chartId}-areaGradient`} x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.35" />
-                        <stop offset="100%" stopColor="#f59e0b" stopOpacity="0.0" />
-                      </linearGradient>
-                    </defs>
-
-                    {/* Líneas Guía Horizontales */}
-                    <line x1="40" y1="30" x2="580" y2="30" stroke="#e2e8f0" strokeDasharray="4 4" />
-                    <line x1="40" y1="80" x2="580" y2="80" stroke="#e2e8f0" strokeDasharray="4 4" />
-                    <line x1="40" y1="130" x2="580" y2="130" stroke="#e2e8f0" strokeDasharray="4 4" />
-                    <line x1="40" y1="180" x2="580" y2="180" stroke="#cbd5e1" />
-
-                    {/* Eje Y Labels */}
-                    <text x="35" y="34" className="chart-axis-text" textAnchor="end">{maxLitrosTendencia} L</text>
-                    <text x="35" y="108" className="chart-axis-text" textAnchor="end">{Math.round(maxLitrosTendencia / 2)} L</text>
-                    <text x="35" y="184" className="chart-axis-text" textAnchor="end">0 L</text>
-
-                    {/* Barras de Volumen */}
-                    {tendencia.map((item, idx) => {
-                      const totalItems = tendencia.length;
-                      const availableWidth = 520;
-                      const step = availableWidth / (totalItems || 1);
-                      const barWidth = Math.min(46, step * 0.5);
-                      const x = 50 + idx * step + (step - barWidth) / 2;
-                      const barHeight = Math.max(8, (item.litros / maxLitrosTendencia) * 140);
-                      const y = 180 - barHeight;
-
-                      return (
-                        <g 
-                          key={item.fecha} 
-                          className="bar-group"
-                          onMouseEnter={() => setActiveTooltip({ type: 'tendencia', item, x, y })}
-                          onMouseLeave={() => setActiveTooltip(null)}
-                        >
-                          <rect
-                            x={x}
-                            y={y}
-                            width={barWidth}
-                            height={barHeight}
-                            rx="5"
-                            fill={`url(#${chartId}-barGradient)`}
-                            className="animated-bar"
-                          />
-                          {/* Label superior con litros */}
-                          <text 
-                            x={x + barWidth / 2} 
-                            y={y - 6} 
-                            textAnchor="middle" 
-                            className="chart-bar-value"
-                          >
-                            {item.litros}L
-                          </text>
-                          {/* Label fecha inferior */}
-                          <text 
-                            x={x + barWidth / 2} 
-                            y="200" 
-                            textAnchor="middle" 
-                            className="chart-x-text"
-                          >
-                            {item.fecha}
-                          </text>
-                          {/* Badge de entregas */}
-                          <circle cx={x + barWidth / 2} cy={y + 12} r="9" fill="#f59e0b" />
-                          <text x={x + barWidth / 2} y={y + 16} textAnchor="middle" fill="#fff" fontSize="10" fontWeight="bold">
-                            {item.entregas}
-                          </text>
-                        </g>
-                      );
-                    })}
-                  </svg>
-
-                  {activeTooltip && (
-                    <div 
-                      className="chart-floating-tooltip"
-                      style={{ 
-                        position: 'absolute', 
-                        left: `${Math.min(80, Math.max(10, (activeTooltip.x / 600) * 100))}%`, 
-                        top: Math.max(10, activeTooltip.y - 45),
-                        pointerEvents: 'none',
-                        background: '#0f172a',
-                        color: '#fff',
-                        padding: '6px 12px',
-                        borderRadius: '8px',
-                        fontSize: '11px',
-                        fontWeight: '600',
-                        boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
-                        zIndex: 10,
-                        transform: 'translateX(-50%)',
-                        display: 'flex',
-                        gap: '8px',
-                        alignItems: 'center'
-                      }}
-                    >
-                      <span>📅 {activeTooltip.item.fecha}</span>
-                      <span>💧 {Number(activeTooltip.item.litros).toLocaleString('es-PE')} L</span>
-                      <span>🚛 {activeTooltip.item.entregas} viajes</span>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+            <VolumeTripsTrendChart data={tendenciaSaneada} />
           </div>
 
-          {/* CHART 2: COBERTURA Y CUMPLIMIENTO POR SECTOR */}
+          {/* CHART 2: COBERTURA Y CUMPLIMIENTO POR SECTOR (BULLET PROGRESS CON UMBRALES PNSU) */}
           <div className="chart-panel">
             <div className="panel-header">
               <div>
                 <h2 className="panel-title">🏘️ Cobertura y Metas por Sector / AA.HH.</h2>
-                <p className="panel-subtitle">Volumen entregado vs Meta semanal asignada por zona</p>
+                <p className="panel-subtitle">Priorización automática de zonas críticas de menor a mayor avance (PNSU)</p>
               </div>
               <span className="badge-pill-cyan">{sectores.length} Sectores</span>
             </div>
 
-            <div className="sector-bars-list">
-              {sectores.map((sec) => (
-                <div key={sec.sector_nombre} className="sector-bar-item">
-                  <div className="sector-meta-header">
-                    <div className="sector-name-box">
-                      <span className="sector-icon">📍</span>
-                      <strong>{sec.sector_nombre}</strong>
-                      <span className="fam-count">({sec.total_beneficiarios} familias)</span>
-                    </div>
-                    <div className="sector-stat-nums">
-                      <span className="vol-delivered"><strong>{Number(sec.litros_entregados).toLocaleString('es-PE')} L</strong></span>
-                      <span className="vol-meta"> / {Number(sec.meta_litros).toLocaleString('es-PE')} L meta</span>
-                      <span className={`cumplimiento-chip ${sec.cumplimiento_pct >= 50 ? 'chip-high' : 'chip-mid'}`}>
-                        {sec.cumplimiento_pct}%
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="sector-progress-track">
-                    <div 
-                      className="sector-progress-bar"
-                      style={{ 
-                        width: `${Math.min(100, Math.max(4, sec.cumplimiento_pct))}%`,
-                        background: sec.cumplimiento_pct >= 50 
-                          ? 'linear-gradient(90deg, #0284c7 0%, #10b981 100%)' 
-                          : 'linear-gradient(90deg, #38bdf8 0%, #0284c7 100%)'
-                      }}
-                    ></div>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <SectorCoverageBulletList sectores={sectores} />
           </div>
         </div>
 
-        {/* ROW OF SECONDARY ANALYTICS: QUALITY MONITORING + DONUT VALES */}
+        {/* ROW OF SECONDARY ANALYTICS: QUALITY MONITORING RUN CHART + GAUGE VALES */}
         <div className="analytics-secondary-grid">
-          {/* CHART 3: CONTROL SANITARIO DE CLORACIÓN Y TURBIEDAD */}
+          {/* CHART 3: CONTROL SANITARIO DE CLORACIÓN Y TURBIEDAD (RUN CHART D.S. 031-2010-SA) */}
           <div className="chart-panel">
             <div className="panel-header">
               <div>
-                <h2 className="panel-title">🧪 Control de Calidad Sanitaria (D.S. 031-2010-SA)</h2>
-                <p className="panel-subtitle">Monitoreo de Cloro Residual Libre (rango apto: 0.5 a 2.0 ppm) y Turbiedad (&lt; 5 NTU)</p>
+                <h2 className="panel-title">🧪 Fiscalización Sanitaria: Cloro Residual (D.S. 031-2010-SA)</h2>
+                <p className="panel-subtitle">Carta de control estadístico con franja segura (0.50 - 2.00 ppm) y alertas de riesgo</p>
               </div>
               <div className="sanitary-norm-tag">
                 <span>Rango Seguro: 0.5 - 2.0 ppm</span>
               </div>
             </div>
 
-            <div className="quality-monitoring-wrap">
-              {/* Quality metric widgets */}
-              <div className="quality-metric-row">
-                <div className="q-badge-box">
-                  <span className="q-badge-title">Promedio Cloro Residual</span>
-                  <span className="q-badge-num num-green">{calidad.promedio_cloro_ppm} ppm</span>
-                  <span className="q-badge-sub">Límite norma: 0.5 - 2.0 ppm</span>
-                </div>
-                <div className="q-badge-box">
-                  <span className="q-badge-title">Promedio Turbiedad</span>
-                  <span className="q-badge-num num-cyan">{calidad.promedio_turbiedad_ntu} NTU</span>
-                  <span className="q-badge-sub">Límite norma: &le; 5.0 NTU</span>
-                </div>
-                <div className="q-badge-box">
-                  <span className="q-badge-title">Cumplimiento Sanitario</span>
-                  <span className="q-badge-num num-emerald">{calidad.cumplimiento_pct}%</span>
-                  <span className="q-badge-sub">{calidad.conformes} de {calidad.total_controles} conformes</span>
-                </div>
-              </div>
-
-              {/* Quality tests mini-table */}
-              <div className="table-responsive-wrap">
-                <table className="mini-data-table">
-                  <thead>
-                    <tr>
-                      <th>Fecha / Hora</th>
-                      <th>Cisterna</th>
-                      <th>Cloro (ppm)</th>
-                      <th>Turbiedad</th>
-                      <th>Aspecto</th>
-                      <th>Estado Sanitario</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {calidadHistorico.slice(0, 5).map((q) => (
-                      <tr key={q.id}>
-                        <td className="font-mono">{q.fecha}</td>
-                        <td><span className="cisterna-tag">{q.cisterna_placa}</span></td>
-                        <td>
-                          <span className={`cloro-val ${parseFloat(String(q.cloro_residual_ppm)) >= 0.5 && parseFloat(String(q.cloro_residual_ppm)) <= 2.0 ? 'val-good' : 'val-warn'}`}>
-                            {q.cloro_residual_ppm} ppm
-                          </span>
-                        </td>
-                        <td>{q.turbiedad_ntu} NTU</td>
-                        <td>{q.aspecto_organoleptico || 'Límpido'}</td>
-                        <td>
-                          {q.conforme_sanitario ? (
-                            <span className="status-badge-conforme">✅ Conforme</span>
-                          ) : (
-                            <span className="status-badge-alerta">⚠️ Alerta Sanitaria</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            <SanitaryControlRunChart
+              historico={calidadHistorico}
+              promedioCloro={calidad.promedio_cloro_ppm}
+              promedioTurbiedad={calidad.promedio_turbiedad_ntu}
+              pctCumplimiento={calidad.cumplimiento_pct}
+              totalConformes={calidad.conformes}
+              totalControles={calidad.total_controles}
+            />
           </div>
 
-          {/* CHART 4: DONUT VALES & RESUMEN DE COBERTURA */}
+          {/* CHART 4: MEDIDOR SEMI-DONUT DE VALES & RESUMEN DE COBERTURA */}
           <div className="chart-panel donut-panel">
             <div className="panel-header">
               <div>
-                <h2 className="panel-title">🎟️ Distribución y Estado de Vales</h2>
-                <p className="panel-subtitle">Tasa de canje en punto de entrega</p>
+                <h2 className="panel-title">🎟️ Redención de Vales Digitales</h2>
+                <p className="panel-subtitle">Medidor de efectividad de canje en punto de entrega</p>
               </div>
             </div>
 
-            <div className="donut-chart-box">
-              <div className="donut-container">
-                <svg viewBox="0 0 100 100" className="donut-svg">
-                  {/* Círculo de fondo (pendientes) */}
-                  <circle
-                    cx="50"
-                    cy="50"
-                    r="40"
-                    fill="transparent"
-                    stroke="#fed7aa"
-                    strokeWidth="12"
-                  />
-                  {/* Círculo de canjeados */}
-                  <circle
-                    cx="50"
-                    cy="50"
-                    r="40"
-                    fill="transparent"
-                    stroke="#f59e0b"
-                    strokeWidth="12"
-                    strokeDasharray="251.2"
-                    strokeDashoffset={strokeDashoffset}
-                    strokeLinecap="round"
-                    transform="rotate(-90 50 50)"
-                    style={{ transition: 'stroke-dashoffset 1s ease' }}
-                  />
-                </svg>
-                <div className="donut-center-label">
-                  <span className="donut-pct">{pctCanjeados}%</span>
-                  <span className="donut-text">Canjeado</span>
-                </div>
-              </div>
-
-              <div className="donut-legend-list">
-                <div className="donut-legend-item">
-                  <span className="legend-color-box bg-amber"></span>
-                  <div className="legend-info">
-                    <span className="item-title">Canjeados / Entregados</span>
-                    <strong className="item-val">{vales.entregados} vales</strong>
-                  </div>
-                </div>
-
-                <div className="donut-legend-item">
-                  <span className="legend-color-box bg-amber-light"></span>
-                  <div className="legend-info">
-                    <span className="item-title">Pendientes en Padrón</span>
-                    <strong className="item-val">{vales.pendientes} vales ({pctPendientes}%)</strong>
-                  </div>
-                </div>
-
-                <div className="donut-summary-callout">
-                  <span>Total Vales Emitidos: <strong>{vales.total_vales}</strong></span>
-                  <span>Litros Asociados: <strong>{Number(vales.total_vales * 200).toLocaleString('es-PE')} L</strong></span>
-                </div>
-              </div>
-            </div>
+            <ValesRedemptionGauge vales={vales} />
           </div>
         </div>
 
         {/* LIVE FLEET MAP MONITOREO SATELITAL GPS */}
-        <FleetLiveMap 
-          cisternas={cisternasUbicaciones} 
-          onRefresh={() => fetchStats(false)} 
-        />
+        <div id="fleet-live-map-section">
+          <FleetLiveMap 
+            cisternas={cisternasUbicaciones} 
+            onRefresh={() => fetchStats(false)} 
+            onSelectCisterna={(placa) => setSelectedCisternaPlaca(placa === selectedCisternaPlaca ? null : placa)}
+            selectedCisternaPlaca={selectedCisternaPlaca}
+            focusCoords={mapFocusCoords}
+          />
+        </div>
 
         {/* LIVE RECENT ACTIVITY: ULTIMAS ENTREGAS */}
         <div className="chart-panel full-width-panel">
-          <div className="panel-header">
+          <div className="panel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
-              <h2 className="panel-title">💧 Registro en Vivo de Entregas Fiscalizadas</h2>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <h2 className="panel-title">💧 Registro en Vivo de Entregas Fiscalizadas</h2>
+                {selectedCisternaPlaca && (
+                  <span style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    background: '#e0f2fe',
+                    color: '#0369a1',
+                    border: '1px solid #bae6fd',
+                    padding: '2px 10px',
+                    borderRadius: 999,
+                    fontSize: 12,
+                    fontWeight: 700
+                  }}>
+                    Filtrando por cisterna: <strong>{selectedCisternaPlaca}</strong>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCisternaPlaca(null)}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#0284c7', fontWeight: 900, padding: 0 }}
+                      title="Quitar filtro de cisterna"
+                    >
+                      ✕
+                    </button>
+                  </span>
+                )}
+              </div>
               <p className="panel-subtitle">Últimas cargas despachadas con verificación satelital GPS y firmas digitales</p>
             </div>
             <Link to="/entregas" className="view-all-link">Ver todas las actas &rarr;</Link>
@@ -879,18 +697,24 @@ export default function DashboardPage() {
                   <th>Beneficiario (PUB)</th>
                   <th>DNI</th>
                   <th>Sector / Asentamiento</th>
+                  <th>Cisterna</th>
                   <th>Litros Despachados</th>
                   <th>Verificación</th>
                   <th>Acta / Foto</th>
+                  <th>Acción GPS</th>
                 </tr>
               </thead>
               <tbody>
-                {ultimasEntregas.length === 0 ? (
+                {entregasFiltradas.length === 0 ? (
                   <tr>
-                    <td colSpan={7} style={{ textAlign: 'center', padding: 24 }}>No hay entregas recientes registradas</td>
+                    <td colSpan={9} style={{ textAlign: 'center', padding: 24, color: '#64748b' }}>
+                      {selectedCisternaPlaca 
+                        ? `No hay entregas registradas para la cisterna ${selectedCisternaPlaca}` 
+                        : 'No hay entregas recientes registradas'}
+                    </td>
                   </tr>
                 ) : (
-                  ultimasEntregas.map((ent) => (
+                  entregasFiltradas.map((ent) => (
                     <tr key={ent.id}>
                       <td style={{ whiteSpace: 'nowrap' }}>
                         <div style={{ fontWeight: 700, color: '#0f172a', fontSize: 13 }}>
@@ -918,6 +742,27 @@ export default function DashboardPage() {
                         <span className="sector-pill">📍 {ent.sector}</span>
                       </td>
                       <td>
+                        {ent.cisterna_placa ? (
+                          <span 
+                            style={{
+                              background: '#f1f5f9',
+                              border: '1px solid #cbd5e1',
+                              padding: '2px 8px',
+                              borderRadius: 6,
+                              fontSize: 11,
+                              fontWeight: 700,
+                              cursor: 'pointer'
+                            }}
+                            onClick={() => setSelectedCisternaPlaca(ent.cisterna_placa || null)}
+                            title="Filtrar por esta cisterna"
+                          >
+                            🚛 {ent.cisterna_placa}
+                          </span>
+                        ) : (
+                          <span style={{ color: '#94a3b8', fontSize: 11 }}>N/D</span>
+                        )}
+                      </td>
+                      <td>
                         <span className="litros-pill">🚰 {Number(ent.litros_entregados).toLocaleString('es-PE')} L</span>
                       </td>
                       <td>
@@ -930,6 +775,29 @@ export default function DashboardPage() {
                           <span className="badge-firma-ok">✍️ Firma Digital</span>
                         )}
                       </td>
+                      <td>
+                        {ent.latitud && ent.longitud ? (
+                          <button
+                            type="button"
+                            className="btn-secondary"
+                            style={{ padding: '3px 8px', fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                            onClick={() => {
+                              setMapFocusCoords({
+                                lat: Number(ent.latitud),
+                                lng: Number(ent.longitud),
+                                label: `${ent.beneficiario} • ${ent.sector}`
+                              });
+                              const el = document.getElementById('fleet-live-map-section');
+                              el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            }}
+                            title="Ver en mapa satelital GPS"
+                          >
+                            🎯 Enfocar GPS
+                          </button>
+                        ) : (
+                          <span style={{ color: '#94a3b8', fontSize: 11 }}>Sin GPS</span>
+                        )}
+                      </td>
                     </tr>
                   ))
                 )}
@@ -937,88 +805,6 @@ export default function DashboardPage() {
             </table>
           </div>
         </div>
-
-        {/* QUICK ACCESS MODULES */}
-        <section className="dash-modules-section">
-          <div className="modules-header">
-            <h2 className="section-title">⚡ Módulos Operativos del Sistema</h2>
-            <p className="section-subtitle">Acceso directo a las herramientas de fiscalización y gestión del servicio</p>
-          </div>
-
-          <div className="modules-grid">
-            <Link to="/beneficiarios" className="mod-card">
-              <div className="mod-icon-bg bg-blue-grad">📥</div>
-              <div className="mod-content">
-                <h3>Padrón Único (PUB)</h3>
-                <p>Carga masiva Excel, validación DNI y catastro de familias.</p>
-              </div>
-              <span className="mod-arrow">&rarr;</span>
-            </Link>
-
-            <Link to="/vales" className="mod-card">
-              <div className="mod-icon-bg bg-amber-grad">🎟️</div>
-              <div className="mod-content">
-                <h3>Vales de Consumo</h3>
-                <p>Generación de códigos únicos, QR y trazabilidad de canje.</p>
-              </div>
-              <span className="mod-arrow">&rarr;</span>
-            </Link>
-
-            <Link to="/calidad" className="mod-card">
-              <div className="mod-icon-bg bg-emerald-grad">🧪</div>
-              <div className="mod-content">
-                <h3>Control de Calidad</h3>
-                <p>Registro de Cloro Residual Libre y Turbiedad según norma sanitaria.</p>
-              </div>
-              <span className="mod-arrow">&rarr;</span>
-            </Link>
-
-            <Link to="/programaciones" className="mod-card">
-              <div className="mod-icon-bg bg-indigo-grad">📋</div>
-              <div className="mod-content">
-                <h3>Rutas y Cronogramas</h3>
-                <p>Asignación logística de cisterna, chofer y sectores.</p>
-              </div>
-              <span className="mod-arrow">&rarr;</span>
-            </Link>
-
-            <Link to="/entregas" className="mod-card">
-              <div className="mod-icon-bg bg-cyan-grad">🚰</div>
-              <div className="mod-content">
-                <h3>Fiscalización y Actas</h3>
-                <p>Generación de PDF con firma del beneficiario y geolocalización.</p>
-              </div>
-              <span className="mod-arrow">&rarr;</span>
-            </Link>
-
-            <Link to="/informes" className="mod-card">
-              <div className="mod-icon-bg" style={{ background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)', color: '#fff' }}>📑</div>
-              <div className="mod-content">
-                <h3>Informes Oficiales</h3>
-                <p>Generación de Anexo 2 PNSU, Cuadros 1, 6, 7, 8 y panel de 18 fotos.</p>
-              </div>
-              <span className="mod-arrow">&rarr;</span>
-            </Link>
-
-            <Link to="/balance" className="mod-card">
-              <div className="mod-icon-bg" style={{ background: 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)', color: '#fff' }}>⚖️</div>
-              <div className="mod-content">
-                <h3>Balance Hídrico</h3>
-                <p>Conciliación de cargas en surtidor vs. reparto y control de mermas.</p>
-              </div>
-              <span className="mod-arrow">&rarr;</span>
-            </Link>
-
-            <Link to="/metas" className="mod-card">
-              <div className="mod-icon-bg bg-rose-grad">🎯</div>
-              <div className="mod-content">
-                <h3>Metas y PNSU</h3>
-                <p>Indicadores mensuales de dotación y cumplimiento del servicio.</p>
-              </div>
-              <span className="mod-arrow">&rarr;</span>
-            </Link>
-          </div>
-        </section>
       </div>
     </Layout>
   );

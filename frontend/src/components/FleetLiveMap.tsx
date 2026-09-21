@@ -22,17 +22,37 @@ export interface CisternaUbicacion {
 interface FleetLiveMapProps {
   cisternas: CisternaUbicacion[];
   onRefresh?: () => void;
+  onSelectCisterna?: (placa: string | null) => void;
+  selectedCisternaPlaca?: string | null;
+  focusCoords?: { lat: number; lng: number; label?: string } | null;
 }
 
 // Centro de operaciones EPS Moyobamba
 const MOYOBAMBA_CENTER: [number, number] = [-6.03417, -76.97139];
 
-export default function FleetLiveMap({ cisternas = [], onRefresh }: FleetLiveMapProps) {
+export default function FleetLiveMap({
+  cisternas = [],
+  onRefresh,
+  onSelectCisterna,
+  selectedCisternaPlaca,
+  focusCoords,
+}: FleetLiveMapProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const markersRef = useRef<{ [key: number]: L.Marker }>({});
   const [selectedCisternaId, setSelectedCisternaId] = useState<number | null>(null);
   const [filterEstado, setFilterEstado] = useState<'TODOS' | 'OPERATIVO' | 'MANTENIMIENTO'>('TODOS');
+
+  // Reaccionar a coordenadas de foco exterior (ej. desde tabla de entregas)
+  useEffect(() => {
+    if (focusCoords && mapInstanceRef.current && focusCoords.lat && focusCoords.lng) {
+      mapInstanceRef.current.flyTo([focusCoords.lat, focusCoords.lng], 16, { duration: 1.2 });
+      L.popup()
+        .setLatLng([focusCoords.lat, focusCoords.lng])
+        .setContent(`<strong>📍 Entrega Georreferenciada</strong><br/>${focusCoords.label || ''}`)
+        .openOn(mapInstanceRef.current);
+    }
+  }, [focusCoords]);
 
   // Inicializar mapa de Leaflet
   useEffect(() => {
@@ -172,6 +192,7 @@ export default function FleetLiveMap({ cisternas = [], onRefresh }: FleetLiveMap
 
       marker.on('click', () => {
         setSelectedCisternaId(c.id);
+        onSelectCisterna?.(c.placa);
       });
 
       markersRef.current[c.id] = marker;
@@ -192,6 +213,7 @@ export default function FleetLiveMap({ cisternas = [], onRefresh }: FleetLiveMap
   // Centrar en cisterna seleccionada desde la lista lateral
   const handleSelectCisterna = (c: CisternaUbicacion) => {
     setSelectedCisternaId(c.id);
+    onSelectCisterna?.(c.placa);
     const map = mapInstanceRef.current;
     if (!map) return;
 
@@ -280,7 +302,7 @@ export default function FleetLiveMap({ cisternas = [], onRefresh }: FleetLiveMap
             ) : (
               filteredCisternas.map((c) => {
                 const hasGps = c.latitud_actual !== null && c.longitud_actual !== null;
-                const isSelected = selectedCisternaId === c.id;
+                const isSelected = selectedCisternaId === c.id || selectedCisternaPlaca === c.placa;
 
                 return (
                   <div
