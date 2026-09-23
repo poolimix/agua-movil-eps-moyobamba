@@ -93,6 +93,25 @@ export const uploadDelivery = async (req: Request, res: Response) => {
     const finalFechaUbicacion = fechaUbicacion || fecha_ubicacion || null;
     const finalFechaCaptura = fechaCaptura || fecha_captura || new Date().toISOString();
 
+    // Validar existencia de foráneas para evitar errores 500
+    let validBeneficiarioId = finalBeneficiarioId;
+    if (validBeneficiarioId) {
+      const checkRes = await query('SELECT id FROM beneficiarios WHERE id = $1', [validBeneficiarioId]);
+      if (checkRes.rows.length === 0) {
+        console.warn(`Beneficiario ID ${validBeneficiarioId} no existe en la BD. Nulificando para permitir sincronización de la entrega.`);
+        validBeneficiarioId = null;
+      }
+    }
+
+    let validProgramacionId = finalProgramacionId;
+    if (validProgramacionId) {
+      const checkRes = await query('SELECT id FROM programaciones WHERE id = $1', [validProgramacionId]);
+      if (checkRes.rows.length === 0) {
+        console.warn(`Programacion ID ${validProgramacionId} no existe en la BD. Nulificando para permitir sincronización.`);
+        validProgramacionId = null;
+      }
+    }
+
     // 1. Idempotency validation
     const existing = await query('SELECT * FROM entregas_agua WHERE local_id = $1', [finalLocalId]);
     if (existing.rows.length > 0) {
@@ -132,10 +151,10 @@ export const uploadDelivery = async (req: Request, res: Response) => {
         let benDir = '-';
         let cisternaPlaca = 'EGA-902';
 
-        if (finalBeneficiarioId) {
+        if (validBeneficiarioId) {
           const bRes = await query(
             `SELECT dni, nombres_apellidos, COALESCE(sector_aahh, sector, 'Moyobamba') as sector, COALESCE(calle_direccion, direccion, '-') as direccion FROM beneficiarios WHERE id = $1`,
-            [finalBeneficiarioId]
+            [validBeneficiarioId]
           );
           if (bRes.rows.length > 0) {
             benNombre = bRes.rows[0].nombres_apellidos;
@@ -202,8 +221,8 @@ export const uploadDelivery = async (req: Request, res: Response) => {
 
     const result = await query(insertQuery, [
       finalLocalId,
-      finalBeneficiarioId,
-      finalProgramacionId,
+      validBeneficiarioId,
+      validProgramacionId,
       finalCisternaId,
       finalConductorId,
       finalCuota,
