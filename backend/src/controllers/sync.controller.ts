@@ -249,6 +249,18 @@ export const uploadDelivery = async (req: Request, res: Response) => {
       `, [finalLat, finalLng, finalCisternaId]).catch(() => {});
     }
 
+    // 5. Auto-canje de Vale de Consumo: marcar vale como CANJEADO al registrar la entrega
+    if (validBeneficiarioId) {
+      query(`
+        UPDATE vales_entrega 
+        SET estado = 'CANJEADO', fecha_canje = CURRENT_TIMESTAMP 
+        WHERE beneficiario_id = $1 
+          AND (programacion_id = $2 OR programacion_id IS NULL)
+      `, [validBeneficiarioId, validProgramacionId]).catch((err) => {
+        console.warn('Advertencia al auto-canjear vale_entrega:', err);
+      });
+    }
+
     res.status(201).json({
       message: 'Entrega sincronizada exitosamente con evidencia y GPS.',
       entrega: result.rows[0],

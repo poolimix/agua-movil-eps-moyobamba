@@ -8,6 +8,8 @@ import SectorCoverageBulletList from '../components/dashboard/SectorCoverageBull
 import SanitaryControlRunChart from '../components/dashboard/SanitaryControlRunChart';
 import ValesRedemptionGauge from '../components/dashboard/ValesRedemptionGauge';
 import { sanitizeOperationalDate, validateDriverAssignmentSanity } from '../utils/dashboardSanitizer';
+import AnalyticsMetasYProyecciones from '../components/dashboard/AnalyticsMetasYProyecciones';
+import ExecutiveAnalyticsShowcase from '../components/dashboard/ExecutiveAnalyticsShowcase';
 import './DashboardPage.css';
 
 interface SectorItem {
@@ -237,11 +239,19 @@ export default function DashboardPage() {
 
   const kpis = data?.kpis || {
     totalBeneficiarios: data?.totalBeneficiarios || 0,
-    totalPersonas: 0,
+    totalPersonas: data?.kpis?.totalPersonas || 0,
     programacionesActivas: data?.programacionesActivas || 0,
     entregasRealizadas: data?.entregasRealizadas || 0,
     totalLitros: data?.totalLitros || 0,
     totalM3: ((data?.totalLitros || 0) / 1000).toFixed(2),
+    volumenRepartidoLitros: data?.totalLitros || 0,
+    volumenRepartidoM3: ((data?.totalLitros || 0) / 1000).toFixed(2),
+    volumenPromedioFamilia: 350,
+    volumenPromedioPersona: 50,
+    poblacionBeneficiada: 0,
+    familiasAtendidas: 0,
+    montoTotalSoles: (((data?.totalLitros || 0) / 1000) * 39.13).toFixed(2),
+    tarifaRefM3: 39.13,
     metaMensualLitros: 10000,
     avanceMetaPct: 27
   };
@@ -448,109 +458,16 @@ export default function DashboardPage() {
           </section>
         )}
 
-
-        {/* 5 EXECUTIVE KPI CARDS */}
-        <section className="kpi-grid">
-          {/* KPI 1: Beneficiarios */}
-          <div className="kpi-card card-blue">
-            <div className="kpi-icon-wrap">
-              <span className="kpi-icon">👥</span>
-            </div>
-            <div className="kpi-body">
-              <span className="kpi-label">Padrón Único (PUB)</span>
-              <div className="kpi-val-row">
-                <span className="kpi-value">{loading && !data ? '...' : kpis.totalBeneficiarios}</span>
-                <span className="kpi-badge badge-blue">Familias</span>
-              </div>
-              <div className="kpi-foot">
-                <span>{kpis.totalPersonas > 0 ? `${kpis.totalPersonas} personas beneficiadas` : 'Dotación prioritaria'}</span>
-                <span className="kpi-sublink">50 L/hab/día</span>
-              </div>
-            </div>
-          </div>
-
-          {/* KPI 2: Volumen Total */}
-          <div className="kpi-card card-cyan">
-            <div className="kpi-icon-wrap">
-              <span className="kpi-icon">🚰</span>
-            </div>
-            <div className="kpi-body">
-              <span className="kpi-label">Volumen Total Repartido</span>
-              <div className="kpi-val-row">
-                <span className="kpi-value">{loading && !data ? '...' : Number(kpis.totalLitros).toLocaleString('es-PE')}</span>
-                <span className="kpi-unit">Litros</span>
-              </div>
-              <div className="kpi-progress-wrap">
-                <div className="kpi-progress-bar">
-                  <div className="kpi-progress-fill" style={{ width: `${kpis.avanceMetaPct}%` }}></div>
-                </div>
-                <div className="kpi-progress-labels">
-                  <span>{kpis.totalM3} m³ fiscalizados</span>
-                  <span className="pct-badge">{kpis.avanceMetaPct}% meta PNSU</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* KPI 3: Calidad de Agua */}
-          <div className="kpi-card card-emerald">
-            <div className="kpi-icon-wrap">
-              <span className="kpi-icon">🧪</span>
-            </div>
-            <div className="kpi-body">
-              <div className="kpi-header-row">
-                <span className="kpi-label">Control Sanitario (Cloro)</span>
-                <span className="kpi-badge badge-green">{calidad.cumplimiento_pct}% Apto</span>
-              </div>
-              <div className="kpi-val-row">
-                <span className="kpi-value">{loading && !data ? '...' : `${calidad.promedio_cloro_ppm} `}</span>
-                <span className="kpi-unit">ppm</span>
-              </div>
-              <div className="kpi-foot">
-                <span>Turbiedad: <strong>{calidad.promedio_turbiedad_ntu} NTU</strong></span>
-                <span className="compliance-tag tag-ok">D.S. 031-2010-SA</span>
-              </div>
-            </div>
-          </div>
-
-          {/* KPI 4: Vales de Consumo */}
-          <div className="kpi-card card-amber">
-            <div className="kpi-icon-wrap">
-              <span className="kpi-icon">🎟️</span>
-            </div>
-            <div className="kpi-body">
-              <div className="kpi-header-row">
-                <span className="kpi-label">Vales de Consumo</span>
-                <span className="kpi-badge badge-amber">{vales.entregados} Canjeados</span>
-              </div>
-              <div className="kpi-val-row">
-                <span className="kpi-value">{loading && !data ? '...' : `${vales.entregados} / ${vales.total_vales}`}</span>
-              </div>
-              <div className="kpi-foot">
-                <span>{vales.pendientes} pendientes de entrega</span>
-                <span className="kpi-badge-sub">Efectividad: {vales.tasa_canje}%</span>
-              </div>
-            </div>
-          </div>
-
-          {/* KPI 5: Flota Cisternas */}
-          <div className="kpi-card card-indigo">
-            <div className="kpi-icon-wrap">
-              <span className="kpi-icon">🚛</span>
-            </div>
-            <div className="kpi-body">
-              <span className="kpi-label">Flota de Cisternas</span>
-              <div className="kpi-val-row">
-                <span className="kpi-value">{flota.operativas} / {flota.total}</span>
-                <span className="kpi-badge badge-indigo">En Operación</span>
-              </div>
-              <div className="kpi-foot">
-                <span>Capacidad móvil: {(flota.capacidad_total_litros / 1000).toFixed(0)} m³</span>
-                <span className="routes-tag">{kpis.programacionesActivas} rutas activas</span>
-              </div>
-            </div>
-          </div>
-        </section>
+        {/* EXECUTIVE ANALYTICS SHOWCASE: COMPARATIVA DE BARRAS, ANILLOS CONCÉNTRICOS Y MICRO-GRÁFICOS */}
+        <ExecutiveAnalyticsShowcase
+          kpis={kpis}
+          calidad={calidad}
+          vales={vales}
+          flota={flota}
+          tendencia={data?.tendencia || []}
+          sectores={data?.sectores || []}
+          loading={loading}
+        />
 
         {/* FLEET OPERATIONAL INTEGRITY ALERT (SI EXISTE INCONSISTENCIA) */}
         {driverAlerts.length > 0 && (
@@ -576,6 +493,15 @@ export default function DashboardPage() {
             </div>
           </div>
         )}
+
+        {/* METAS, PROYECCIONES Y CUMPLIMIENTO INTERACTIVO */}
+        <AnalyticsMetasYProyecciones
+          sectoresSemanal={data?.sectores_semanal}
+          sectoresMensual={data?.sectores_mensual}
+          metasBeneficiarios={data?.metas_beneficiarios}
+          objetivoGlobal={data?.objetivo_global}
+          programacionesAvance={data?.programaciones_avance}
+        />
 
         {/* ROW OF MAIN CHARTS */}
         <div className="charts-main-grid">

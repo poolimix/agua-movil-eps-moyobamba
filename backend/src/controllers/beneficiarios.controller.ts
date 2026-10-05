@@ -1,10 +1,15 @@
 import { Request, Response } from 'express';
 import * as xlsx from 'xlsx';
 import { query } from '../db';
-import { DOTACION_POR_HABITANTE, LITROS_POR_M3 } from '../config/constants';
+import { DOTACION_POR_HABITANTE, DIAS_ENTREGA_SEMANAL, DOTACION_SEMANAL_POR_HABITANTE, LITROS_POR_M3 } from '../config/constants';
+import { getConfiguracion } from '../services/configuracion.service';
 
 export const getAllBeneficiarios = async (req: Request, res: Response) => {
   try {
+    const config = await getConfiguracion();
+    const dotacionDiaria = config.dotacion_diaria_litros;
+    const dotacionSemanal = config.dotacion_semanal_por_habitante;
+
     const { page, limit, search, sector } = req.query;
 
     if (page || limit) {
@@ -48,7 +53,9 @@ export const getAllBeneficiarios = async (req: Request, res: Response) => {
           COALESCE(calle_direccion, direccion, '') as direccion,
           COALESCE(telefono, '') as telefono,
           COALESCE(email, '') as email,
-          (COALESCE(num_miembros, 1) * ${DOTACION_POR_HABITANTE}) as litros_sugeridos
+          (COALESCE(num_miembros, 1) * ${dotacionDiaria}) as dotacion_diaria_litros,
+          (COALESCE(num_miembros, 1) * ${dotacionSemanal}) as dotacion_semanal_litros,
+          (COALESCE(num_miembros, 1) * ${dotacionSemanal}) as litros_sugeridos
         FROM beneficiarios 
         ${whereStr}
         ORDER BY id DESC
@@ -87,7 +94,9 @@ export const getAllBeneficiarios = async (req: Request, res: Response) => {
         COALESCE(calle_direccion, direccion, '') as direccion,
         COALESCE(telefono, '') as telefono,
         COALESCE(email, '') as email,
-        (COALESCE(num_miembros, 1) * ${DOTACION_POR_HABITANTE}) as litros_sugeridos
+        (COALESCE(num_miembros, 1) * ${dotacionDiaria}) as dotacion_diaria_litros,
+        (COALESCE(num_miembros, 1) * ${dotacionSemanal}) as dotacion_semanal_litros,
+        (COALESCE(num_miembros, 1) * ${dotacionSemanal}) as litros_sugeridos
       FROM beneficiarios 
       ORDER BY id DESC
     `);
@@ -100,6 +109,10 @@ export const getAllBeneficiarios = async (req: Request, res: Response) => {
 
 export const getBeneficiarioByDni = async (req: Request, res: Response) => {
   try {
+    const config = await getConfiguracion();
+    const dotacionDiaria = config.dotacion_diaria_litros;
+    const dotacionSemanal = config.dotacion_semanal_por_habitante;
+
     const { dni } = req.params;
     const { programacion_id } = req.query;
 
@@ -121,7 +134,9 @@ export const getBeneficiarioByDni = async (req: Request, res: Response) => {
         COALESCE(calle_direccion, direccion, '') as direccion,
         COALESCE(telefono, '') as telefono,
         COALESCE(email, '') as email,
-        (COALESCE(num_miembros, 1) * ${DOTACION_POR_HABITANTE}) as litros_sugeridos
+        (COALESCE(num_miembros, 1) * ${dotacionDiaria}) as dotacion_diaria_litros,
+        (COALESCE(num_miembros, 1) * ${dotacionSemanal}) as dotacion_semanal_litros,
+        (COALESCE(num_miembros, 1) * ${dotacionSemanal}) as litros_sugeridos
       FROM beneficiarios 
       WHERE dni = $1
       LIMIT 1
@@ -145,7 +160,7 @@ export const getBeneficiarioByDni = async (req: Request, res: Response) => {
       `, [benef.id, progIdNum]);
 
       const totalEntregado = parseFloat(prevEntregasRes.rows[0]?.total_entregado || '0');
-      const cuotaTotal = parseFloat(benef.litros_sugeridos || '50');
+      const cuotaTotal = parseFloat(benef.litros_sugeridos || String(dotacionSemanal));
       const saldoRestante = Math.max(0, cuotaTotal - totalEntregado);
 
       benef.total_entregado_programacion = totalEntregado;
@@ -191,6 +206,10 @@ export const createBeneficiario = async (req: Request, res: Response) => {
     const direccionVal = calle_direccion || direccion || '';
     const miembrosNum = parseInt(num_miembros, 10) || 1;
 
+    const config = await getConfiguracion();
+    const dotacionDiaria = config.dotacion_diaria_litros;
+    const dotacionSemanal = config.dotacion_semanal_por_habitante;
+
     const insertQuery = `
       INSERT INTO beneficiarios (
         dni, nombres, apellidos, nombres_apellidos, distrito, sector_aahh, sector,
@@ -212,7 +231,10 @@ export const createBeneficiario = async (req: Request, res: Response) => {
           direccion = EXCLUDED.direccion,
           telefono = EXCLUDED.telefono,
           email = EXCLUDED.email
-      RETURNING *, (num_miembros * ${DOTACION_POR_HABITANTE}) as litros_sugeridos;
+      RETURNING *, 
+        (num_miembros * ${dotacionDiaria}) as dotacion_diaria_litros,
+        (num_miembros * ${dotacionSemanal}) as dotacion_semanal_litros,
+        (num_miembros * ${dotacionSemanal}) as litros_sugeridos;
     `;
 
     const result = await query(insertQuery, [
@@ -269,6 +291,10 @@ export const updateBeneficiario = async (req: Request, res: Response) => {
     const direccionVal = calle_direccion || direccion || '';
     const miembrosNum = parseInt(num_miembros, 10) || 1;
 
+    const config = await getConfiguracion();
+    const dotacionDiaria = config.dotacion_diaria_litros;
+    const dotacionSemanal = config.dotacion_semanal_por_habitante;
+
     const updateQuery = `
       UPDATE beneficiarios
       SET dni = $1,
@@ -287,7 +313,10 @@ export const updateBeneficiario = async (req: Request, res: Response) => {
           telefono = $12,
           email = $13
       WHERE id = $14
-      RETURNING *, (num_miembros * ${DOTACION_POR_HABITANTE}) as litros_sugeridos;
+      RETURNING *, 
+        (num_miembros * ${dotacionDiaria}) as dotacion_diaria_litros,
+        (num_miembros * ${dotacionSemanal}) as dotacion_semanal_litros,
+        (num_miembros * ${dotacionSemanal}) as litros_sugeridos;
     `;
 
     const result = await query(updateQuery, [
@@ -620,7 +649,7 @@ export const importExcel = async (req: Request, res: Response) => {
           }
           sectorsSummary[rowSector].beneficiarios += 1;
           sectorsSummary[rowSector].miembros += numMiembros;
-          const litros = numMiembros * DOTACION_POR_HABITANTE;
+          const litros = numMiembros * DOTACION_SEMANAL_POR_HABITANTE;
           sectorsSummary[rowSector].litros += litros;
           sectorsSummary[rowSector].m3 = parseFloat((sectorsSummary[rowSector].litros / LITROS_POR_M3).toFixed(2));
         }
@@ -634,9 +663,11 @@ export const importExcel = async (req: Request, res: Response) => {
       message: `Padrón procesado con éxito: ${importedCount} beneficiarios importados/actualizados.`,
       importedCount,
       totalArchivos: files.length,
-      dotacionPorHabitante: DOTACION_POR_HABITANTE,
-      totalLitros,
-      totalM3,
+      dotacionDiariaPorHabitante: DOTACION_POR_HABITANTE,
+      diasEntregaSemanal: DIAS_ENTREGA_SEMANAL,
+      dotacionSemanalPorHabitante: DOTACION_SEMANAL_POR_HABITANTE,
+      totalLitrosSemanal: totalLitros,
+      totalM3Semanal: totalM3,
       sectores: sectorsSummary,
     });
   } catch (error: any) {
@@ -716,6 +747,10 @@ export const exportarBeneficiariosExcel = async (req: Request, res: Response) =>
 
     const whereStr = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
 
+    const config = await getConfiguracion();
+    const dotacionDiaria = config.dotacion_diaria_litros;
+    const dotacionSemanal = config.dotacion_semanal_por_habitante;
+
     const sql = `
       SELECT 
         b.id,
@@ -730,7 +765,8 @@ export const exportarBeneficiariosExcel = async (req: Request, res: Response) =>
         COALESCE(b.telefono, '') as telefono,
         e.latitud,
         e.longitud,
-        (COALESCE(b.num_miembros, 1) * ${DOTACION_POR_HABITANTE}) as dotacion_diaria_litros,
+        (COALESCE(b.num_miembros, 1) * ${dotacionDiaria}) as dotacion_diaria_litros,
+        (COALESCE(b.num_miembros, 1) * ${dotacionSemanal}) as dotacion_semanal_litros,
         'ACTIVO' as estado_servicio
       FROM beneficiarios b
       LEFT JOIN LATERAL (
@@ -753,7 +789,7 @@ export const exportarBeneficiariosExcel = async (req: Request, res: Response) =>
       ['PROGRAMA NACIONAL DE SANEAMIENTO URBANO (PNSU) • EPS MOYOBAMBA S.A.'],
       [`CONVENIO N° 023-2026/VIVIENDA/VMCS/PNSU/DE • TOTAL FAMILIAS EMPADRONADAS: ${beneficiarios.length}`],
       [],
-      ['N°', 'DNI', 'APELLIDOS Y NOMBRES', 'SECTOR / AA.HH.', 'MZ', 'LOTE', 'DIRECCIÓN / REFERENCIA', 'N° MIEMBROS', 'DOTACIÓN (L/DÍA)', 'TELÉFONO', 'LATITUD', 'LONGITUD', 'ESTADO']
+      ['N°', 'DNI', 'APELLIDOS Y NOMBRES', 'SECTOR / AA.HH.', 'MZ', 'LOTE', 'DIRECCIÓN / REFERENCIA', 'N° MIEMBROS (TOTAL)', 'DOTACIÓN DIARIA (L/DÍA)', 'DOTACIÓN SEMANAL VALE (L/SEM)', 'TELÉFONO', 'LATITUD', 'LONGITUD', 'ESTADO']
     ];
 
     beneficiarios.forEach((b: any, idx: number) => {
@@ -767,6 +803,7 @@ export const exportarBeneficiariosExcel = async (req: Request, res: Response) =>
         b.direccion,
         Number(b.num_miembros || 1),
         Number(b.dotacion_diaria_litros || 50),
+        Number(b.dotacion_semanal_litros || 350),
         b.telefono || '-',
         b.latitud || '-',
         b.longitud || '-',

@@ -25,8 +25,10 @@ import { getDatabase } from '../database/schema';
 import { syncData } from '../services/SyncService';
 import { BACKEND_URL } from '../config/api';
 
-// Regla de Negocio Oficial EPS Moyobamba
-const DOTACION_POR_HABITANTE = 50; // 50 Litros por persona
+// Regla de Negocio Oficial EPS Moyobamba - Abastecimiento Periódico Semanal
+const DOTACION_POR_HABITANTE = 50; // 50 Litros diarios por persona (Norma SUNASS / MVCS)
+const DIAS_ENTREGA_SEMANAL = 7; // Ciclo de entrega periódica semanal (7 días)
+const DOTACION_SEMANAL_POR_HABITANTE = DOTACION_POR_HABITANTE * DIAS_ENTREGA_SEMANAL; // 350 Litros semanales por habitante
 const PROGRAMACION_ACTUAL_ID = 1;
 
 interface RepartoScreenProps {
@@ -38,10 +40,10 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
   const [dni, setDni] = useState('');
   const [beneficiario, setBeneficiario] = useState<any>(null);
   const [valeCodigo, setValeCodigo] = useState<string | null>(null);
-  const [litrosEntregar, setLitrosEntregar] = useState('50');
-  const [cuotaTotal, setCuotaTotal] = useState(50);
+  const [litrosEntregar, setLitrosEntregar] = useState('350');
+  const [cuotaTotal, setCuotaTotal] = useState(350);
   const [entregadoPrevio, setEntregadoPrevio] = useState(0);
-  const [saldoPendiente, setSaldoPendiente] = useState(50);
+  const [saldoPendiente, setSaldoPendiente] = useState(350);
   const [tieneEntregaPrevia, setTieneEntregaPrevia] = useState(false);
   const [hasSignature, setHasSignature] = useState(false);
   const [showSignaturePad, setShowSignaturePad] = useState(false);
@@ -73,6 +75,13 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
   const [turbiedadNtu, setTurbiedadNtu] = useState('1.40');
   const [aspectoCalidad, setAspectoCalidad] = useState('Límpido / Incoloro');
   const [etapaControl, setEtapaControl] = useState<'CARGA' | 'RUTA' | 'ADICIONAL'>('CARGA');
+  const [systemConfig, setSystemConfig] = useState<any>({
+    dotacion_diaria_litros: 50,
+    dias_entrega_semanal: 7,
+    turbiedad_max_ntu: 5.0,
+    cloro_min_ppm: 0.5,
+    cloro_max_ppm: 2.0
+  });
 
   // Navigation Tab State (Inicia en 'PROGRAMACION' para que el conductor vea su jornada asignada)
   const [activeTab, setActiveTab] = useState<'PROGRAMACION' | 'REPARTO'>('PROGRAMACION');
@@ -91,8 +100,27 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
       await fetchGpsLocation();
       await loadCisternasAndConductores();
       await loadProgramaciones();
+      await loadSystemConfig();
     })();
   }, []);
+
+  const loadSystemConfig = async () => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/configuracion`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json?.config) {
+          setSystemConfig({
+            dotacion_diaria_litros: Number(json.config.dotacion_diaria_litros) || 50,
+            dias_entrega_semanal: Number(json.config.dias_entrega_semanal) || 7,
+            turbiedad_max_ntu: Number(json.config.turbiedad_max_ntu) || 5.0,
+            cloro_min_ppm: Number(json.config.cloro_min_ppm) || 0.5,
+            cloro_max_ppm: Number(json.config.cloro_max_ppm) || 2.0
+          });
+        }
+      }
+    } catch (_) {}
+  };
 
   const loadProgramaciones = async () => {
     try {
@@ -112,7 +140,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
               (user?.personal_id && p.conductor_id === user.personal_id) ||
               (user?.nombres && p.conductor_nombre && p.conductor_nombre.toLowerCase().includes(user.nombres.toLowerCase().split(' ')[0]))
             );
-          } else if (userRol === 'AYUDANTE') {
+          } else if (userRol === 'GESTOR_ENTREGA' || userRol === 'AYUDANTE') {
             filteredProgs = data.filter((p: any) => 
               (p.ayudante_email && p.ayudante_email.toLowerCase() === userEmail) ||
               (user?.personal_id && p.ayudante_id === user.personal_id) ||
@@ -202,7 +230,10 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
       Alert.alert('Error', 'Ingrese valores numéricos válidos para Cloro y Turbiedad.');
       return;
     }
-    const conforme = c >= 0.5 && c <= 2.0 && t <= 5.0;
+    const cloroMin = Number(systemConfig?.cloro_min_ppm) || 0.5;
+    const cloroMax = Number(systemConfig?.cloro_max_ppm) || 2.0;
+    const turbMax = Number(systemConfig?.turbiedad_max_ntu) || 5.0;
+    const conforme = c >= cloroMin && c <= cloroMax && t <= turbMax;
     const punto = etapaControl === 'CARGA' 
       ? 'Surtidor / Planta de Carga Moyobamba' 
       : (etapaControl === 'RUTA' ? 'En Ruta / Grifo de Cisterna en Sector' : 'Control Adicional / Muestreo Libre');
@@ -254,8 +285,8 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
       Alert.alert(
         conforme ? '✓ Calidad Conforme' : '⚠ Alerta Sanitaria',
         conforme 
-          ? `[${etapaLabel}]\n\nParámetros registrados según TDR:\n• Cloro Residual: ${c.toFixed(2)} ppm (0.5-2.0)\n• Turbiedad: ${t.toFixed(2)} NTU (<5.0)\n• Punto: ${punto}\n\nAgua 100% Apta para Reparto.`
-          : `¡ATENCIÓN! Parámetros fuera de norma sanitaria:\n• Cloro: ${c.toFixed(2)} ppm\n• Turbiedad: ${t.toFixed(2)} NTU\nNotifique de inmediato a planta.`
+          ? `[${etapaLabel}]\n\nParámetros registrados según TDR:\n• Cloro Residual: ${c.toFixed(2)} ppm (${cloroMin}-${cloroMax})\n• Turbiedad: ${t.toFixed(2)} NTU (≤${turbMax})\n• Punto: ${punto}\n\nAgua 100% Apta para Reparto.`
+          : `¡ATENCIÓN! Parámetros fuera de norma sanitaria:\n• Cloro: ${c.toFixed(2)} ppm (Norma: ${cloroMin}-${cloroMax})\n• Turbiedad: ${t.toFixed(2)} NTU (Límite: ≤${turbMax})\nNotifique de inmediato a planta.`
       );
       setCalidadModalVisible(false);
     } catch (e) {
@@ -355,12 +386,13 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
           }
         } catch (_) {}
 
-        // Calcular cuota familiar total (SUNASS Standard: 50L x integrantes)
+        // Calcular cuota familiar semanal total (SUNASS: 50L/hab/día × integrantes × 7 días = 350L/hab)
+        const dotacionSemanalHab = (systemConfig?.dotacion_diaria_litros || DOTACION_POR_HABITANTE) * (systemConfig?.dias_entrega_semanal || DIAS_ENTREGA_SEMANAL);
         const cuotaFamiliar = qrLitros
           ? parseFloat(qrLitros)
           : result.vale_litros
           ? parseFloat(result.vale_litros)
-          : (result.num_miembros || 1) * DOTACION_POR_HABITANTE;
+          : (result.num_miembros || 1) * dotacionSemanalHab;
 
         const saldoResta = Math.max(0, cuotaFamiliar - yaEntregado);
 
@@ -546,7 +578,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
     }
 
     const progId = selectedProg?.id || PROGRAMACION_ACTUAL_ID;
-    const cuota = cuotaTotal > 0 ? cuotaTotal : (beneficiario.num_miembros || 1) * DOTACION_POR_HABITANTE;
+    const cuota = cuotaTotal > 0 ? cuotaTotal : (beneficiario.num_miembros || 1) * DOTACION_SEMANAL_POR_HABITANTE;
     const nuevoTotalEntregado = entregadoPrevio + litrosNum;
     const saldoRestante = Math.max(0, cuota - nuevoTotalEntregado);
     const estadoEntrega = saldoRestante > 0 ? 'PARCIAL' : 'COMPLETA';
@@ -713,6 +745,17 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
 
   const activeCisterna = cisternas.find((c) => c.id === selectedCisternaId);
 
+  const getProgMetrics = (prog: any) => {
+    if (!prog) return { volRepartido: 15000, volPromedio: 350, poblacion: 140, monto: 586.95 };
+    const volRepartido = Number(prog.total_litros || prog.litros_programados || 15000);
+    const volPromedio = prog.volumen_promedio ? Number(prog.volumen_promedio) : 350;
+    const poblacion = prog.poblacion_beneficiada ? Number(prog.poblacion_beneficiada) : (prog.poblacion_programada || Math.round((volRepartido / 350) * 4));
+    const monto = Number(prog.monto_valorizado || prog.monto_programado || ((volRepartido / 1000) * 39.13));
+    return { volRepartido, volPromedio, poblacion, monto };
+  };
+
+  const progMetrics = getProgMetrics(selectedProg);
+
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
@@ -731,15 +774,26 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
       <View style={styles.headerModernCurve}>
         <View style={styles.headerTopRow}>
           <View style={styles.headerBrand}>
-            <View style={styles.avatarCircle}>
-              <Ionicons name="person" size={20} color="#ffffff" />
+            <View style={[styles.avatarCircle, { overflow: 'hidden', padding: 0 }]}>
+              <Image
+                source={require('../../assets/icon.png')}
+                style={{ width: '100%', height: '100%' }}
+                resizeMode="cover"
+              />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.welcomeText} numberOfLines={1}>
-                Hola, {user?.nombres ? user.nombres.split(' ')[0] : 'Operador'}
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={styles.welcomeText} numberOfLines={1}>
+                  {user?.nombres ? user.nombres.split(' ')[0] : 'Operador'}
+                </Text>
+                <View style={{ backgroundColor: 'rgba(255,255,255,0.22)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                  <Text style={{ color: '#fff', fontSize: 9.5, fontWeight: '900' }}>AguaTrack</Text>
+                </View>
+              </View>
               <Text style={styles.roleSubtext} numberOfLines={1}>
-                {user?.rol === 'CONDUCTOR' ? 'Conductor de Cisterna' : (user?.rol || 'Personal EPS')} • EPS Moyobamba
+                {user?.rol === 'GESTOR_ENTREGA' || user?.rol === 'AYUDANTE'
+                  ? '🤝 Gestor de Entrega'
+                  : (user?.rol === 'CONDUCTOR' ? '🚚 Conductor de Cisterna' : (user?.rol === 'SUPERVISOR' ? '📋 Supervisor EPS' : (user?.rol || 'Personal EPS')))} • EPS Moyobamba
               </Text>
             </View>
           </View>
@@ -1045,7 +1099,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
             </View>
           </View>
 
-          {/* CARD 5: AVANCE DE JORNADA */}
+          {/* CARD 5: AVANCE DE JORNADA & 4 INDICADORES CLAVE */}
           <View style={styles.avanceCard}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <View>
@@ -1059,6 +1113,41 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                 <Text style={[styles.avanceValue, { color: '#0284c7' }]}>
                   {Number(selectedProg?.total_litros || 0).toLocaleString('es-PE')} Lts
                 </Text>
+              </View>
+            </View>
+
+            {/* 4 MÉTRICAS OPERATIVAS CLAVE (VOL. REPARTIDO, PROMEDIO, POBLACIÓN Y MONTO) */}
+            <View style={styles.metricsQuadGrid}>
+              <View style={[styles.metricQuadCard, { backgroundColor: '#f0f9ff', borderColor: '#bae6fd' }]}>
+                <Text style={[styles.metricQuadTag, { color: '#0369a1' }]}>🚰 VOL. REPARTIDO</Text>
+                <Text style={[styles.metricQuadValue, { color: '#0369a1' }]}>
+                  {progMetrics.volRepartido.toLocaleString()} L
+                </Text>
+                <Text style={styles.metricQuadSub}>{(progMetrics.volRepartido / 1000).toFixed(1)} m³ fiscalizados</Text>
+              </View>
+
+              <View style={[styles.metricQuadCard, { backgroundColor: '#eef2ff', borderColor: '#c7d2fe' }]}>
+                <Text style={[styles.metricQuadTag, { color: '#3730a3' }]}>📊 VOL. PROMEDIO</Text>
+                <Text style={[styles.metricQuadValue, { color: '#3730a3' }]}>
+                  {progMetrics.volPromedio.toLocaleString()} L
+                </Text>
+                <Text style={styles.metricQuadSub}>Por familia entregada</Text>
+              </View>
+
+              <View style={[styles.metricQuadCard, { backgroundColor: '#faf5ff', borderColor: '#e9d5ff' }]}>
+                <Text style={[styles.metricQuadTag, { color: '#6b21a8' }]}>👥 POBLACIÓN</Text>
+                <Text style={[styles.metricQuadValue, { color: '#6b21a8' }]}>
+                  {progMetrics.poblacion.toLocaleString()} hab.
+                </Text>
+                <Text style={styles.metricQuadSub}>Beneficiarios en ruta</Text>
+              </View>
+
+              <View style={[styles.metricQuadCard, { backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' }]}>
+                <Text style={[styles.metricQuadTag, { color: '#166534' }]}>💰 MONTO VALORIZADO</Text>
+                <Text style={[styles.metricQuadValue, { color: '#166534' }]}>
+                  S/. {progMetrics.monto.toFixed(2)}
+                </Text>
+                <Text style={styles.metricQuadSub}>Subsidio EPS / PNSU</Text>
               </View>
             </View>
           </View>
@@ -1111,6 +1200,51 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
             <TouchableOpacity onPress={fetchGpsLocation} style={styles.gpsRefreshBtn} activeOpacity={0.7}>
               <Ionicons name="refresh-outline" size={16} color="#0284c7" />
             </TouchableOpacity>
+          </View>
+
+          {/* BARRA DE INDICADORES CLAVE (VOL. REPARTIDO, PROMEDIO, POBLACIÓN, MONTO) */}
+          <View style={styles.metricsSummaryContainer}>
+            <View style={styles.metricsSummaryHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Ionicons name="stats-chart" size={14} color="#0369a1" />
+                <Text style={styles.metricsSummaryTitle}>INDICADORES OPERATIVOS EN RUTA</Text>
+              </View>
+              <Text style={styles.metricsSummaryBadge}>Prog #{selectedProg?.id || 1}</Text>
+            </View>
+
+            <View style={styles.metricsQuadGrid}>
+              <View style={[styles.metricQuadCard, { backgroundColor: '#f0f9ff', borderColor: '#bae6fd' }]}>
+                <Text style={[styles.metricQuadTag, { color: '#0369a1' }]}>🚰 VOL. REPARTIDO</Text>
+                <Text style={[styles.metricQuadValue, { color: '#0369a1' }]}>
+                  {progMetrics.volRepartido.toLocaleString()} L
+                </Text>
+                <Text style={styles.metricQuadSub}>{(progMetrics.volRepartido / 1000).toFixed(1)} m³</Text>
+              </View>
+
+              <View style={[styles.metricQuadCard, { backgroundColor: '#eef2ff', borderColor: '#c7d2fe' }]}>
+                <Text style={[styles.metricQuadTag, { color: '#3730a3' }]}>📊 VOL. PROMEDIO</Text>
+                <Text style={[styles.metricQuadValue, { color: '#3730a3' }]}>
+                  {progMetrics.volPromedio.toLocaleString()} L
+                </Text>
+                <Text style={styles.metricQuadSub}>Por familia</Text>
+              </View>
+
+              <View style={[styles.metricQuadCard, { backgroundColor: '#faf5ff', borderColor: '#e9d5ff' }]}>
+                <Text style={[styles.metricQuadTag, { color: '#6b21a8' }]}>👥 POBLACIÓN</Text>
+                <Text style={[styles.metricQuadValue, { color: '#6b21a8' }]}>
+                  {progMetrics.poblacion.toLocaleString()} hab.
+                </Text>
+                <Text style={styles.metricQuadSub}>Beneficiarios</Text>
+              </View>
+
+              <View style={[styles.metricQuadCard, { backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' }]}>
+                <Text style={[styles.metricQuadTag, { color: '#166534' }]}>💰 MONTO VALORIZADO</Text>
+                <Text style={[styles.metricQuadValue, { color: '#166534' }]}>
+                  S/. {progMetrics.monto.toFixed(2)}
+                </Text>
+                <Text style={styles.metricQuadSub}>Subsidio EPS</Text>
+              </View>
+            </View>
           </View>
 
       {/* CISTERNA & CONDUCTOR SELECTOR CARD */}
@@ -1178,7 +1312,10 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
       {/* DEDICATED WATER QUALITY CONTROL CARD */}
       <View style={styles.calidadCard}>
         {(() => {
-          const isApto = parseFloat(cloroPpm) >= 0.5 && parseFloat(cloroPpm) <= 2.0 && parseFloat(turbiedadNtu) <= 5.0;
+          const cMin = Number(systemConfig?.cloro_min_ppm) || 0.5;
+          const cMax = Number(systemConfig?.cloro_max_ppm) || 2.0;
+          const tMax = Number(systemConfig?.turbiedad_max_ntu) || 5.0;
+          const isApto = parseFloat(cloroPpm) >= cMin && parseFloat(cloroPpm) <= cMax && parseFloat(turbiedadNtu) <= tMax;
           return (
             <View style={styles.calidadCardTopRow}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, marginRight: 6 }}>
@@ -1347,13 +1484,15 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                     <Ionicons name="water-outline" size={15} color="#0369a1" />
-                    <Text style={styles.waterCalcTitle}>Cuota y Dotación Familiar</Text>
+                    <Text style={styles.waterCalcTitle}>Cuota y Dotación Familiar (Semanal)</Text>
                   </View>
-                  <Text style={styles.dotacionPill}>{DOTACION_POR_HABITANTE} L/hab</Text>
+                  <Text style={styles.dotacionPill}>{DOTACION_POR_HABITANTE} L/hab/día</Text>
                 </View>
 
                 <Text style={styles.waterCalcSub}>
-                  Cuota Total Programada: {beneficiario.num_miembros || 1} integrantes × {DOTACION_POR_HABITANTE} L = <Text style={{ fontWeight: '800', color: '#0369a1' }}>{cuotaTotal} Litros</Text>
+                  👥 Personas: {beneficiario.num_miembros || 1} integrantes (Titular + Familiares){'\n'}
+                  💧 Dotación Diaria: {beneficiario.num_miembros || 1} pers. × {DOTACION_POR_HABITANTE} L = {(beneficiario.num_miembros || 1) * DOTACION_POR_HABITANTE} Lts/día{'\n'}
+                  📅 Vale Semanal (7 días): {(beneficiario.num_miembros || 1) * DOTACION_POR_HABITANTE} L × 7 días = <Text style={{ fontWeight: '800', color: '#0369a1' }}>{cuotaTotal} Litros</Text>
                 </Text>
 
                 {tieneEntregaPrevia ? (
@@ -1798,7 +1937,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                   />
                   <Text style={styles.paramInputUnit}>NTU</Text>
                 </View>
-                <Text style={styles.paramInputHint}>Límite: &lt; 5.0 NTU</Text>
+                <Text style={styles.paramInputHint}>Límite: ≤ {systemConfig?.turbiedad_max_ntu ?? 5.0} NTU</Text>
               </View>
             </View>
 
@@ -2360,6 +2499,76 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '900',
     letterSpacing: 0.3,
+  },
+
+  // 4 MÉTRICAS OPERATIVAS CLAVE (VOL. REPARTIDO, PROMEDIO, POBLACIÓN, MONTO)
+  metricsQuadGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  metricQuadCard: {
+    flex: 1,
+    minWidth: '45%',
+    padding: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  metricQuadTag: {
+    fontSize: 9.5,
+    fontWeight: '800',
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  metricQuadValue: {
+    fontSize: 15,
+    fontWeight: '900',
+    marginBottom: 2,
+  },
+  metricQuadSub: {
+    fontSize: 9.5,
+    color: '#64748b',
+    fontWeight: '600',
+  },
+  metricsSummaryContainer: {
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: '#e0f2fe',
+    padding: 12,
+    marginBottom: 14,
+    shadowColor: '#0284c7',
+    shadowOpacity: 0.06,
+    shadowOffset: { width: 0, height: 3 },
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  metricsSummaryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+    paddingBottom: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  metricsSummaryTitle: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#0369a1',
+    letterSpacing: 0.5,
+  },
+  metricsSummaryBadge: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#0284c7',
+    backgroundColor: '#e0f2fe',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
   },
 
   // GPS RADAR BANNER

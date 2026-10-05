@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { query } from '../db';
+import { getConfiguracion } from '../services/configuracion.service';
 
 export const getControlesCalidad = async (req: Request, res: Response) => {
   try {
@@ -74,10 +75,12 @@ export const createControlCalidad = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Valores numéricos de Cloro (ppm) y Turbiedad (NTU) son obligatorios.' });
     }
 
-    // Regla Sanitaria D.S. 031-2010-SA y PNSU:
-    // Cloro Residual Libre: >= 0.5 ppm y <= 2.0 ppm
-    // Turbiedad: <= 5.0 NTU
-    const conforme = cloro >= 0.5 && cloro <= 2.0 && turbiedad <= 5.0;
+    // Obtener límites sanitarios configurables (Turbiedad LMP, Cloro min-max)
+    const config = await getConfiguracion();
+
+    const cloroValido = cloro >= config.cloro_min_ppm && cloro <= config.cloro_max_ppm;
+    const turbiedadValida = turbiedad <= config.turbiedad_max_ntu;
+    const conforme = cloroValido && turbiedadValida;
 
     const result = await query(`
       INSERT INTO control_calidad (

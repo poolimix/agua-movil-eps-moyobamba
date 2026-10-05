@@ -60,22 +60,84 @@ export default function CalidadPage() {
 
   const [filtroCisterna, setFiltroCisterna] = useState('');
 
+  // Configuration Normativa State
+  const [configCalidad, setConfigCalidad] = useState({
+    turbiedad_max_ntu: 5.0,
+    cloro_min_ppm: 0.5,
+    cloro_max_ppm: 2.0,
+    ph_min: 6.5,
+    ph_max: 8.5
+  });
+  const [normasModalOpen, setNormasModalOpen] = useState(false);
+  const [savingNormas, setSavingNormas] = useState(false);
+  const [normasForm, setNormasForm] = useState({
+    turbiedad_max_ntu: 5.0,
+    cloro_min_ppm: 0.5,
+    cloro_max_ppm: 2.0,
+    ph_min: 6.5,
+    ph_max: 8.5
+  });
+
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [calidadRes, statsRes, cisternasRes] = await Promise.all([
+      const [calidadRes, statsRes, cisternasRes, configRes] = await Promise.all([
         api.get('/calidad/calidad' + (filtroCisterna ? `?cisterna_id=${filtroCisterna}` : '')),
         api.get('/calidad/calidad/stats'),
-        api.get('/cisternas')
+        api.get('/cisternas'),
+        api.get('/configuracion').catch(() => null)
       ]);
 
       setControles(calidadRes.data);
       setStats(statsRes.data);
       setCisternas(cisternasRes.data);
+
+      if (configRes?.data?.config) {
+        const c = configRes.data.config;
+        const loadedCfg = {
+          turbiedad_max_ntu: Number(c.turbiedad_max_ntu) || 5.0,
+          cloro_min_ppm: Number(c.cloro_min_ppm) || 0.5,
+          cloro_max_ppm: Number(c.cloro_max_ppm) || 2.0,
+          ph_min: Number(c.ph_min) || 6.5,
+          ph_max: Number(c.ph_max) || 8.5
+        };
+        setConfigCalidad(loadedCfg);
+        setNormasForm(loadedCfg);
+      }
     } catch (error) {
       console.error('Error cargando controles de calidad:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSaveNormas = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      setSavingNormas(true);
+      await api.put('/configuracion', {
+        turbiedad_max_ntu: Number(normasForm.turbiedad_max_ntu),
+        cloro_min_ppm: Number(normasForm.cloro_min_ppm),
+        cloro_max_ppm: Number(normasForm.cloro_max_ppm),
+        ph_min: Number(normasForm.ph_min),
+        ph_max: Number(normasForm.ph_max),
+      });
+      await dialogAlert({
+        title: 'Límites Normativos Actualizados',
+        message: '✅ Los parámetros de control de agua (turbiedad, cloro y pH) se han actualizado exitosamente.',
+        type: 'success'
+      });
+      setConfigCalidad({ ...normasForm });
+      setNormasModalOpen(false);
+      fetchData();
+    } catch (err: any) {
+      dialogAlert({
+        title: 'Error',
+        message: err.response?.data?.message || 'Error al guardar parámetros normativos.',
+        type: 'danger'
+      });
+    } finally {
+      setSavingNormas(false);
     }
   };
 
@@ -120,7 +182,7 @@ export default function CalidadPage() {
 
   const getCloroBadge = (cloro: number) => {
     const val = Number(cloro);
-    const isOptimo = val >= 0.5 && val <= 2.0;
+    const isOptimo = val >= configCalidad.cloro_min_ppm && val <= configCalidad.cloro_max_ppm;
     return (
       <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
         <strong style={{ fontFamily: 'ui-monospace, monospace', fontSize: 13, color: isOptimo ? '#0f172a' : '#b91c1c' }}>
@@ -139,7 +201,7 @@ export default function CalidadPage() {
 
   const getTurbiedadBadge = (turb: number) => {
     const val = Number(turb);
-    const isApto = val <= 5.0;
+    const isApto = val <= configCalidad.turbiedad_max_ntu;
     return (
       <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
         <strong style={{ fontFamily: 'ui-monospace, monospace', fontSize: 13, color: isApto ? '#0f172a' : '#b91c1c' }}>
@@ -194,8 +256,8 @@ export default function CalidadPage() {
     : 100;
   const cloroPromedio = parseFloat(stats?.promedio_cloro_ppm || '0.00');
   const turbiedadPromedio = parseFloat(stats?.promedio_turbiedad_ntu || '0.00');
-  const isCloroOptimo = cloroPromedio >= 0.5 && cloroPromedio <= 2.0;
-  const isTurbiedadOptima = turbiedadPromedio < 5.0;
+  const isCloroOptimo = cloroPromedio >= configCalidad.cloro_min_ppm && cloroPromedio <= configCalidad.cloro_max_ppm;
+  const isTurbiedadOptima = turbiedadPromedio <= configCalidad.turbiedad_max_ntu;
 
   return (
     <Layout>
@@ -213,7 +275,30 @@ export default function CalidadPage() {
               Monitoreo organoléptico y fisicoquímico fehaciente en surtidor, ruta y punto de entrega
             </p>
           </div>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button 
+              type="button" 
+              className="btn-secondary"
+              onClick={() => {
+                setNormasForm({ ...configCalidad });
+                setNormasModalOpen(true);
+              }}
+              style={{
+                background: '#f8fafc',
+                borderColor: '#cbd5e1',
+                color: '#334155',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '10px 16px',
+                borderRadius: 10,
+                fontSize: 13,
+                fontWeight: 700
+              }}
+              title="Configurar Límite Máximo Permisible (LMP) de Turbiedad y Cloro Residual"
+            >
+              <span>⚙️ Parámetros Normativos (Turbiedad ≤ {configCalidad.turbiedad_max_ntu} NTU)</span>
+            </button>
             <button 
               type="button" 
               className="btn-primary"
@@ -308,11 +393,11 @@ export default function CalidadPage() {
             </div>
             <div>
               <div style={{ width: '100%', height: 4, background: '#f1f5f9', borderRadius: 999, overflow: 'hidden', marginBottom: 8 }}>
-                <div style={{ width: `${Math.min(100, (cloroPromedio / 2.0) * 100)}%`, height: '100%', background: isCloroOptimo ? '#0284c7' : '#ef4444', borderRadius: 999 }} />
+                <div style={{ width: `${Math.min(100, (cloroPromedio / Math.max(configCalidad.cloro_max_ppm, 0.1)) * 100)}%`, height: '100%', background: isCloroOptimo ? '#0284c7' : '#ef4444', borderRadius: 999 }} />
               </div>
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: isCloroOptimo ? '#f0f9ff' : '#fef2f2', color: isCloroOptimo ? '#0369a1' : '#991b1b', border: `1px solid ${isCloroOptimo ? '#bae6fd' : '#fecaca'}`, padding: '3px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700 }}>
                 <span>{isCloroOptimo ? '✓' : '⚠️'}</span>
-                <span>Rango óptimo: 0.5 - 2.0 ppm</span>
+                <span>Rango óptimo: {configCalidad.cloro_min_ppm} - {configCalidad.cloro_max_ppm} ppm</span>
               </div>
             </div>
           </div>
@@ -350,11 +435,11 @@ export default function CalidadPage() {
             </div>
             <div>
               <div style={{ width: '100%', height: 4, background: '#f1f5f9', borderRadius: 999, overflow: 'hidden', marginBottom: 8 }}>
-                <div style={{ width: `${Math.min(100, (turbiedadPromedio / 5.0) * 100)}%`, height: '100%', background: isTurbiedadOptima ? '#6366f1' : '#ef4444', borderRadius: 999 }} />
+                <div style={{ width: `${Math.min(100, (turbiedadPromedio / Math.max(configCalidad.turbiedad_max_ntu, 0.1)) * 100)}%`, height: '100%', background: isTurbiedadOptima ? '#6366f1' : '#ef4444', borderRadius: 999 }} />
               </div>
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#eef2ff', color: '#3730a3', border: '1px solid #c7d2fe', padding: '3px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700 }}>
                 <span>{isTurbiedadOptima ? '✓' : '⚠️'}</span>
-                <span>Límite reglamentario: &lt; 5.0 NTU</span>
+                <span>Límite reglamentario: ≤ {configCalidad.turbiedad_max_ntu} NTU</span>
               </div>
             </div>
           </div>
@@ -699,6 +784,164 @@ export default function CalidadPage() {
                   <button type="button" className="btn-secondary" onClick={() => setModalOpen(false)}>Cancelar</button>
                   <button type="submit" className="btn-primary" disabled={submitting}>
                     {submitting ? 'Guardando...' : '✓ Guardar Test de Calidad'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de Configuración Normativa de Calidad de Agua */}
+        {normasModalOpen && (
+          <div className="modal-overlay" style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(15, 23, 42, 0.65)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: 16
+          }}>
+            <div className="modal-content" style={{
+              background: '#ffffff',
+              borderRadius: 16,
+              maxWidth: 540,
+              width: '100%',
+              padding: 24,
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+                <div>
+                  <h3 style={{ fontSize: 18, fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                    ⚙️ Configuración de Normas de Calidad de Agua
+                  </h3>
+                  <p style={{ fontSize: 13, color: '#64748b', margin: '4px 0 0' }}>
+                    Ajuste los Límites Máximos Permisibles (LMP) según el D.S. 031-2010-SA o directivas EPS
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setNormasModalOpen(false)}
+                  style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#94a3b8' }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveNormas}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 14, marginBottom: 20 }}>
+                  <div style={{ background: '#f8fafc', padding: 14, borderRadius: 10, border: '1px solid #e2e8f0' }}>
+                    <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>
+                      Límite Máximo de Turbiedad (NTU):
+                    </label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0.1"
+                      max="50"
+                      value={normasForm.turbiedad_max_ntu}
+                      onChange={(e) => setNormasForm({ ...normasForm, turbiedad_max_ntu: parseFloat(e.target.value) || 0 })}
+                      style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 14, fontWeight: 700 }}
+                      required
+                    />
+                    <span style={{ fontSize: 11, color: '#64748b', display: 'block', marginTop: 4 }}>
+                      Norma SUNASS / MINSA habitual: 5.0 NTU. Cualquier ensayo superior se marcará como "No Apto".
+                    </span>
+                  </div>
+
+                  <div style={{ background: '#f8fafc', padding: 14, borderRadius: 10, border: '1px solid #e2e8f0' }}>
+                    <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>
+                      Rango de Cloro Residual Libre (ppm):
+                    </label>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                      <div>
+                        <span style={{ fontSize: 11, color: '#475569', fontWeight: 600 }}>Mínimo (ppm):</span>
+                        <input
+                          type="number"
+                          step="0.05"
+                          min="0.1"
+                          max="5"
+                          value={normasForm.cloro_min_ppm}
+                          onChange={(e) => setNormasForm({ ...normasForm, cloro_min_ppm: parseFloat(e.target.value) || 0 })}
+                          style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 14, fontWeight: 700 }}
+                          required
+                        />
+                      </div>
+                      <div>
+                        <span style={{ fontSize: 11, color: '#475569', fontWeight: 600 }}>Máximo (ppm):</span>
+                        <input
+                          type="number"
+                          step="0.05"
+                          min="0.5"
+                          max="10"
+                          value={normasForm.cloro_max_ppm}
+                          onChange={(e) => setNormasForm({ ...normasForm, cloro_max_ppm: parseFloat(e.target.value) || 0 })}
+                          style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 14, fontWeight: 700 }}
+                          required
+                        />
+                      </div>
+                    </div>
+                    <span style={{ fontSize: 11, color: '#64748b', display: 'block', marginTop: 4 }}>
+                      Valor habitual: 0.5 a 2.0 ppm para desinfección efectiva sin sabor residual.
+                    </span>
+                  </div>
+
+                  <div style={{ background: '#f8fafc', padding: 14, borderRadius: 10, border: '1px solid #e2e8f0' }}>
+                    <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>
+                      Rango de Potencial de Hidrógeno (pH):
+                    </label>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                      <div>
+                        <span style={{ fontSize: 11, color: '#475569', fontWeight: 600 }}>pH Mínimo:</span>
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="4"
+                          max="10"
+                          value={normasForm.ph_min}
+                          onChange={(e) => setNormasForm({ ...normasForm, ph_min: parseFloat(e.target.value) || 0 })}
+                          style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 14, fontWeight: 700 }}
+                          required
+                        />
+                      </div>
+                      <div>
+                        <span style={{ fontSize: 11, color: '#475569', fontWeight: 600 }}>pH Máximo:</span>
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="6"
+                          max="12"
+                          value={normasForm.ph_max}
+                          onChange={(e) => setNormasForm({ ...normasForm, ph_max: parseFloat(e.target.value) || 0 })}
+                          style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 14, fontWeight: 700 }}
+                          required
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => setNormasModalOpen(false)}
+                    disabled={savingNormas}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn-primary"
+                    disabled={savingNormas}
+                    style={{ background: '#0284c7', borderColor: '#0369a1' }}
+                  >
+                    {savingNormas ? 'Guardando...' : '💾 Guardar Límites de Calidad'}
                   </button>
                 </div>
               </form>

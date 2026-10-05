@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DialogProvider } from './context/DialogContext';
+import AguaTrackPreloader from './components/AguaTrackPreloader';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import BeneficiariosPage from './pages/BeneficiariosPage';
@@ -13,6 +15,8 @@ import CalidadPage from './pages/CalidadPage';
 import ValesPage from './pages/ValesPage';
 import InformesOficialesPage from './pages/InformesOficialesPage';
 import BalanceHidricoPage from './pages/BalanceHidricoPage';
+import ConfiguracionPage from './pages/ConfiguracionPage';
+import UsuariosPage from './pages/UsuariosPage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
@@ -35,15 +39,22 @@ function AppRoutes() {
       <Route path="/balance" element={<ProtectedRoute><BalanceHidricoPage /></ProtectedRoute>} />
       <Route path="/cisternas" element={<ProtectedRoute><CisternasPage /></ProtectedRoute>} />
       <Route path="/personal" element={<ProtectedRoute><PersonalPage /></ProtectedRoute>} />
+      <Route path="/configuracion" element={<ProtectedRoute><ConfiguracionPage /></ProtectedRoute>} />
+      <Route path="/usuarios" element={<ProtectedRoute><UsuariosPage /></ProtectedRoute>} />
       <Route path="*" element={<Navigate to={user ? '/dashboard' : '/login'} replace />} />
     </Routes>
   );
 }
 
 export default function App() {
+  const [preloaderComplete, setPreloaderComplete] = useState(false);
+
   return (
     <DialogProvider>
       <AuthProvider>
+        {!preloaderComplete && (
+          <AguaTrackPreloader onComplete={() => setPreloaderComplete(true)} />
+        )}
         <BrowserRouter>
           <AppRoutes />
         </BrowserRouter>

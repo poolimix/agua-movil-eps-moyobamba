@@ -58,7 +58,7 @@ export const verifyToken = async (req: Request, res: Response, next: NextFunctio
 
 /**
  * Middleware de Control de Acceso Basado en Roles (RBAC)
- * El rol ADMIN tiene acceso automático a todas las operaciones permitidas.
+ * Los roles SUPER_ADMIN y ADMIN tienen acceso automático a todas las operaciones permitidas.
  */
 export const requireRole = (allowedRoles: string[]) => {
   return (req: Request, res: Response, next: NextFunction) => {
@@ -69,8 +69,8 @@ export const requireRole = (allowedRoles: string[]) => {
     const userRole = (req.user.rol || '').toUpperCase();
     const allowedUpper = allowedRoles.map((r) => r.toUpperCase());
 
-    // ADMIN siempre tiene permiso maestro
-    if (userRole === 'ADMIN' || allowedUpper.includes(userRole)) {
+    // SUPER_ADMIN y ADMIN siempre tienen permiso maestro
+    if (userRole === 'SUPER_ADMIN' || userRole === 'ADMIN' || allowedUpper.includes(userRole)) {
       return next();
     }
 
@@ -80,4 +80,24 @@ export const requireRole = (allowedRoles: string[]) => {
       rolesPermitidos: allowedRoles,
     });
   };
+};
+
+/**
+ * Middleware para restringir acciones exclusivamente a Super Administradores
+ */
+export const requireSuperAdmin = (req: Request, res: Response, next: NextFunction) => {
+  if (!req.user) {
+    return res.status(401).json({ message: 'No autenticado: Debe iniciar sesión.' });
+  }
+
+  const userRole = (req.user.rol || '').toUpperCase();
+  if (userRole === 'SUPER_ADMIN' || userRole === 'ADMIN') {
+    return next();
+  }
+
+  return res.status(403).json({
+    message: 'Acceso Denegado: Acción reservada exclusivamente para el Super Administrador del sistema.',
+    rolActual: userRole,
+    rolesPermitidos: ['SUPER_ADMIN', 'ADMIN'],
+  });
 };

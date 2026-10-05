@@ -23,6 +23,11 @@ export const getAllProgramaciones = async (req: Request, res: Response) => {
         ayud.email as ayudante_email,
         (SELECT COUNT(*) FROM entregas_agua e WHERE e.programacion_id = p.id) as total_entregas,
         (SELECT COALESCE(SUM(litros_entregados), 0) FROM entregas_agua e WHERE e.programacion_id = p.id) as total_litros,
+        (SELECT CASE WHEN COUNT(*) > 0 THEN ROUND(COALESCE(SUM(litros_entregados), 0) / COUNT(*), 0) ELSE 0 END FROM entregas_agua e WHERE e.programacion_id = p.id) as volumen_promedio,
+        (SELECT COALESCE(SUM(b.num_miembros), 0) FROM entregas_agua e JOIN beneficiarios b ON e.beneficiario_id = b.id WHERE e.programacion_id = p.id) as poblacion_beneficiada,
+        (SELECT ROUND((COALESCE(SUM(litros_entregados), 0)::numeric / 1000.0) * 39.13, 2) FROM entregas_agua e WHERE e.programacion_id = p.id) as monto_valorizado,
+        ROUND((COALESCE(p.litros_programados, 15000)::numeric / 1000.0) * 39.13, 2) as monto_programado,
+        ROUND(COALESCE(p.litros_programados, 15000)::numeric / 350.0 * 4) as poblacion_programada,
         (SELECT COUNT(*) FROM control_calidad cc WHERE cc.programacion_id = p.id) as total_calidad,
         (SELECT COUNT(*) FROM control_calidad cc WHERE cc.programacion_id = p.id AND cc.etapa_control = 'CARGA') as calidad_carga,
         (SELECT COUNT(*) FROM control_calidad cc WHERE cc.programacion_id = p.id AND cc.etapa_control = 'RUTA') as calidad_ruta,
@@ -411,3 +416,29 @@ export const exportarProgramacionExcel = async (req: Request, res: Response) => 
     res.status(500).json({ message: 'Error exportando Excel', error: error.message });
   }
 };
+
+export const updateEstadoProgramacion = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { estado } = req.body;
+
+    if (!estado) {
+      return res.status(400).json({ message: 'El campo estado es requerido.' });
+    }
+
+    const result = await query(
+      `UPDATE programaciones SET estado = $1 WHERE id = $2 RETURNING *`,
+      [estado, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Programación no encontrada.' });
+    }
+
+    res.json({ message: `Estado actualizado a ${estado}`, programacion: result.rows[0] });
+  } catch (error: any) {
+    console.error('Error actualizando estado de programacion:', error);
+    res.status(500).json({ message: 'Error al actualizar estado', error: error.message });
+  }
+};
+

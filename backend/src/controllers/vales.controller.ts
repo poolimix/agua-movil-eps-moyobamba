@@ -1,7 +1,9 @@
 import { Request, Response } from 'express';
+import * as xlsx from 'xlsx';
 import { query } from '../db';
-import { DOTACION_POR_HABITANTE } from '../config/constants';
+import { DOTACION_POR_HABITANTE, DIAS_ENTREGA_SEMANAL, DOTACION_SEMANAL_POR_HABITANTE } from '../config/constants';
 import { MultichannelNotificationService } from '../services/MultichannelNotificationService';
+import { getConfiguracion } from '../services/configuracion.service';
 
 const BATCH_SIZE = 15; // Controlled batch size for rate-limit protection
 
@@ -12,7 +14,7 @@ export const buscarVale = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Parámetro de búsqueda requerido' });
     }
 
-    // Parse potential structured QR content like "VALE-20260826-001|47891234|200L"
+    // Parse potential structured QR content like "VALE-20260826-001|47891234|1750L"
     let codigo = rawQuery;
     let dni = rawQuery;
 
@@ -56,10 +58,18 @@ export const buscarVale = async (req: Request, res: Response) => {
       return res.status(404).json({ message: `No se encontró vale ni beneficiario para: ${rawQuery}` });
     }
 
+    const config = await getConfiguracion();
     const row = result.rows[0];
+    const numMiembros = row.num_miembros || 1;
+    const dotacionDiaria = numMiembros * config.dotacion_diaria_litros;
+    const dotacionSemanal = numMiembros * config.dotacion_semanal_por_habitante;
+
     res.json({
       ...row,
-      litros_sugeridos: row.litros_sugeridos ? parseFloat(row.litros_sugeridos) : ((row.num_miembros || 1) * DOTACION_POR_HABITANTE),
+      litros_sugeridos: row.litros_sugeridos ? parseFloat(row.litros_sugeridos) : dotacionSemanal,
+      dotacion_diaria_litros: dotacionDiaria,
+      dotacion_semanal_litros: dotacionSemanal,
+      dias_abastecimiento: config.dias_entrega_semanal,
       vale_codigo: row.codigo_unico || null,
     });
   } catch (error: any) {
@@ -105,9 +115,12 @@ export const despacharValesProgramacion = async (req: Request, res: Response) =>
 
     // 3. Generate or retrieve Vouchers (vales_entrega)
     const valesToProcess: any[] = [];
+    const config = await getConfiguracion();
+    const dotacionSemanal = config.dotacion_semanal_por_habitante;
 
     for (const b of beneficiarios) {
-      const litros = (b.num_miembros || 1) * DOTACION_POR_HABITANTE;
+      // Regla de Negocio: Dotación familiar semanal según configuración del sistema
+      const litros = (b.num_miembros || 1) * dotacionSemanal;
       const codigoUnico = `VALE-${dateSlug}-${String(b.id).padStart(3, '0')}`;
       const qrData = `${codigoUnico}|${b.dni}|${litros}L|${programacion.id}`;
 
@@ -120,6 +133,17 @@ export const despacharValesProgramacion = async (req: Request, res: Response) =>
       let vale;
       if (existing.rows.length > 0) {
         vale = existing.rows[0];
+        // Si el vale previo tenía el valor diario antiguo (< dotación semanal), actualizarlo a la dotación semanal
+        if (parseFloat(vale.litros_sugeridos) < litros) {
+          const upd = await query(
+            `UPDATE vales_entrega 
+             SET litros_sugeridos = $1, qr_data = $2 
+             WHERE id = $3 
+             RETURNING *`,
+            [litros, qrData, vale.id]
+          );
+          vale = upd.rows[0];
+        }
       } else {
         const ins = await query(
           `INSERT INTO vales_entrega (
@@ -427,6 +451,211 @@ export const cambiarEstadoVale = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error al cambiar estado del vale:', error);
     res.status(500).json({ message: 'Error al cambiar estado del vale', error: error.message });
+  }
+};
+
+/**
+ * Recalcular y sincronizar todos los vales emitidos con la dotación semanal reglamentaria (50 L/hab/día × 7 días = 350 L/hab)
+ */
+export const recalcularValesSemana = async (_req: Request, res: Response) => {
+  try {
+    const config = await getConfiguracion();
+    const dotacionSemanal = config.dotacion_semanal_por_habitante;
+
+    const result = await query(`
+      UPDATE vales_entrega v
+      SET litros_sugeridos = (COALESCE(b.num_miembros, 1) * ${dotacionSemanal}),
+          qr_data = v.codigo_unico || '|' || b.dni || '|' || (COALESCE(b.num_miembros, 1) * ${dotacionSemanal}) || 'L|' || v.programacion_id
+      FROM beneficiarios b
+      WHERE v.beneficiario_id = b.id
+      RETURNING v.id, v.codigo_unico, v.litros_sugeridos;
+    `);
+
+    res.json({
+      message: `Se actualizaron ${result.rowCount} vales a la dotación reglamentaria de ${config.dias_entrega_semanal} días (${dotacionSemanal} L/hab/semana).`,
+      actualizados: result.rowCount,
+      dotacionDiaria: config.dotacion_diaria_litros,
+      diasEntrega: config.dias_entrega_semanal,
+      dotacionSemanalPorHabitante: dotacionSemanal,
+      vales: result.rows
+    });
+  } catch (error: any) {
+    console.error('Error recalculando vales:', error);
+    res.status(500).json({ message: 'Error al recalcular vales a dotación semanal', error: error.message });
+  }
+};
+
+/**
+ * Exportar Registro Oficial de Vales de Consumo a Excel (.xlsx)
+ */
+export const exportarValesExcel = async (req: Request, res: Response) => {
+  try {
+    const { estado, search, programacion_id } = req.query;
+    const config = await getConfiguracion();
+
+    let sql = `
+      SELECT 
+        v.id,
+        v.codigo_unico,
+        v.litros_sugeridos,
+        v.estado,
+        v.whatsapp_enviado,
+        v.sms_enviado,
+        v.correo_enviado,
+        v.fecha_despacho,
+        v.created_at,
+        b.dni,
+        b.nombres_apellidos,
+        COALESCE(b.sector_aahh, b.sector, 'Moyobamba') as sector,
+        COALESCE(b.calle_direccion, b.direccion, '-') as direccion,
+        b.telefono,
+        COALESCE(b.num_miembros, 1) as num_miembros,
+        p.id as programacion_id,
+        p.fecha as programacion_fecha,
+        p.zona as programacion_zona
+      FROM vales_entrega v
+      LEFT JOIN beneficiarios b ON v.beneficiario_id = b.id
+      LEFT JOIN programaciones p ON v.programacion_id = p.id
+      WHERE 1=1
+    `;
+    const params: any[] = [];
+    let pIdx = 1;
+
+    if (estado) {
+      sql += ` AND v.estado ILIKE $${pIdx++}`;
+      params.push(estado);
+    }
+    if (programacion_id) {
+      sql += ` AND v.programacion_id = $${pIdx++}`;
+      params.push(programacion_id);
+    }
+    if (search) {
+      sql += ` AND (v.codigo_unico ILIKE $${pIdx} OR b.dni ILIKE $${pIdx} OR b.nombres_apellidos ILIKE $${pIdx} OR b.sector_aahh ILIKE $${pIdx} OR b.sector ILIKE $${pIdx})`;
+      params.push(`%${search}%`);
+      pIdx++;
+    }
+
+    sql += ` ORDER BY v.id DESC`;
+
+    const result = await query(sql, params);
+    const vales = result.rows;
+
+    const wb = xlsx.utils.book_new();
+
+    const rows: any[][] = [
+      ['EMPRESA PRESTADORA DE SERVICIOS DE SANEAMIENTO — EPS MOYOBAMBA S.A.'],
+      ['PROGRAMA NACIONAL DE SANEAMIENTO URBANO (PNSU) — CONVENIO N° 023-2026/VIVIENDA'],
+      ['PADRÓN OFICIAL DE VALES DE CONSUMO DE AGUA POTABLE DISTRIBUIDA EN CAMIÓN CISTERNA'],
+      [`FECHA DE REPORTE: ${new Date().toLocaleDateString('es-PE')} • DOTACIÓN REGLAMENTARIA: ${config.dotacion_diaria_litros} L/HAB/DÍA (${config.dias_entrega_semanal} DÍAS)`],
+      [],
+      [
+        'N°',
+        'SERIE / CÓDIGO',
+        'DNI',
+        'BENEFICIARIO (TITULAR)',
+        'TELÉFONO',
+        'SECTOR / AA.HH.',
+        'DIRECCIÓN / MZ-LT',
+        'MIEMBROS',
+        'DOT. DIARIA (L)',
+        'CICLO (DÍAS)',
+        'VALE SEMANAL (L)',
+        'VOLUMEN (m³)',
+        'FECHA PROG.',
+        'ESTADO',
+        'WHATSAPP',
+        'SMS',
+        'CORREO'
+      ]
+    ];
+
+    let totalLitros = 0;
+    let totalHabitantes = 0;
+
+    vales.forEach((v, index) => {
+      const litros = Number(v.litros_sugeridos) || 0;
+      const miembros = Number(v.num_miembros) || 1;
+      const m3 = (litros / 1000);
+      totalLitros += litros;
+      totalHabitantes += miembros;
+
+      rows.push([
+        index + 1,
+        v.codigo_unico,
+        v.dni || '-',
+        v.nombres_apellidos || 'Beneficiario',
+        v.telefono || '-',
+        v.sector || 'Moyobamba',
+        v.direccion || '-',
+        miembros,
+        miembros * config.dotacion_diaria_litros,
+        config.dias_entrega_semanal,
+        litros,
+        Number(m3.toFixed(2)),
+        v.programacion_fecha ? new Date(v.programacion_fecha).toLocaleDateString('es-PE') : '-',
+        v.estado || 'Emitido',
+        v.whatsapp_enviado ? 'ENVIADO' : 'PENDIENTE',
+        v.sms_enviado ? 'ENVIADO' : 'PENDIENTE',
+        v.correo_enviado ? 'ENVIADO' : 'PENDIENTE',
+      ]);
+    });
+
+    // Fila de Resumen
+    rows.push([]);
+    rows.push([
+      'TOTAL GENERAL',
+      `${vales.length} Vales`,
+      '',
+      `${vales.length} Familias`,
+      '',
+      '',
+      '',
+      `${totalHabitantes} Personas`,
+      '',
+      '',
+      totalLitros,
+      Number((totalLitros / 1000).toFixed(2)),
+      '',
+      '',
+      '',
+      '',
+      ''
+    ]);
+
+    const ws = xlsx.utils.aoa_to_sheet(rows);
+
+    // Ajustar anchos de columnas
+    ws['!cols'] = [
+      { wch: 6 },
+      { wch: 20 },
+      { wch: 12 },
+      { wch: 34 },
+      { wch: 14 },
+      { wch: 26 },
+      { wch: 28 },
+      { wch: 12 },
+      { wch: 16 },
+      { wch: 14 },
+      { wch: 20 },
+      { wch: 16 },
+      { wch: 14 },
+      { wch: 16 },
+      { wch: 14 },
+      { wch: 12 },
+      { wch: 12 },
+    ];
+
+    xlsx.utils.book_append_sheet(wb, ws, 'Vales de Consumo');
+
+    const buffer = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const filename = `Vales_Consumo_EPS_Moyobamba_${new Date().toISOString().slice(0, 10)}.xlsx`;
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
+  } catch (error: any) {
+    console.error('Error exportando vales a Excel:', error);
+    res.status(500).json({ message: 'Error interno al exportar vales a Excel', error: error.message });
   }
 };
 

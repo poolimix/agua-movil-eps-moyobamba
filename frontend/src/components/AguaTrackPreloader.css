@@ -1,0 +1,305 @@
+.aguatrack-preloader-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 99999;
+  background: radial-gradient(circle at center, #0f1e36 0%, #080f1d 70%, #030712 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  opacity: 1;
+  transition: opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1), transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.aguatrack-preloader-overlay.preloader-fade-out {
+  opacity: 0;
+  transform: scale(1.04);
+  pointer-events: none;
+}
+
+/* Ambient glow */
+.preloader-ambient-glow {
+  position: absolute;
+  width: 600px;
+  height: 600px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(14, 165, 233, 0.25) 0%, rgba(2, 132, 199, 0.08) 50%, transparent 70%);
+  filter: blur(60px);
+  animation: pulseGlow 4s ease-in-out infinite alternate;
+}
+
+.preloader-grid-bg {
+  position: absolute;
+  inset: 0;
+  background-image: 
+    linear-gradient(rgba(56, 189, 248, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(56, 189, 248, 0.04) 1px, transparent 1px);
+  background-size: 40px 40px;
+  mask-image: radial-gradient(circle at center, black 40%, transparent 80%);
+}
+
+/* Card */
+.preloader-card {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 480px;
+  width: 90%;
+  padding: 40px 32px;
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  border-radius: 32px;
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  box-shadow: 
+    0 25px 50px -12px rgba(0, 0, 0, 0.7),
+    0 0 40px rgba(2, 132, 199, 0.15),
+    inset 0 1px 1px rgba(255, 255, 255, 0.15);
+  text-align: center;
+}
+
+/* Sonar radar stage */
+.preloader-radar-stage {
+  position: relative;
+  width: 140px;
+  height: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 24px;
+}
+
+.preloader-emblem {
+  position: relative;
+  z-index: 3;
+  width: 100px;
+  height: 100px;
+  border-radius: 26px;
+  background: #0f172a;
+  border: 2px solid rgba(56, 189, 248, 0.5);
+  box-shadow: 
+    0 0 30px rgba(56, 189, 248, 0.4),
+    inset 0 0 15px rgba(2, 132, 199, 0.5);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: floatEmblem 3s ease-in-out infinite alternate;
+}
+
+.preloader-logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Sonar expanding rings */
+.sonar-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1.5px solid rgba(56, 189, 248, 0.6);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ring-1 {
+  width: 110px;
+  height: 110px;
+  animation: sonarPulse 2.4s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+}
+
+.ring-2 {
+  width: 110px;
+  height: 110px;
+  animation: sonarPulse 2.4s cubic-bezier(0.2, 0.8, 0.2, 1) infinite 0.8s;
+}
+
+.ring-3 {
+  width: 110px;
+  height: 110px;
+  animation: sonarPulse 2.4s cubic-bezier(0.2, 0.8, 0.2, 1) infinite 1.6s;
+}
+
+/* Orbital satellite tracker */
+.orbital-tracker {
+  position: absolute;
+  width: 136px;
+  height: 136px;
+  border-radius: 50%;
+  border: 1px dashed rgba(56, 189, 248, 0.3);
+  animation: rotateTracker 6s linear infinite;
+}
+
+.tracker-satellite-dot {
+  position: absolute;
+  top: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #38bdf8;
+  box-shadow: 0 0 10px #38bdf8, 0 0 20px #0284c7;
+}
+
+/* Brand typography */
+.preloader-brand {
+  margin-bottom: 24px;
+}
+
+.preloader-title {
+  margin: 0;
+  font-size: 2.3rem;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.title-agua {
+  color: #38bdf8;
+  background: linear-gradient(135deg, #7dd3fc 0%, #0ea5e9 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.title-track {
+  color: #ffffff;
+  font-weight: 900;
+}
+
+.title-pill {
+  font-size: 0.85rem;
+  font-weight: 900;
+  color: #ffffff;
+  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+  padding: 3px 8px;
+  border-radius: 8px;
+  margin-left: 6px;
+  letter-spacing: 0.05em;
+  box-shadow: 0 0 12px rgba(2, 132, 199, 0.5);
+}
+
+.preloader-subtitle {
+  margin-top: 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  color: #94a3b8;
+  text-transform: uppercase;
+}
+
+/* Progress bar section */
+.preloader-progress-section {
+  width: 100%;
+  margin-bottom: 24px;
+}
+
+.preloader-bar-track {
+  position: relative;
+  width: 100%;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  overflow: hidden;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.preloader-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #0284c7 0%, #38bdf8 70%, #a5f3fc 100%);
+  border-radius: 999px;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.8);
+  transition: width 0.08s ease-out;
+}
+
+.preloader-bar-sparkle {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 0 8px #38bdf8, 0 0 16px #ffffff;
+  pointer-events: none;
+}
+
+.preloader-meta-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 10px;
+  font-size: 0.78rem;
+  color: #cbd5e1;
+}
+
+.preloader-status-msg {
+  font-weight: 600;
+  color: #94a3b8;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 80%;
+}
+
+.preloader-percentage {
+  font-weight: 900;
+  color: #38bdf8;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+/* Telemetry Chips */
+.preloader-telemetry-chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.telemetry-chip {
+  font-size: 0.65rem;
+  font-weight: 800;
+  color: #64748b;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 4px 10px;
+  border-radius: 999px;
+  letter-spacing: 0.06em;
+}
+
+/* KEYFRAMES */
+@keyframes pulseGlow {
+  0% { transform: scale(0.9); opacity: 0.6; }
+  100% { transform: scale(1.15); opacity: 0.9; }
+}
+
+@keyframes floatEmblem {
+  0% { transform: translateY(0px); }
+  100% { transform: translateY(-6px); }
+}
+
+@keyframes sonarPulse {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+}
+
+@keyframes rotateTracker {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}

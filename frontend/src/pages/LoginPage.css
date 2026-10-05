@@ -24,6 +24,11 @@
 }
 
 .login-logo {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   text-align: center;
 }
 
@@ -94,9 +99,159 @@
   transform: translateY(0);
 }
 
+.apple-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 14px 20px;
+  background: #000000;
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+}
+
+.apple-btn:hover {
+  background: #18181b;
+  border-color: rgba(255, 255, 255, 0.35);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
+}
+
+.apple-btn:active {
+  transform: translateY(0);
+}
+
 .login-footer {
-  font-size: 12px;
-  color: #475569;
+  font-size: 11.5px;
+  color: #64748b;
   text-align: center;
   margin: 0;
+  line-height: 1.5;
+}
+
+.login-legal-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: -6px;
+}
+
+.login-legal-btn {
+  background: transparent;
+  border: none;
+  color: #38bdf8;
+  font-size: 11px;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 2px 4px;
+}
+
+.login-legal-btn:hover {
+  color: #7dd3fc;
+}
+
+.login-legal-dot {
+  color: #475569;
+  font-size: 10px;
+}
+
+/* ─── Entrada de Correo Textual / Apple Relay Link ─────────────────── */
+.direct-email-section {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.direct-email-input-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.direct-email-input {
+  width: 100%;
+  padding: 13px 16px;
+  padding-left: 40px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  color: #ffffff;
+  font-size: 14px;
+  outline: none;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+}
+
+.direct-email-input:focus {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2);
+}
+
+.direct-email-input::placeholder {
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.direct-email-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 16px;
+  color: #94a3b8;
+  pointer-events: none;
+}
+
+.direct-email-submit {
+  width: 100%;
+  padding: 13px 18px;
+  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+  color: #ffffff;
+  border: none;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: 0 4px 14px rgba(2, 132, 199, 0.35);
+}
+
+.direct-email-submit:hover {
+  background: linear-gradient(135deg, #0369a1 0%, #075985 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(2, 132, 199, 0.5);
+}
+
+.direct-email-submit:active {
+  transform: translateY(0);
+}
+
+.direct-email-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.apple-relay-alert {
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  color: #fde68a;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  text-align: left;
 }

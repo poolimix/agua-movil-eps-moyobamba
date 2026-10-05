@@ -4,13 +4,16 @@ import type { User } from 'firebase/auth';
 import { auth } from '../firebase/firebase';
 import api from '../config/api';
 
+export type RolUsuario = 'SUPER_ADMIN' | 'ADMIN' | 'SUPERVISOR' | 'CONDUCTOR' | 'GESTOR_ENTREGA' | 'OPERADOR_CAMPO';
+
 export interface AppUser {
   id: number;
   email: string;
   nombres: string;
-  rol: 'ADMIN' | 'SUPERVISOR' | 'OPERADOR_CAMPO' | 'CONDUCTOR';
+  rol: RolUsuario;
   estado: string;
   photoURL?: string;
+  personal_id?: number | null;
 }
 
 interface AuthContextType {
@@ -19,6 +22,10 @@ interface AuthContextType {
   token: string | null;
   loading: boolean;
   authError: string | null;
+  isSuperAdmin: boolean;
+  isSupervisor: boolean;
+  canManageUsers: boolean;
+  loginWithEmailDirect: (email: string, appleId?: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -28,6 +35,10 @@ const AuthContext = createContext<AuthContextType>({
   token: null,
   loading: true,
   authError: null,
+  isSuperAdmin: false,
+  isSupervisor: false,
+  canManageUsers: false,
+  loginWithEmailDirect: async () => {},
   logout: async () => {},
 });
 
@@ -77,6 +88,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return unsubscribe;
   }, []);
 
+  const loginWithEmailDirect = async (emailText: string, appleId?: string) => {
+    setAuthError(null);
+    const cleanEmail = emailText.trim().toLowerCase();
+    if (!cleanEmail) throw new Error('Por favor ingrese su correo electrónico.');
+
+    const res = await api.post('/auth/google', {
+      email: cleanEmail,
+      idToken: 'direct_web_auth',
+      appleId: appleId || undefined,
+    });
+    const { token: jwtToken, user: dbUser } = res.data;
+
+    setToken(jwtToken);
+    localStorage.setItem('token', jwtToken);
+    setUser(dbUser);
+  };
+
   const logout = async () => {
     localStorage.removeItem('token');
     setUser(null);
@@ -84,8 +112,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await signOut(auth);
   };
 
+  const rol = (user?.rol || '').toUpperCase();
+  const isSuperAdmin = rol === 'SUPER_ADMIN' || rol === 'ADMIN';
+  const isSupervisor = rol === 'SUPERVISOR';
+  const canManageUsers = isSuperAdmin;
+
   return (
-    <AuthContext.Provider value={{ user, firebaseUser, token, loading, authError, logout }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        firebaseUser,
+        token,
+        loading,
+        authError,
+        isSuperAdmin,
+        isSupervisor,
+        canManageUsers,
+        loginWithEmailDirect,
+        logout,
+      }}
+    >
       {!loading && children}
     </AuthContext.Provider>
   );

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { StyleSheet, View, Text, ActivityIndicator, SafeAreaView, Platform } from 'react-native';
+import { StyleSheet, View, Text, ActivityIndicator, SafeAreaView, Platform, Image } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import RepartoScreen from './src/screens/RepartoScreen';
+import ConductorScreen from './src/screens/ConductorScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import { initDatabase, getDatabase } from './src/database/schema';
 
@@ -40,17 +41,31 @@ export default function App() {
   if (!dbReady) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#0284c7" />
-        <Text style={styles.loadingText}>Iniciando Agua Móvil - EPS Moyobamba...</Text>
+        <View style={{ width: 80, height: 80, borderRadius: 22, overflow: 'hidden', borderWidth: 2, borderColor: '#38bdf8', marginBottom: 12 }}>
+          <Image
+            source={require('./assets/icon.png')}
+            style={{ width: '100%', height: '100%' }}
+            resizeMode="cover"
+          />
+        </View>
+        <ActivityIndicator size="large" color="#38bdf8" />
+        <Text style={styles.loadingText}>Iniciando AguaTrack • EPS Moyobamba...</Text>
       </View>
     );
   }
+
+  const userRol = String(user?.rol || '').toUpperCase();
+  const isConductor = userRol === 'CONDUCTOR';
 
   return (
     <SafeAreaView style={styles.safeContainer}>
       <View style={styles.container}>
         {user ? (
-          <RepartoScreen user={user} onLogout={handleLogout} />
+          isConductor ? (
+            <ConductorScreen user={user} onLogout={handleLogout} />
+          ) : (
+            <RepartoScreen user={user} onLogout={handleLogout} />
+          )
         ) : (
           <LoginScreen onLoginSuccess={(loggedInUser) => setUser(loggedInUser)} />
         )}

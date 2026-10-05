@@ -1,20 +1,20 @@
 {
   "expo": {
-    "name": "mobile-app",
-    "slug": "mobile-app",
-    "scheme": "aguamovil",
+    "name": "AguaTrack",
+    "slug": "aguatrack",
+    "scheme": "aguatrack",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.epsmoyobamba.aguamovil"
+      "bundleIdentifier": "com.epsmoyobamba.aguatrack"
     },
     "android": {
-      "package": "com.epsmoyobamba.aguamovil",
+      "package": "com.epsmoyobamba.aguatrack",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#0b1329",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"

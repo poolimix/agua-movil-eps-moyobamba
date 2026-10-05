@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import QRCode from 'qrcode';
 import Layout from '../components/Layout';
 import Pagination from '../components/Pagination';
-import api from '../config/api';
+import api, { API_BASE_URL } from '../config/api';
 import { dialogConfirm, dialogAlert } from '../context/DialogContext';
+import { imprimirValeIndividual, imprimirValesLote } from '../utils/printVouchers';
 import './Modules.css';
 
 interface Vale {
@@ -41,6 +41,10 @@ export default function ValesPage() {
   const [search, setSearch] = useState('');
   const [filtroEstado, setFiltroEstado] = useState('');
   const [selectedVale, setSelectedVale] = useState<Vale | null>(null);
+  const [configSistema, setConfigSistema] = useState({
+    dotacion_diaria_litros: 50,
+    dias_entrega_semanal: 7
+  });
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -63,8 +67,21 @@ export default function ValesPage() {
     }
   };
 
+  const fetchConfig = async () => {
+    try {
+      const res = await api.get('/configuracion');
+      if (res.data?.config) {
+        setConfigSistema({
+          dotacion_diaria_litros: Number(res.data.config.dotacion_diaria_litros) || 50,
+          dias_entrega_semanal: Number(res.data.config.dias_entrega_semanal) || 7
+        });
+      }
+    } catch (_) {}
+  };
+
   useEffect(() => {
     fetchVales();
+    fetchConfig();
   }, [filtroEstado]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
@@ -100,6 +117,33 @@ export default function ValesPage() {
     }
   };
 
+  const handleRecalcularSemana = async () => {
+    const ok = await dialogConfirm({
+      title: 'Recalcular Dotación Semanal',
+      message: '¿Desea actualizar todos los vales emitidos a la dotación semanal reglamentaria de 7 días (50 L/hab/día × 7 días = 350 L/hab)?',
+      type: 'warning',
+      confirmText: 'Sí, Sincronizar',
+      cancelText: 'Cancelar'
+    });
+    if (!ok) return;
+
+    try {
+      const res = await api.post('/vales/recalcular-semana');
+      await dialogAlert({
+        title: 'Sincronización Exitosa',
+        message: res.data.message || 'Vales actualizados con éxito.',
+        type: 'success'
+      });
+      fetchVales();
+    } catch (e: any) {
+      await dialogAlert({
+        title: 'Error',
+        message: e.response?.data?.message || 'Error al recalcular vales',
+        type: 'danger'
+      });
+    }
+  };
+
   const getEstadoBadge = (estado: string) => {
     switch (estado) {
       case 'Entregado':
@@ -118,126 +162,16 @@ export default function ValesPage() {
   };
 
   const imprimirValeTicket = async (v: Vale) => {
-    // Generate official scannable QR payload: "VALE-XXXX|DNI|LITROS"
-    const qrPayload = `${v.codigo_unico}|${v.beneficiario_dni || ''}|${v.litros_sugeridos}L`;
-    
-    let qrDataUrl = '';
-    try {
-      qrDataUrl = await QRCode.toDataURL(qrPayload, {
-        width: 180,
-        margin: 1,
-        color: {
-          dark: '#000000',
-          light: '#ffffff'
-        }
-      });
-    } catch (e) {
-      console.error('Error generando QR para el vale:', e);
-    }
-
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
-
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>Vale de Consumo - ${v.codigo_unico}</title>
-          <style>
-            @media print {
-              body { margin: 0; padding: 10px; }
-            }
-            body { 
-              font-family: 'Courier New', monospace; 
-              width: 320px; 
-              padding: 15px; 
-              margin: 0 auto; 
-              color: #000;
-            }
-            .header { 
-              text-align: center; 
-              border-bottom: 2px dashed #000; 
-              padding-bottom: 10px; 
-              margin-bottom: 10px; 
-            }
-            .title { font-size: 16px; font-weight: bold; }
-            .subtitle { font-size: 11px; }
-            .code { 
-              font-size: 18px; 
-              font-weight: bold; 
-              background: #f1f5f9; 
-              padding: 6px; 
-              text-align: center; 
-              margin: 10px 0; 
-              border: 1px solid #cbd5e1;
-              letter-spacing: 1px;
-            }
-            .row { 
-              display: flex; 
-              justify-content: space-between; 
-              font-size: 12px; 
-              margin: 5px 0; 
-            }
-            .qr-container {
-              text-align: center;
-              margin: 12px 0;
-              padding: 8px 0;
-              border-top: 1px dashed #94a3b8;
-              border-bottom: 1px dashed #94a3b8;
-            }
-            .qr-img {
-              width: 150px;
-              height: 150px;
-              display: block;
-              margin: 0 auto;
-            }
-            .qr-caption {
-              font-size: 9px;
-              font-weight: bold;
-              margin-top: 4px;
-              letter-spacing: 0.5px;
-            }
-            .footer { 
-              border-top: 2px dashed #000; 
-              margin-top: 12px; 
-              padding-top: 10px; 
-              text-align: center; 
-              font-size: 10px; 
-            }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <div class="title">EPS MOYOBAMBA S.A.</div>
-            <div class="subtitle">Programa Nacional de Saneamiento Urbano</div>
-            <div class="subtitle">Convenio N° 023-2026/VIVIENDA</div>
-          </div>
-          <div class="code">${v.codigo_unico}</div>
-          <div class="row"><span>DNI:</span> <strong>${v.beneficiario_dni || 'N/A'}</strong></div>
-          <div class="row"><span>Beneficiario:</span> <strong>${v.beneficiario_nombre || 'N/A'}</strong></div>
-          <div class="row"><span>Sector:</span> <strong>${v.sector || 'Moyobamba'}</strong></div>
-          <div class="row"><span>Dotación:</span> <strong>${v.litros_sugeridos} LITROS</strong></div>
-          <div class="row"><span>Estado:</span> <strong>${v.estado}</strong></div>
-
-          ${qrDataUrl ? `
-          <div class="qr-container">
-            <img src="${qrDataUrl}" class="qr-img" alt="QR Único del Vale" />
-            <div class="qr-caption">ESCANEAR CON APP AGUA MÓVIL</div>
-          </div>
-          ` : ''}
-
-          <div class="footer">
-            <p>Presente este vale al operador del camión cisterna al momento del reparto gratuito.</p>
-            <p>EPS Moyobamba - Abastecimiento Seguro</p>
-          </div>
-          <script>
-            window.onload = function() {
-              window.print();
-            };
-          </script>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
+    await imprimirValeIndividual({
+      codigo_unico: v.codigo_unico,
+      beneficiario_dni: v.beneficiario_dni,
+      beneficiario_nombre: v.beneficiario_nombre,
+      sector: v.sector,
+      litros_sugeridos: v.litros_sugeridos,
+      estado: v.estado,
+      programacion_fecha: v.programacion_fecha,
+      programacion_zona: v.programacion_zona
+    }, configSistema);
   };
 
   const filteredVales = vales;
@@ -316,6 +250,58 @@ export default function ValesPage() {
           <button className="btn-secondary" onClick={() => { setSearch(''); setFiltroEstado(''); setCurrentPage(1); fetchVales(); }} style={{ padding: '8px 14px', fontSize: 13 }}>
             Limpiar Filtros
           </button>
+
+          <a 
+            href={`${API_BASE_URL}/api/v1/vales/export-excel?${new URLSearchParams({ ...(filtroEstado ? { estado: filtroEstado } : {}), ...(search ? { search } : {}) }).toString()}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-secondary"
+            style={{ 
+              textDecoration: 'none', 
+              padding: '8px 14px', 
+              fontSize: 13, 
+              background: '#f0fdf4', 
+              borderColor: '#86efac', 
+              color: '#166534', 
+              fontWeight: 700, 
+              display: 'inline-flex', 
+              alignItems: 'center', 
+              gap: 6 
+            }}
+            title="Descargar padrón oficial de vales emitidos en Excel (.xlsx)"
+          >
+            📊 Exportar Excel ({filteredVales.length})
+          </a>
+
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => imprimirValesLote(filteredVales, configSistema, `Vales de Consumo (${filteredVales.length}) - EPS Moyobamba`)}
+            disabled={filteredVales.length === 0}
+            style={{ 
+              padding: '8px 14px', 
+              fontSize: 13, 
+              background: '#f8fafc', 
+              borderColor: '#cbd5e1', 
+              color: '#0f172a', 
+              fontWeight: 700, 
+              display: 'inline-flex', 
+              alignItems: 'center', 
+              gap: 6 
+            }}
+            title="Imprimir todos los vales filtrados en formato talonario A4 listo para corte"
+          >
+            🖨️ Imprimir Lote A4 ({filteredVales.length})
+          </button>
+
+          <button 
+            className="btn-secondary" 
+            onClick={handleRecalcularSemana} 
+            title="Recalcular todos los vales emitidos a la dotación reglamentaria de 7 días (50 L/hab/día × 7d = 350 L/hab)"
+            style={{ padding: '8px 14px', fontSize: 13, background: '#eff6ff', borderColor: '#bfdbfe', color: '#1d4ed8', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          >
+            🔄 Sincronizar Dotación ({configSistema.dotacion_diaria_litros * configSistema.dias_entrega_semanal} L/sem)
+          </button>
         </div>
 
         {/* Table */}
@@ -332,7 +318,7 @@ export default function ValesPage() {
                     <th style={{ padding: '12px 16px' }}>SERIE Y CORRELATIVO</th>
                     <th style={{ padding: '12px 16px' }}>BENEFICIARIO (PUB)</th>
                     <th style={{ padding: '12px 16px' }}>SECTOR</th>
-                    <th style={{ padding: '12px 16px' }}>VOLUMEN (LTS)</th>
+                    <th style={{ padding: '12px 16px' }}>DOTACIÓN SEMANAL</th>
                     <th style={{ padding: '12px 16px' }}>PROGRAMACIÓN</th>
                     <th style={{ padding: '12px 16px' }}>ESTADO</th>
                     <th style={{ padding: '12px 16px', textAlign: 'center' }}>ACCIONES</th>
@@ -353,8 +339,9 @@ export default function ValesPage() {
                       <td style={{ padding: '12px 16px', color: '#475569' }}>
                         {v.sector || 'Moyobamba'}
                       </td>
-                      <td style={{ padding: '12px 16px', fontWeight: 700, color: '#0284c7' }}>
-                        {v.litros_sugeridos} Lts
+                      <td style={{ padding: '12px 16px' }}>
+                        <strong style={{ color: '#0284c7' }}>{v.litros_sugeridos} Lts</strong>
+                        <div style={{ fontSize: 10.5, color: '#64748b' }}>Vale 7 días</div>
                       </td>
                       <td style={{ padding: '12px 16px', fontSize: 12, color: '#64748b' }}>
                         {v.programacion_fecha ? new Date(v.programacion_fecha).toLocaleDateString('es-PE') : 'Programación Genérica'}

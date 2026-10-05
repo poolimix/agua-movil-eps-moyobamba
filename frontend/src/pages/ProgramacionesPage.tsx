@@ -5,6 +5,7 @@ import DaysOfWeekSelector from '../components/DaysOfWeekSelector';
 import MultiSectorSelector, { type SectorItem } from '../components/MultiSectorSelector';
 import api, { API_BASE_URL } from '../config/api';
 import { dialogConfirm, dialogAlert } from '../context/DialogContext';
+import { imprimirValeIndividual, imprimirValesLote } from '../utils/printVouchers';
 import './Modules.css';
 
 interface Programacion {
@@ -31,6 +32,11 @@ interface Programacion {
   dias_semana?: string;
   total_entregas: string | number;
   total_litros: string | number;
+  volumen_promedio?: string | number;
+  poblacion_beneficiada?: string | number;
+  poblacion_programada?: string | number;
+  monto_valorizado?: string | number;
+  monto_programado?: string | number;
   total_calidad?: string | number;
   calidad_carga?: string | number;
   calidad_ruta?: string | number;
@@ -166,10 +172,10 @@ export default function ProgramacionesPage() {
 
   const fetchAyudantes = async () => {
     try {
-      const res = await api.get('/personal?tipo=AYUDANTE');
+      const res = await api.get('/personal?tipo=GESTOR_ENTREGA');
       setAyudantes(res.data);
     } catch (error) {
-      console.error('Error fetching ayudantes:', error);
+      console.error('Error fetching gestores de entrega:', error);
     }
   };
 
@@ -455,7 +461,7 @@ export default function ProgramacionesPage() {
               <th style={{ minWidth: 220 }}>Cisterna y Cuadrilla</th>
               <th style={{ minWidth: 140 }}>Viajes Programados</th>
               <th style={{ minWidth: 110 }}>Estado</th>
-              <th style={{ minWidth: 150 }}>Avance Entregas</th>
+              <th style={{ minWidth: 175 }}>Vol. Repartido y Población</th>
               <th style={{ minWidth: 150 }}>Control Sanitario</th>
               <th style={{ textAlign: 'center', minWidth: 220 }}>Acciones y Gestión</th>
             </tr>
@@ -527,12 +533,12 @@ export default function ProgramacionesPage() {
                           </div>
                         )}
                         {p.ayudante_nombre ? (
-                          <div style={{ fontSize: 11, color: '#15803d', fontWeight: 600, marginTop: 1 }}>
-                            👷 Ayudante: {p.ayudante_nombre}
+                          <div style={{ fontSize: 11, color: '#0369a1', fontWeight: 600, marginTop: 1 }}>
+                            🤝 Gestor de Entrega: {p.ayudante_nombre}
                           </div>
                         ) : (
                           <div style={{ fontSize: 10.5, color: '#94a3b8', fontStyle: 'italic', marginTop: 1 }}>
-                            (Sin ayudante)
+                            (Sin gestor asignado)
                           </div>
                         )}
                       </div>
@@ -553,9 +559,21 @@ export default function ProgramacionesPage() {
                       {p.estado}
                     </span>
                   </td>
-                  <td>
-                    <strong>{p.total_entregas} atendidos</strong>
-                    <div style={{ fontSize: 11, color: '#15803d', fontWeight: 600 }}>{p.total_litros} Lts</div>
+                  <td style={{ minWidth: 175 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <span style={{ fontSize: 12.5, fontWeight: 800, color: '#0f172a' }}>
+                        🚰 {Number(p.total_litros || 0).toLocaleString()} Lts
+                      </span>
+                      <span style={{ fontSize: 11, color: '#0369a1', fontWeight: 700 }}>
+                        📊 Prom: {p.volumen_promedio ? `${Number(p.volumen_promedio).toLocaleString()} L/fam` : '350 L/fam'}
+                      </span>
+                      <span style={{ fontSize: 11, color: '#166534', fontWeight: 600 }}>
+                        👥 {p.poblacion_beneficiada ? `${p.poblacion_beneficiada} hab. atendidos` : `${p.poblacion_programada || 140} hab. proy.`}
+                      </span>
+                      <span style={{ fontSize: 10.5, color: '#b45309', fontWeight: 700 }}>
+                        💰 S/. {Number(p.monto_valorizado || p.monto_programado || 0).toFixed(2)}
+                      </span>
+                    </div>
                   </td>
                   <td>
                     {Number(p.calidad_carga || 0) >= 1 && Number(p.calidad_ruta || 0) >= 1 ? (
@@ -755,7 +773,25 @@ export default function ProgramacionesPage() {
                 value={valesSearchTerm}
                 onChange={(e) => setValesSearchTerm(e.target.value)}
               />
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => imprimirValesLote(filteredVales, undefined, `Vales de Consumo - Programación N° ${selectedProgForVales?.id} (${selectedProgForVales?.zona})`)}
+                  disabled={filteredVales.length === 0}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    fontWeight: 700,
+                    background: '#f0fdf4',
+                    borderColor: '#86efac',
+                    color: '#166534'
+                  }}
+                  title="Imprimir todos los vales de esta programación en formato A4 para reparto en campo"
+                >
+                  🖨️ Imprimir Todos los Vales ({filteredVales.length})
+                </button>
                 <button
                   className="btn-primary"
                   onClick={handleDespacharVales}
@@ -817,7 +853,10 @@ export default function ProgramacionesPage() {
                         </td>
                         <td>{v.telefono || '-'}</td>
                         <td style={{ fontSize: 11.5 }}>{v.email || '-'}</td>
-                        <td><strong>{v.litros_sugeridos} Lts</strong></td>
+                        <td>
+                          <strong style={{ color: '#0369a1' }}>{v.litros_sugeridos} Lts</strong>
+                          <span style={{ fontSize: 10, color: '#64748b', display: 'block' }}>Semanal (7d)</span>
+                        </td>
                         <td style={{ textAlign: 'center' }}>
                           {v.whatsapp_enviado ? (
                             <span title="Enviado con éxito" style={{ fontSize: 14 }}>🟢</span>
@@ -840,13 +879,32 @@ export default function ProgramacionesPage() {
                           )}
                         </td>
                         <td>
-                          <button
-                            className="btn-secondary"
-                            style={{ padding: '3px 8px', fontSize: 11 }}
-                            onClick={() => setSelectedValeQr(v)}
-                          >
-                            📷 QR
-                          </button>
+                          <div style={{ display: 'flex', gap: 4 }}>
+                            <button
+                              className="btn-secondary"
+                              style={{ padding: '3px 8px', fontSize: 11 }}
+                              onClick={() => setSelectedValeQr(v)}
+                              title="Ver código QR digital"
+                            >
+                              📷 QR
+                            </button>
+                            <button
+                              className="btn-secondary"
+                              style={{ padding: '3px 8px', fontSize: 11, background: '#f8fafc' }}
+                              onClick={() => imprimirValeIndividual({
+                                codigo_unico: v.codigo_unico,
+                                beneficiario_dni: v.dni,
+                                beneficiario_nombre: v.nombres_apellidos,
+                                telefono: v.telefono,
+                                litros_sugeridos: v.litros_sugeridos,
+                                programacion_fecha: selectedProgForVales?.fecha,
+                                programacion_zona: selectedProgForVales?.zona
+                              })}
+                              title="Imprimir vale individual"
+                            >
+                              🖨️
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -890,7 +948,7 @@ export default function ProgramacionesPage() {
               </div>
 
               <h4 style={{ margin: '6px 0 2px', fontSize: 14, color: '#0f172a' }}>{selectedValeQr.nombres_apellidos}</h4>
-              <p style={{ margin: 0, fontSize: 12, color: '#64748b' }}>DNI: {selectedValeQr.dni} • <strong>{selectedValeQr.litros_sugeridos} Litros</strong></p>
+              <p style={{ margin: 0, fontSize: 12, color: '#64748b' }}>DNI: {selectedValeQr.dni} • <strong style={{ color: '#0369a1' }}>{selectedValeQr.litros_sugeridos} Litros Semanales (7 días)</strong></p>
             </div>
             <div className="modal-footer" style={{ justifyContent: 'center', marginTop: 14 }}>
               <button className="btn-secondary" onClick={() => setSelectedValeQr(null)}>
@@ -904,154 +962,204 @@ export default function ProgramacionesPage() {
       {/* MODAL CREAR / EDITAR PROGRAMACIÓN MULTI-SECTOR CON CALCULADORA */}
       {modalOpen && (
         <div className="modal-overlay" onClick={() => setModalOpen(false)}>
-          <div className="modal-content" style={{ maxWidth: 620 }} onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>{editingProg ? 'Editar Programación' : 'Crear Nueva Programación'}</h2>
+          <div
+            className="modal-content modal-large"
+            style={{ maxWidth: 1100, width: '95vw', maxHeight: '93vh', display: 'flex', flexDirection: 'column' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-header" style={{ marginBottom: 16, borderBottom: '1px solid #f1f5f9', paddingBottom: 14 }}>
+              <div>
+                <span style={{ fontSize: 11, fontWeight: 800, color: '#0284c7', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  Planificación Logística EPS Moyobamba
+                </span>
+                <h2 style={{ margin: 0, fontSize: 20, color: '#0f172a' }}>
+                  {editingProg ? `Editar Programación #${editingProg.id}` : 'Crear Nueva Programación de Abastecimiento'}
+                </h2>
+              </div>
               <button className="close-btn" onClick={() => setModalOpen(false)}>✕</button>
             </div>
-            <form onSubmit={handleSubmit}>
-              {/* MULTI-SECTOR SELECTOR */}
-              <MultiSectorSelector
-                sectores={sectores}
-                selectedSectores={formData.selectedSectores}
-                onChange={handleMultiSectorChange}
-              />
 
-              {/* CISTERNA AND CONDUCTOR SELECTORS */}
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Cisterna Asignada *</label>
-                  <select
-                    required
-                    className="form-input"
-                    value={formData.cisterna_id}
-                    onChange={(e) => handleCisternaChange(e.target.value)}
-                  >
-                    {cisternas.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.placa} - {c.marca_modelo} ({c.capacidad_m3} m³)
-                      </option>
-                    ))}
-                  </select>
+            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflowY: 'auto', paddingRight: 4 }}>
+              <div className="modal-grid-2col">
+                {/* COLUMNA 1: SECTORES Y CALENDARIO */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  <div style={{ background: '#f8fafc', padding: 14, borderRadius: 14, border: '1px solid #e2e8f0' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                      <span style={{ fontSize: 16 }}>📍</span>
+                      <h3 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: '#0f172a' }}>
+                        1. Sectores a Abastecer en la Ruta
+                      </h3>
+                    </div>
+                    {/* MULTI-SECTOR SELECTOR */}
+                    <MultiSectorSelector
+                      sectores={sectores}
+                      selectedSectores={formData.selectedSectores}
+                      onChange={handleMultiSectorChange}
+                    />
+                  </div>
+
+                  <div style={{ background: '#f8fafc', padding: 14, borderRadius: 14, border: '1px solid #e2e8f0' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                      <span style={{ fontSize: 16 }}>🗓️</span>
+                      <h3 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: '#0f172a' }}>
+                        2. Frecuencia y Fechas
+                      </h3>
+                    </div>
+                    {/* INTERACTIVE DAYS OF THE WEEK SELECTOR */}
+                    <DaysOfWeekSelector
+                      label="Días de Atención y Reparto Semanal"
+                      value={formData.dias_semana}
+                      onChange={(newDays) => setFormData({ ...formData, dias_semana: newDays })}
+                    />
+
+                    <div className="form-group" style={{ marginTop: 12 }}>
+                      <label style={{ fontWeight: 700, fontSize: 13 }}>Fecha de Inicio / Reparto *</label>
+                      <input
+                        type="date"
+                        required
+                        className="form-input"
+                        value={formData.fecha}
+                        onChange={(e) => setFormData({ ...formData, fecha: e.target.value })}
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div className="form-group">
-                  <label>Conductor Asignado *</label>
-                  <select
-                    required
-                    className="form-input"
-                    value={formData.conductor_id}
-                    onChange={(e) => setFormData({ ...formData, conductor_id: e.target.value })}
-                  >
-                    {conductores.map((cond) => (
-                      <option key={cond.id} value={cond.id}>
-                        {cond.nombres} {cond.apellidos} ({cond.licencia_conducir || 'Licencia'})
-                      </option>
-                    ))}
-                  </select>
+
+                {/* COLUMNA 2: ASIGNACIÓN OPERATIVA, FLOTA Y CÁLCULOS */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  <div style={{ background: '#f8fafc', padding: 14, borderRadius: 14, border: '1px solid #e2e8f0' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                      <span style={{ fontSize: 16 }}>🚚</span>
+                      <h3 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: '#0f172a' }}>
+                        3. Asignación de Cisterna y Tripulación
+                      </h3>
+                    </div>
+
+                    <div className="form-row">
+                      <div className="form-group">
+                        <label style={{ fontWeight: 700, fontSize: 12.5 }}>Cisterna Asignada *</label>
+                        <select
+                          required
+                          className="form-input"
+                          value={formData.cisterna_id}
+                          onChange={(e) => handleCisternaChange(e.target.value)}
+                        >
+                          {cisternas.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.placa} - {c.marca_modelo} ({c.capacidad_m3} m³)
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="form-group">
+                        <label style={{ fontWeight: 700, fontSize: 12.5 }}>Conductor Asignado *</label>
+                        <select
+                          required
+                          className="form-input"
+                          value={formData.conductor_id}
+                          onChange={(e) => setFormData({ ...formData, conductor_id: e.target.value })}
+                        >
+                          {conductores.map((cond) => (
+                            <option key={cond.id} value={cond.id}>
+                              {cond.nombres} {cond.apellidos} ({cond.licencia_conducir || 'Licencia'})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* GESTOR DE ENTREGA (REPARTO / RUTAS) */}
+                    <div className="form-group" style={{ marginTop: 6 }}>
+                      <label style={{ fontWeight: 700, fontSize: 12.5, color: '#0369a1' }}>
+                        🤝 Gestor de Entrega (Reparto / Rutas):
+                      </label>
+                      <select
+                        className="form-input"
+                        value={formData.ayudante_id}
+                        onChange={(e) => setFormData({ ...formData, ayudante_id: e.target.value })}
+                        style={{ borderColor: '#38bdf8', backgroundColor: '#f0f9ff' }}
+                      >
+                        <option value="">-- Sin Gestor de Entrega (Operación Unipersonal) --</option>
+                        {ayudantes.map((a) => (
+                          <option key={a.id} value={a.id}>
+                            {a.nombres} {a.apellidos} {a.telefono ? `(📞 ${a.telefono})` : ''} - Gestor de Entrega
+                          </option>
+                        ))}
+                      </select>
+                      <span style={{ fontSize: 11, color: '#64748b', marginTop: 3, display: 'block' }}>
+                        El Gestor de Entrega registrará firmas, fotos con marca de agua y canje de vales en campo.
+                      </span>
+                    </div>
+
+                    <div className="form-row" style={{ marginTop: 6 }}>
+                      <div className="form-group">
+                        <label style={{ fontWeight: 700, fontSize: 12.5 }}>Litros Totales a Distribuir</label>
+                        <input
+                          type="number"
+                          min="1"
+                          className="form-input"
+                          value={formData.litros_programados}
+                          onChange={(e) => {
+                            const lts = parseInt(e.target.value) || 0;
+                            const trips = calculateTrips(lts, formData.cisterna_id);
+                            setFormData({ ...formData, litros_programados: lts, viajes_estimados: trips });
+                          }}
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label style={{ fontWeight: 700, fontSize: 12.5 }}>Viajes Estimados</label>
+                        <input
+                          type="number"
+                          min="1"
+                          className="form-input"
+                          value={formData.viajes_estimados}
+                          onChange={(e) => setFormData({ ...formData, viajes_estimados: parseInt(e.target.value) || 1 })}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="form-group" style={{ marginTop: 6 }}>
+                      <label style={{ fontWeight: 700, fontSize: 12.5 }}>Estado de la Programación</label>
+                      <select
+                        className="form-input"
+                        value={formData.estado}
+                        onChange={(e) => setFormData({ ...formData, estado: e.target.value })}
+                      >
+                        <option value="Activa">Activa</option>
+                        <option value="Completada">Completada</option>
+                        <option value="Pendiente">Pendiente</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* LOGISTICS CALCULATOR CARD */}
+                  <div style={{ background: '#f0f9ff', border: '1.5px solid #bae6fd', padding: 14, borderRadius: 14 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <span style={{ fontSize: 13, fontWeight: 800, color: '#0369a1' }}>
+                        🚚 Resumen Operativo y Capacidad SUNASS
+                      </span>
+                      <span style={{ fontSize: 11, fontWeight: 800, color: '#0284c7', background: '#e0f2fe', padding: '2px 8px', borderRadius: 12 }}>
+                        Logística Móvil
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 12, color: '#334155', lineHeight: 1.6 }}>
+                      • <strong>Sectores a Cubrir:</strong> {formData.selectedSectores.length > 0 ? formData.selectedSectores.join(' + ') : 'Ninguno seleccionado'}<br />
+                      • 💧 <strong>Demanda Total:</strong> {formData.litros_programados.toLocaleString()} Lts ({(formData.litros_programados / 1000).toFixed(2)} m³)<br />
+                      • 🚛 <strong>Cisterna:</strong> {currentSelectedCisterna?.placa || 'Seleccionada'} ({currentSelectedCisterna?.capacidad_litros || 15000} Lts)<br />
+                      • 👤 <strong>Conductor:</strong> {conductores.find(c => c.id === Number(formData.conductor_id)) ? `${conductores.find(c => c.id === Number(formData.conductor_id))?.nombres} ${conductores.find(c => c.id === Number(formData.conductor_id))?.apellidos}` : 'Sin chofer'}<br />
+                      • 🤝 <strong>Gestor de Entrega:</strong> {ayudantes.find(a => a.id === Number(formData.ayudante_id)) ? `${ayudantes.find(a => a.id === Number(formData.ayudante_id))?.nombres} ${ayudantes.find(a => a.id === Number(formData.ayudante_id))?.apellidos}` : 'Sin gestor asignado'}<br />
+                      • 🏁 <strong>Total de Viajes Calculados:</strong> <strong style={{ color: '#0284c7', fontSize: 15 }}>{formData.viajes_estimados} {formData.viajes_estimados === 1 ? 'Viaje' : 'Viajes'}</strong>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              {/* CUADRILLA: AYUDANTE DE CAMPO */}
-              <div className="form-row">
-                <div className="form-group">
-                  <label>👷 Ayudante de Campo (Cuadrilla / Reparto):</label>
-                  <select
-                    className="form-input"
-                    value={formData.ayudante_id}
-                    onChange={(e) => setFormData({ ...formData, ayudante_id: e.target.value })}
-                  >
-                    <option value="">-- Sin Ayudante (Operación Unipersonal) --</option>
-                    {ayudantes.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.nombres} {a.apellidos} {a.telefono ? `(📞 ${a.telefono})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="form-group">
-                  <label>Fecha de Inicio / Reparto *</label>
-                  <input
-                    type="date"
-                    required
-                    className="form-input"
-                    value={formData.fecha}
-                    onChange={(e) => setFormData({ ...formData, fecha: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              {/* INTERACTIVE DAYS OF THE WEEK SELECTOR */}
-              <DaysOfWeekSelector
-                label="Días de Atención y Reparto Semanal"
-                value={formData.dias_semana}
-                onChange={(newDays) => setFormData({ ...formData, dias_semana: newDays })}
-              />
-
-              {/* LOGISTICS CALCULATOR CARD */}
-              <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', padding: 14, borderRadius: 12, marginBottom: 14 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: '#0369a1' }}>
-                    🚚 Cálculo Logístico Multiruta y Capacidad de Cisterna
-                  </span>
-                  <span style={{ fontSize: 12, fontWeight: 800, color: '#0284c7', background: '#e0f2fe', padding: '2px 8px', borderRadius: 12 }}>
-                    SUNASS Logística
-                  </span>
-                </div>
-                <div style={{ fontSize: 12.5, color: '#334155', lineHeight: 1.6 }}>
-                  • <strong>Sectores a Cubrir:</strong> {formData.selectedSectores.length > 0 ? formData.selectedSectores.join(' + ') : 'Ninguno seleccionado'}<br />
-                  • 💧 <strong>Demanda Total Combinada:</strong> {formData.litros_programados.toLocaleString()} Litros ({(formData.litros_programados / 1000).toFixed(2)} m³)<br />
-                  • 🚛 <strong>Capacidad de Cisterna ({currentSelectedCisterna?.placa || 'Seleccionada'}):</strong> {currentSelectedCisterna?.capacidad_litros || 15000} Litros ({currentSelectedCisterna?.capacidad_m3 || 15} m³)<br />
-                  • 👤 <strong>Conductor Asignado:</strong> {conductores.find(c => c.id === Number(formData.conductor_id)) ? `${conductores.find(c => c.id === Number(formData.conductor_id))?.nombres} ${conductores.find(c => c.id === Number(formData.conductor_id))?.apellidos}` : 'Sin chofer'}<br />
-                  • 🏁 <strong>Total de Viajes que debe realizar el Conductor:</strong> <strong style={{ color: '#0284c7', fontSize: 15 }}>{formData.viajes_estimados} {formData.viajes_estimados === 1 ? 'Viaje' : 'Viajes'}</strong>
-                </div>
-              </div>
-
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Litros Totales a Distribuir</label>
-                  <input
-                    type="number"
-                    min="1"
-                    className="form-input"
-                    value={formData.litros_programados}
-                    onChange={(e) => {
-                      const lts = parseInt(e.target.value) || 0;
-                      const trips = calculateTrips(lts, formData.cisterna_id);
-                      setFormData({ ...formData, litros_programados: lts, viajes_estimados: trips });
-                    }}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Número de Viajes Estimados</label>
-                  <input
-                    type="number"
-                    min="1"
-                    className="form-input"
-                    value={formData.viajes_estimados}
-                    onChange={(e) => setFormData({ ...formData, viajes_estimados: parseInt(e.target.value) || 1 })}
-                  />
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label>Estado de la Programación</label>
-                <select
-                  className="form-input"
-                  value={formData.estado}
-                  onChange={(e) => setFormData({ ...formData, estado: e.target.value })}
-                >
-                  <option value="Activa">Activa</option>
-                  <option value="Completada">Completada</option>
-                  <option value="Pendiente">Pendiente</option>
-                </select>
-              </div>
-
-              <div className="modal-footer">
+              <div className="modal-footer" style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid #f1f5f9' }}>
                 <button type="button" className="btn-secondary" onClick={() => setModalOpen(false)}>
                   Cancelar
                 </button>
-                <button type="submit" className="btn-primary">
+                <button type="submit" className="btn-primary" style={{ padding: '10px 24px', fontSize: 14 }}>
                   {editingProg ? 'Guardar Cambios' : 'Crear Programación'}
                 </button>
               </div>

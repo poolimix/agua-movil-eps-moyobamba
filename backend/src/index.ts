@@ -15,6 +15,9 @@ import sectoresRoutes from './routes/sectores.routes';
 import calidadRoutes from './routes/calidad.routes';
 import informesRoutes from './routes/informes.routes';
 import balanceRoutes from './routes/balance.routes';
+import configuracionRoutes from './routes/configuracion.routes';
+import usuariosRoutes from './routes/usuarios.routes';
+import { bootstrapSuperAdmin } from './controllers/usuarios.controller';
 
 dotenv.config();
 
@@ -22,6 +25,17 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 app.use(cors());
+
+// HTTP Security Headers (Defense-in-depth, OWASP & Apple/Google compliance)
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=*, geolocation=*, microphone=()');
+  next();
+});
+
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
@@ -41,6 +55,8 @@ app.use('/api/v1/sync', syncRoutes);
 app.use('/api/v1/calidad', calidadRoutes);
 app.use('/api/v1/informes', informesRoutes);
 app.use('/api/v1/balance', balanceRoutes);
+app.use('/api/v1/configuracion', configuracionRoutes);
+app.use('/api/v1/usuarios', usuariosRoutes);
 app.use('/api/v1', valesRoutes);
 
 
@@ -50,4 +66,5 @@ app.get('/', (req, res) => {
 
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
+  bootstrapSuperAdmin();
 });

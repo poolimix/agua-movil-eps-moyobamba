@@ -8,14 +8,15 @@ const JWT_SECRET = process.env.JWT_SECRET || 'EPS_MOYOBAMBA_SECRET_KEY_2026';
 
 export const googleAuth = async (req: Request, res: Response) => {
   try {
-    const { idToken, email: bodyEmail } = req.body;
+    const { idToken, email: bodyEmail, provider, appleId: bodyAppleId } = req.body;
 
     if (!idToken && !bodyEmail) {
-      return res.status(400).json({ message: 'Token de Google o Correo no proporcionado.' });
+      return res.status(400).json({ message: 'Token de Autenticación o Correo no proporcionado.' });
     }
 
     let email = bodyEmail ? String(bodyEmail).trim().toLowerCase() : '';
     let googleId = '';
+    let appleId = bodyAppleId || '';
 
     // 1. Try decoding with JWT if idToken is a real token
     if (idToken && idToken !== 'mock_token_or_google_token') {
@@ -25,7 +26,11 @@ export const googleAuth = async (req: Request, res: Response) => {
           if (!email && (decoded.email || decoded.user_id || decoded.sub)) {
             email = (decoded.email || '').toLowerCase();
           }
-          googleId = decoded.sub || decoded.user_id || '';
+          if (decoded.iss && decoded.iss.includes('apple')) {
+            appleId = decoded.sub || appleId;
+          } else {
+            googleId = decoded.sub || decoded.user_id || '';
+          }
         }
       } catch {
         // Fallback
@@ -50,7 +55,7 @@ export const googleAuth = async (req: Request, res: Response) => {
       return res.status(401).json({ message: 'No se pudo obtener un correo válido de autenticación.' });
     }
 
-    // 3. STRICT CHECK: Check if user exists in personal_operativo or usuarios
+    // 3. STRICT CHECK: Check if user exists in personal_operativo or usuarios by email or apple_id
     const userRes = await query(`
       SELECT 
         COALESCE(u.id, p.id) as id,
@@ -68,13 +73,18 @@ export const googleAuth = async (req: Request, res: Response) => {
       FROM usuarios u
       FULL OUTER JOIN personal_operativo p ON LOWER(TRIM(p.email)) = LOWER(TRIM(u.email))
       WHERE LOWER(TRIM(COALESCE(u.email, p.email))) = $1
-    `, [email]);
+         OR ($2 <> '' AND u.apple_id = $2)
+    `, [email, appleId || '']);
 
     if (userRes.rows.length === 0) {
-      // STRICT SECURITY: Reject any unregistered email with 403
+      const isRelay = email.includes('privaterelay.appleid.com');
       return res.status(403).json({
-        message: `Acceso Denegado: El correo (${email}) no está registrado en la base de datos de EPS Moyobamba. Debe estar registrado en el Personal Operativo o Administradores del sistema.`,
+        message: isRelay
+          ? `Apple ha ocultado su correo con una dirección privada (${email}). Por favor, ingrese manualmente su correo registrado en EPS Moyobamba en el campo de texto para vincular su acceso.`
+          : `Acceso Denegado: El correo (${email}) no está registrado en la base de datos de EPS Moyobamba. Debe estar registrado en el Personal Operativo o Administradores del sistema.`,
         unauthorizedEmail: email,
+        isAppleRelay: isRelay,
+        appleId: appleId || null,
       });
     }
 
@@ -86,19 +96,24 @@ export const googleAuth = async (req: Request, res: Response) => {
       });
     }
 
-    // Update google_id if empty in usuarios table
+    // Update google_id or apple_id if available in usuarios table
     if (googleId) {
       await query('UPDATE usuarios SET google_id = $1 WHERE LOWER(email) = $2', [googleId, email]).catch(() => {});
     }
+    if (appleId) {
+      await query('UPDATE usuarios SET apple_id = $1 WHERE LOWER(email) = $2', [appleId, email]).catch(() => {});
+    }
 
     // 4. Generate JWT signed session token with strictly assigned database role
+    const finalRol = (user.rol === 'AYUDANTE' ? 'GESTOR_ENTREGA' : user.rol) || 'OPERADOR_CAMPO';
+
     const token = jwt.sign(
       {
         id: user.id,
         personal_id: user.personal_id,
         email: user.email,
         nombres: user.nombres,
-        rol: user.rol, // STRICT ROLE FROM DB: 'ADMIN', 'SUPERVISOR', 'CONDUCTOR', 'AYUDANTE', 'COORDINADOR'
+        rol: finalRol, // STRICT ROLE: 'SUPER_ADMIN', 'ADMIN', 'SUPERVISOR', 'CONDUCTOR', 'GESTOR_ENTREGA'
       },
       JWT_SECRET,
       { expiresIn: '7d' }
@@ -112,7 +127,7 @@ export const googleAuth = async (req: Request, res: Response) => {
         personal_id: user.personal_id,
         email: user.email,
         nombres: user.nombres,
-        rol: user.rol,
+        rol: finalRol,
         estado: user.estado,
         dni: user.dni,
         telefono: user.telefono,
@@ -120,7 +135,10 @@ export const googleAuth = async (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error('Error en googleAuth:', error);
+    console.error('Error en autenticación OAuth:', error);
     res.status(500).json({ message: 'Error interno en autenticación', error: error.message });
   }
 };
+
+export const appleAuth = googleAuth;
+export const oAuthUnified = googleAuth;

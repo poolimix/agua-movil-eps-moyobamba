@@ -10,7 +10,7 @@ interface Personal {
   dni: string;
   nombres: string;
   apellidos: string;
-  tipo_personal: 'CONDUCTOR' | 'AYUDANTE' | 'SUPERVISOR';
+  tipo_personal: 'CONDUCTOR' | 'GESTOR_ENTREGA' | 'AYUDANTE' | 'SUPERVISOR';
   licencia_conducir: string | null;
   categoria_licencia: string | null;
   telefono: string | null;
@@ -35,7 +35,7 @@ export default function PersonalPage() {
     dni: '',
     nombres: '',
     apellidos: '',
-    tipo_personal: 'CONDUCTOR' as 'CONDUCTOR' | 'AYUDANTE' | 'SUPERVISOR',
+    tipo_personal: 'CONDUCTOR' as 'CONDUCTOR' | 'GESTOR_ENTREGA' | 'SUPERVISOR',
     licencia_conducir: '',
     categoria_licencia: 'A-IIIc',
     telefono: '',
@@ -70,7 +70,7 @@ export default function PersonalPage() {
         dni: p.dni,
         nombres: p.nombres,
         apellidos: p.apellidos,
-        tipo_personal: p.tipo_personal,
+        tipo_personal: (p.tipo_personal === 'AYUDANTE' ? 'GESTOR_ENTREGA' : p.tipo_personal) as 'CONDUCTOR' | 'GESTOR_ENTREGA' | 'SUPERVISOR',
         licencia_conducir: p.licencia_conducir || '',
         categoria_licencia: p.categoria_licencia || 'A-IIIc',
         telefono: p.telefono || '',
@@ -169,8 +169,9 @@ export default function PersonalPage() {
         return <span className="status-badge" style={{ background: '#dbeafe', color: '#1d4ed8' }}>🚛 CONDUCTOR</span>;
       case 'SUPERVISOR':
         return <span className="status-badge" style={{ background: '#f3e8ff', color: '#7e22ce' }}>📋 SUPERVISOR</span>;
+      case 'GESTOR_ENTREGA':
       case 'AYUDANTE':
-        return <span className="status-badge" style={{ background: '#ffedd5', color: '#c2410c' }}>👷 AYUDANTE</span>;
+        return <span className="status-badge" style={{ background: '#dcfce7', color: '#15803d' }}>🤝 GESTOR DE ENTREGA</span>;
       default:
         return <span className="status-badge">{tipo}</span>;
     }
@@ -204,7 +205,7 @@ export default function PersonalPage() {
           />
           <select
             className="form-input"
-            style={{ width: 170, margin: 0 }}
+            style={{ width: 190, margin: 0 }}
             value={filterTipo}
             onChange={(e) => {
               setFilterTipo(e.target.value);
@@ -213,7 +214,7 @@ export default function PersonalPage() {
           >
             <option value="">Todos los cargos</option>
             <option value="CONDUCTOR">Conductores</option>
-            <option value="AYUDANTE">Ayudantes</option>
+            <option value="GESTOR_ENTREGA">Gestores de Entrega</option>
             <option value="SUPERVISOR">Supervisores</option>
           </select>
           <select
@@ -341,7 +342,7 @@ export default function PersonalPage() {
                     onChange={(e) => setFormData({ ...formData, tipo_personal: e.target.value as any })}
                   >
                     <option value="CONDUCTOR">🚛 CONDUCTOR DE CISTERNA</option>
-                    <option value="AYUDANTE">👷 AYUDANTE DE CAMPO</option>
+                    <option value="GESTOR_ENTREGA">🤝 GESTOR DE ENTREGA</option>
                     <option value="SUPERVISOR">📋 SUPERVISOR DE REPARTO</option>
                   </select>
                 </div>

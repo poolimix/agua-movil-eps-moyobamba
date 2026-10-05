@@ -11,6 +11,7 @@ import {
   Platform,
   ScrollView,
   Modal,
+  Image,
 } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import * as Google from 'expo-auth-session/providers/google';
@@ -229,14 +230,24 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     >
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
         <View style={styles.card}>
-          {/* LOGO INSTITUCIONAL */}
+          {/* LOGO INSTITUCIONAL AGUATRACK */}
           <View style={styles.logoContainer}>
-            <View style={styles.iconCircle}>
-              <Ionicons name="water" size={32} color="#0284c7" />
+            <View style={[styles.iconCircle, { width: 88, height: 88, borderRadius: 24, padding: 0, overflow: 'hidden', borderWidth: 2, borderColor: '#38bdf8' }]}>
+              <Image
+                source={require('../../assets/icon.png')}
+                style={{ width: '100%', height: '100%' }}
+                resizeMode="cover"
+              />
             </View>
-            <Text style={styles.appTitle}>Agua Móvil</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 2, marginTop: 10 }}>
+              <Text style={[styles.appTitle, { color: '#38bdf8' }]}>Agua</Text>
+              <Text style={[styles.appTitle, { color: '#ffffff' }]}>Track</Text>
+              <View style={{ backgroundColor: '#0284c7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginLeft: 6 }}>
+                <Text style={{ color: '#fff', fontSize: 10, fontWeight: '900' }}>GPS</Text>
+              </View>
+            </View>
             <Text style={styles.appSubtitle}>EPS MOYOBAMBA S.A.</Text>
-            <Text style={styles.appTagline}>Sistema de Reparto y Control en Campo</Text>
+            <Text style={styles.appTagline}>Trazabilidad y Control en Campo</Text>
           </View>
 
           {/* 1. FORMULARIO DE ACCESO POR CORREO */}

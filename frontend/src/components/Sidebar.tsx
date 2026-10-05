@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import AguaTrackLogo from './AguaTrackLogo';
 
 interface SidebarProps {
   isOpen?: boolean;
@@ -9,7 +10,7 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ isOpen, onClose, isCollapsed = false, onToggleCollapse }: SidebarProps) {
-  const { user, logout } = useAuth();
+  const { user, logout, isSuperAdmin } = useAuth();
 
   const handleNavClick = () => {
     if (onClose) {
@@ -18,27 +19,31 @@ export default function Sidebar({ isOpen, onClose, isCollapsed = false, onToggle
   };
 
   const getRoleBadge = (rol?: string) => {
-    switch (rol) {
+    const r = (rol || '').toUpperCase();
+    switch (r) {
+      case 'SUPER_ADMIN':
       case 'ADMIN':
-        return <span style={{ background: '#f59e0b', color: '#fff', padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 700 }}>ADMIN</span>;
+        return <span style={{ background: '#f59e0b', color: '#fff', padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 800 }}>👑 SUPER ADMIN</span>;
       case 'SUPERVISOR':
-        return <span style={{ background: '#8b5cf6', color: '#fff', padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 700 }}>SUPERVISOR</span>;
+        return <span style={{ background: '#8b5cf6', color: '#fff', padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 700 }}>📋 SUPERVISOR</span>;
       case 'CONDUCTOR':
-        return <span style={{ background: '#3b82f6', color: '#fff', padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 700 }}>CONDUCTOR</span>;
+        return <span style={{ background: '#3b82f6', color: '#fff', padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 700 }}>🚚 CONDUCTOR</span>;
+      case 'GESTOR_ENTREGA':
+        return <span style={{ background: '#10b981', color: '#fff', padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 700 }}>🤝 GESTOR</span>;
       default:
-        return <span style={{ background: '#10b981', color: '#fff', padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 700 }}>OPERADOR</span>;
+        return <span style={{ background: '#64748b', color: '#fff', padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 700 }}>{r || 'OPERADOR'}</span>;
     }
   };
 
   return (
     <aside className={`sidebar ${isOpen ? 'sidebar-open' : ''} ${isCollapsed ? 'sidebar-collapsed' : ''}`}>
       <div className="sidebar-logo">
-        <div className="sidebar-brand-content">
-          <span className="sidebar-logo-icon" title="Agua Móvil - EPS Moyobamba">💧</span>
-          <div className="sidebar-brand-text">
-            <h2>Agua Móvil</h2>
-            <p>EPS Moyobamba</p>
-          </div>
+        <div className="sidebar-brand-content" style={{ overflow: 'hidden' }}>
+          <AguaTrackLogo
+            variant={isCollapsed ? 'icon' : 'horizontal'}
+            size={isCollapsed ? 'sm' : 'sm'}
+            showSubtitle={!isCollapsed}
+          />
         </div>
 
         <div className="sidebar-header-actions">
@@ -262,6 +267,43 @@ export default function Sidebar({ isOpen, onClose, isCollapsed = false, onToggle
           </span>
           <span className="nav-label">Conductores y Personal</span>
         </NavLink>
+
+        {/* PARÁMETROS DEL SISTEMA (DOTACIÓN Y CALIDAD) */}
+        <NavLink 
+          to="/configuracion" 
+          onClick={handleNavClick} 
+          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+          title="Parámetros del Sistema"
+        >
+          <span className="nav-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+          </span>
+          <span className="nav-label">Parámetros del Sistema</span>
+        </NavLink>
+
+        {/* GESTIÓN DE USUARIOS Y ROLES (EXCLUSIVO SUPER ADMIN) */}
+        {isSuperAdmin && (
+          <NavLink 
+            to="/usuarios" 
+            onClick={handleNavClick} 
+            className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+            title="Gestión de Usuarios y Permisos (Exclusivo Super Admin)"
+            style={{ marginTop: 6 }}
+          >
+            <span className="nav-icon" style={{ color: '#d97706' }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                <circle cx="9" cy="7" r="4"/>
+                <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+              </svg>
+            </span>
+            <span className="nav-label" style={{ fontWeight: 700, color: '#d97706' }}>Usuarios y Roles</span>
+          </NavLink>
+        )}
       </nav>
 
       <div className="sidebar-user">

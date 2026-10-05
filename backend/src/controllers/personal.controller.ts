@@ -8,8 +8,13 @@ export const getAllPersonal = async (req: Request, res: Response) => {
     const params: any[] = [];
 
     if (tipo) {
-      params.push(String(tipo).toUpperCase());
-      sql += ` AND tipo_personal = $${params.length}`;
+      const upperTipo = String(tipo).toUpperCase();
+      if (upperTipo === 'AYUDANTE' || upperTipo === 'GESTOR_ENTREGA') {
+        sql += ` AND tipo_personal IN ('GESTOR_ENTREGA', 'AYUDANTE')`;
+      } else {
+        params.push(upperTipo);
+        sql += ` AND tipo_personal = $${params.length}`;
+      }
     }
 
     if (estado) {
@@ -48,6 +53,8 @@ export const createPersonal = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'El DNI debe contener exactamente 8 dígitos.' });
     }
 
+    const cleanTipo = tipo_personal.toUpperCase() === 'AYUDANTE' ? 'GESTOR_ENTREGA' : tipo_personal.toUpperCase();
+
     const sql = `
       INSERT INTO personal_operativo (dni, nombres, apellidos, tipo_personal, licencia_conducir, categoria_licencia, telefono, email, estado)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -58,7 +65,7 @@ export const createPersonal = async (req: Request, res: Response) => {
       dni.trim(),
       nombres.trim(),
       apellidos.trim(),
-      tipo_personal.toUpperCase(),
+      cleanTipo,
       licencia_conducir ? licencia_conducir.trim().toUpperCase() : null,
       categoria_licencia ? categoria_licencia.trim().toUpperCase() : null,
       telefono ? telefono.trim() : null,
@@ -71,8 +78,8 @@ export const createPersonal = async (req: Request, res: Response) => {
       await query(
         `INSERT INTO usuarios (email, nombres, rol, estado)
          VALUES ($1, $2, $3, $4)
-         ON CONFLICT (email) DO NOTHING`,
-        [email.trim().toLowerCase(), `${nombres.trim()} ${apellidos.trim()}`, tipo_personal.toUpperCase(), 'ACTIVO']
+         ON CONFLICT (email) DO UPDATE SET rol = EXCLUDED.rol, estado = EXCLUDED.estado`,
+        [email.trim().toLowerCase(), `${nombres.trim()} ${apellidos.trim()}`, cleanTipo, 'ACTIVO']
       );
     }
 
@@ -116,11 +123,13 @@ export const updatePersonal = async (req: Request, res: Response) => {
       RETURNING *;
     `;
 
+    const cleanTipo = tipo_personal ? (tipo_personal.toUpperCase() === 'AYUDANTE' ? 'GESTOR_ENTREGA' : tipo_personal.toUpperCase()) : undefined;
+
     const result = await query(sql, [
       dni.trim(),
       nombres.trim(),
       apellidos.trim(),
-      tipo_personal.toUpperCase(),
+      cleanTipo,
       licencia_conducir ? licencia_conducir.trim().toUpperCase() : null,
       categoria_licencia ? categoria_licencia.trim().toUpperCase() : null,
       telefono ? telefono.trim() : null,

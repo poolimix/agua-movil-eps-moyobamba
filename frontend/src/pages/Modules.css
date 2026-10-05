@@ -560,6 +560,28 @@
   border: 1px solid #e2e8f0;
 }
 
+.modal-content.modal-large,
+.modal-large {
+  max-width: 1100px !important;
+  width: 95vw !important;
+  max-height: 93vh !important;
+  padding: 30px 36px !important;
+}
+
+.modal-grid-2col {
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr;
+  gap: 24px;
+  align-items: start;
+}
+
+@media (max-width: 960px) {
+  .modal-grid-2col {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+}
+
 @keyframes zoomIn {
   from { transform: scale(0.95); opacity: 0; }
   to { transform: scale(1); opacity: 1; }

@@ -1,21 +1,21 @@
 {
-  "name": "Agua Móvil - EPS Moyobamba",
-  "short_name": "Agua Móvil",
-  "description": "Sistema Oficial de Distribución y Control de Agua Potable - EPS Moyobamba S.A.",
+  "name": "AguaTrack - EPS Moyobamba",
+  "short_name": "AguaTrack",
+  "description": "Sistema Oficial de Distribución y Trazabilidad Satelital de Agua Potable - EPS Moyobamba S.A.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0f172a",
+  "background_color": "#0b1329",
   "theme_color": "#0284c7",
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/icon-192.png",
+      "src": "/aguatrack-icon.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icon-512.png",
+      "src": "/aguatrack-icon.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"

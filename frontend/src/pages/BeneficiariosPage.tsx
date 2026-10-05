@@ -58,6 +58,12 @@ export default function BeneficiariosPage() {
   const [qrModalBeneficiario, setQrModalBeneficiario] = useState<Beneficiario | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Parámetros de dotación configurables
+  const [dotacionModalOpen, setDotacionModalOpen] = useState(false);
+  const [dotacionDiariaActual, setDotacionDiariaActual] = useState(50);
+  const [diasSemanaActual, setDiasSemanaActual] = useState(7);
+  const [savingDotacion, setSavingDotacion] = useState(false);
+
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
@@ -81,7 +87,45 @@ export default function BeneficiariosPage() {
   useEffect(() => {
     fetchBeneficiarios();
     fetchSectores();
+    fetchConfigDotacion();
   }, []);
+
+  const fetchConfigDotacion = async () => {
+    try {
+      const res = await api.get('/configuracion');
+      if (res.data?.config) {
+        setDotacionDiariaActual(Number(res.data.config.dotacion_diaria_litros) || 50);
+        setDiasSemanaActual(Number(res.data.config.dias_entrega_semanal) || 7);
+      }
+    } catch (_) {}
+  };
+
+  const handleSaveDotacionConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      setSavingDotacion(true);
+      await api.put('/configuracion', {
+        dotacion_diaria_litros: dotacionDiariaActual,
+        dias_entrega_semanal: diasSemanaActual,
+        recalcular_vales: true
+      });
+      await dialogAlert({
+        title: 'Dotación Actualizada',
+        message: `✅ La dotación diaria se actualizó a ${dotacionDiariaActual} L/hab/día (${dotacionDiariaActual * diasSemanaActual} L/semana por vale).`,
+        type: 'success'
+      });
+      setDotacionModalOpen(false);
+      fetchBeneficiarios();
+    } catch (err: any) {
+      dialogAlert({
+        title: 'Error',
+        message: err.response?.data?.message || 'Error al actualizar dotación.',
+        type: 'danger'
+      });
+    } finally {
+      setSavingDotacion(false);
+    }
+  };
 
   const fetchBeneficiarios = async () => {
     try {
@@ -446,6 +490,22 @@ export default function BeneficiariosPage() {
           <button className="btn-secondary" onClick={() => setSectoresModalOpen(true)}>
             📍 Gestionar Sectores ({sectores.length})
           </button>
+          <button 
+            className="btn-secondary" 
+            onClick={() => setDotacionModalOpen(true)}
+            style={{ 
+              background: '#f0f9ff', 
+              borderColor: '#bae6fd', 
+              color: '#0369a1', 
+              fontWeight: 700, 
+              display: 'inline-flex', 
+              alignItems: 'center', 
+              gap: 6 
+            }}
+            title="Configurar Dotación Diaria por Persona y Días de Entrega"
+          >
+            ⚙️ Dotación: {dotacionDiariaActual} L/hab ({dotacionDiariaActual * diasSemanaActual} L/sem)
+          </button>
           <button className="btn-primary" onClick={handleOpenCreateModal}>
             ➕ Nuevo Beneficiario
           </button>
@@ -602,8 +662,8 @@ export default function BeneficiariosPage() {
               <th>Sector / AA.HH</th>
               <th>N° Viv / Mz-Lt</th>
               <th>Dirección / Calle</th>
-              <th>Miembros</th>
-              <th>Dotación Sugerida</th>
+              <th>Personas (Titular+Fam)</th>
+              <th>Dotación Semanal (Vale)</th>
               <th>Carnet QR</th>
               <th>Acciones</th>
             </tr>
@@ -638,11 +698,17 @@ export default function BeneficiariosPage() {
                     </div>
                   </td>
                   <td><div style={{ minWidth: 140, color: '#475569' }}>{b.calle_direccion || b.direccion || '-'}</div></td>
-                  <td style={{ whiteSpace: 'nowrap' }}><strong>{b.num_miembros} hab.</strong></td>
                   <td style={{ whiteSpace: 'nowrap' }}>
-                    <span className="badge-count" style={{ background: '#dcfce7', color: '#15803d', borderColor: '#bbf7d0' }}>
-                      💧 {b.litros_sugeridos || (b.num_miembros * 50)} Lts
+                    <strong style={{ color: '#0f172a' }}>{b.num_miembros} pers.</strong>
+                    <div style={{ fontSize: 10.5, color: '#64748b' }}>Titular + Fam.</div>
+                  </td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    <span className="badge-count" style={{ background: '#dcfce7', color: '#15803d', borderColor: '#bbf7d0', fontWeight: 700 }}>
+                      💧 {b.litros_sugeridos || (b.num_miembros * 350)} Lts/sem
                     </span>
+                    <div style={{ fontSize: 10.5, color: '#0369a1', marginTop: 2 }}>
+                      {((b.num_miembros || 1) * 50)} L/día × 7d
+                    </div>
                   </td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     <button
@@ -711,7 +777,7 @@ export default function BeneficiariosPage() {
                   />
                 </div>
                 <div className="form-group">
-                  <label>N° de Miembros (Habitantes) *</label>
+                  <label>Total Personas en Vivienda (Titular + Familiares) *</label>
                   <input
                     type="number"
                     required
@@ -720,6 +786,9 @@ export default function BeneficiariosPage() {
                     value={formData.num_miembros}
                     onChange={(e) => setFormData({ ...formData, num_miembros: parseInt(e.target.value) || 1 })}
                   />
+                  <div style={{ marginTop: 4, fontSize: 11, color: '#0369a1', background: '#f0f9ff', padding: '4px 8px', borderRadius: 6, border: '1px solid #bae6fd' }}>
+                    💧 Dotación: <strong>{formData.num_miembros || 1} pers. × 50 L/día = {(formData.num_miembros || 1) * 50} L/día</strong> → Vale Semanal (7 días): <strong style={{ color: '#0284c7' }}>{((formData.num_miembros || 1) * 350).toLocaleString()} Lts/sem</strong>
+                  </div>
                 </div>
               </div>
 
@@ -1044,10 +1113,13 @@ export default function BeneficiariosPage() {
               <p style={{ fontSize: 12.5, color: '#64748b', margin: '2px 0' }}>
                 📍 {qrModalBeneficiario.sector_aahh || qrModalBeneficiario.sector} • {qrModalBeneficiario.calle_direccion || qrModalBeneficiario.direccion || ''}
               </p>
-              <div style={{ marginTop: 10, background: '#f0fdf4', padding: 8, borderRadius: 8, border: '1px solid #bbf7d0' }}>
-                <span style={{ fontSize: 12, color: '#166534', fontWeight: 700 }}>
-                  Dotación: {(qrModalBeneficiario.num_miembros || 1) * 50} Litros ({qrModalBeneficiario.num_miembros} habitantes)
-                </span>
+              <div style={{ marginTop: 10, background: '#f0fdf4', padding: 10, borderRadius: 8, border: '1px solid #bbf7d0', textAlign: 'left' }}>
+                <div style={{ fontSize: 12, color: '#166534', fontWeight: 700 }}>
+                  💧 Dotación Diaria: {(qrModalBeneficiario.num_miembros || 1) * 50} Lts/día ({qrModalBeneficiario.num_miembros} personas × 50 L)
+                </div>
+                <div style={{ fontSize: 12, color: '#0369a1', fontWeight: 800, marginTop: 4 }}>
+                  📅 Vale Semanal (7 días): {((qrModalBeneficiario.num_miembros || 1) * 350).toLocaleString()} Litros
+                </div>
               </div>
             </div>
 
@@ -1310,6 +1382,104 @@ export default function BeneficiariosPage() {
                 )}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL CONFIGURACIÓN RÁPIDA DE PARÁMETROS DE DOTACIÓN */}
+      {dotacionModalOpen && (
+        <div className="modal-overlay" onClick={() => setDotacionModalOpen(false)}>
+          <div
+            className="modal-content"
+            style={{ maxWidth: 520 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 24 }}>💧</span>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 17, color: '#0f172a', fontWeight: 800 }}>
+                    Parámetros de Dotación Familiar
+                  </h3>
+                  <p style={{ margin: 0, fontSize: 12, color: '#64748b' }}>
+                    Configuración de volumen por persona y ciclo de entrega para el padrón
+                  </p>
+                </div>
+              </div>
+              <button className="close-btn" onClick={() => setDotacionModalOpen(false)}>✕</button>
+            </div>
+
+            <form onSubmit={handleSaveDotacionConfig} style={{ marginTop: 12 }}>
+              <div className="form-group" style={{ marginBottom: 14 }}>
+                <label style={{ fontWeight: 700, fontSize: 13, color: '#1e293b' }}>
+                  Dotación Diaria por Persona (L/hab/día):
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                  <input
+                    type="number"
+                    min="1"
+                    max="1000"
+                    step="1"
+                    required
+                    className="form-input"
+                    style={{ fontSize: 16, fontWeight: 700, width: 130 }}
+                    value={dotacionDiariaActual}
+                    onChange={(e) => setDotacionDiariaActual(parseFloat(e.target.value) || 0)}
+                  />
+                  <span style={{ fontSize: 13, fontWeight: 600, color: '#475569' }}>Litros / persona / día</span>
+                </div>
+                <span style={{ fontSize: 11, color: '#64748b', marginTop: 3, display: 'block' }}>
+                  Norma SUNASS: 50 L. Puedes cambiarlo a cualquier otro monto (ej. 40, 60, 80).
+                </span>
+              </div>
+
+              <div className="form-group" style={{ marginBottom: 14 }}>
+                <label style={{ fontWeight: 700, fontSize: 13, color: '#1e293b' }}>
+                  Días de Abastecimiento por Ciclo de Vale:
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                  <input
+                    type="number"
+                    min="1"
+                    max="31"
+                    step="1"
+                    required
+                    className="form-input"
+                    style={{ fontSize: 16, fontWeight: 700, width: 130 }}
+                    value={diasSemanaActual}
+                    onChange={(e) => setDiasSemanaActual(parseInt(e.target.value, 10) || 1)}
+                  />
+                  <span style={{ fontSize: 13, fontWeight: 600, color: '#475569' }}>Días por vale</span>
+                </div>
+              </div>
+
+              <div style={{ background: '#f0f9ff', padding: 12, borderRadius: 8, border: '1px solid #bae6fd', marginBottom: 16 }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: '#0369a1', marginBottom: 4 }}>
+                  📊 Fórmula de Cálculo Resultante:
+                </div>
+                <div style={{ fontSize: 12, color: '#0f172a', lineHeight: 1.5 }}>
+                  • Dotación semanal por persona: <strong>{dotacionDiariaActual * diasSemanaActual} Litros</strong><br />
+                  • Para 5 integrantes (1 titular + 4 fam): 5 × {dotacionDiariaActual} × {diasSemanaActual} = <strong style={{ color: '#0284c7' }}>{(dotacionDiariaActual * diasSemanaActual * 5).toLocaleString()} Litros semanales</strong>
+                </div>
+              </div>
+
+              <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setDotacionModalOpen(false)}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="btn-primary"
+                  disabled={savingDotacion}
+                >
+                  {savingDotacion ? 'Guardando...' : '💾 Guardar y Actualizar Padrón'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

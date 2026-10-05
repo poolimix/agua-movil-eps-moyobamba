@@ -988,6 +988,111 @@ body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: #
   box-shadow: 0 16px 32px -4px rgba(15, 23, 42, 0.08), 0 4px 8px -2px rgba(15, 23, 42, 0.03);
 }
 
+/* ─── 4 Core Metrics Summary Bar (Volumen Repartido, Promedio, Población, Monto) ─ */
+.key-metrics-summary-bar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 1200px) {
+  .key-metrics-summary-bar {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .key-metrics-summary-bar {
+    grid-template-columns: 1fr;
+  }
+}
+
+.metric-box {
+  background: #ffffff;
+  border-radius: 18px;
+  padding: 18px 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 4px 14px -2px rgba(15, 23, 42, 0.05);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.metric-box:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px -4px rgba(15, 23, 42, 0.09);
+}
+
+.metric-icon-circle {
+  width: 50px;
+  height: 50px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.box-repartido .metric-icon-circle { background: #e0f2fe; color: #0284c7; }
+.box-promedio .metric-icon-circle { background: #e0e7ff; color: #4338ca; }
+.box-poblacion .metric-icon-circle { background: #f3e8ff; color: #7e22ce; }
+.box-monto .metric-icon-circle { background: #dcfce7; color: #15803d; }
+
+.metric-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.metric-tagline {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  color: #64748b;
+  text-transform: uppercase;
+  display: block;
+  margin-bottom: 2px;
+}
+
+.metric-number-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.metric-big-number {
+  font-size: 22px;
+  font-weight: 900;
+  color: #0f172a;
+  letter-spacing: -0.5px;
+}
+
+.metric-unit-text {
+  font-size: 13px;
+  font-weight: 700;
+  color: #64748b;
+}
+
+.metric-subdetail {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 11px;
+  color: #475569;
+  font-weight: 600;
+}
+
+.badge-micro-teal { background: #ccfbf1; color: #0f766e; padding: 2px 7px; border-radius: 6px; font-size: 10px; font-weight: 800; }
+.badge-micro-cyan { background: #cffafe; color: #0e7490; padding: 2px 7px; border-radius: 6px; font-size: 10px; font-weight: 800; }
+.badge-micro-purple { background: #f3e8ff; color: #6b21a8; padding: 2px 7px; border-radius: 6px; font-size: 10px; font-weight: 800; }
+.badge-micro-emerald { background: #dcfce7; color: #166534; padding: 2px 7px; border-radius: 6px; font-size: 10px; font-weight: 800; }
+
+
 .kpi-card::before {
   content: '';
   position: absolute;

@@ -152,6 +152,8 @@ export const getInformeMensual = async (req: Request, res: Response) => {
         entidad_cooperante: 'MINISTERIO DE VIVIENDA, CONSTRUCCIÓN Y SANEAMIENTO — PNSU',
         monto_transferido_soles: 586912.74,
         dotacion_reglamentaria_l_hab_dia: 50,
+        dias_ciclo_semanal: 7,
+        dotacion_semanal_l_hab_sem: 350,
         periodo: {
           mes: mesParam,
           anio: anioParam,
