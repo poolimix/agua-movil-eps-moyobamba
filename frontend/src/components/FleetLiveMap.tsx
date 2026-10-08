@@ -341,6 +341,11 @@ export default function FleetLiveMap({
                           <span className="gps-dot active"></span>
                           GPS: {Number(c.latitud_actual).toFixed(4)}, {Number(c.longitud_actual).toFixed(4)}
                         </span>
+                      ) : c.codigo_gps ? (
+                        <span className="gps-status-inactive" style={{ color: '#2563eb' }}>
+                          <span className="gps-dot" style={{ backgroundColor: '#f59e0b' }}></span>
+                          Volvo Connect vinculado (Camión apagado)
+                        </span>
                       ) : (
                         <span className="gps-status-inactive">
                           <span className="gps-dot inactive"></span>

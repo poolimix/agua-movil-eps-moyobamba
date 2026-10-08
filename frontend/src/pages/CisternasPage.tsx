@@ -366,28 +366,40 @@ export default function CisternasPage() {
                               {(c.enlace_gps_tracking || '').includes('volvo') ? '🚛 Volvo Connect' : '🔗 Plataforma Satelital'} ↗
                             </a>
                           </div>
-                        ) : (c.marca_modelo || '').toLowerCase().includes('volvo') ? (
-                          <div>
-                            <a
-                              href="https://volvoconnect.com/"
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: 3,
-                                fontSize: 10.5,
-                                color: '#2563eb',
-                                fontWeight: 600,
-                                textDecoration: 'none',
-                                marginTop: 3,
-                              }}
-                              title="Portal oficial de telemetría Volvo Connect"
-                            >
-                              🚛 Volvo Connect ↗
-                            </a>
-                          </div>
                         ) : null}
+                      </div>
+                    ) : c.codigo_gps ? (
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: '#2563eb' }}>
+                          🛰️ Vinculado a Volvo Connect
+                        </div>
+                        <span style={{ fontSize: 10, color: '#64748b' }}>
+                          VIN: {c.codigo_gps.length > 14 ? c.codigo_gps.substring(0, 11) + '...' : c.codigo_gps}
+                        </span>
+                        <div>
+                          <span style={{ fontSize: 10, color: '#d97706', fontWeight: 600 }}>
+                            🟡 Esperando ignición (Camión apagado)
+                          </span>
+                        </div>
+                        <div>
+                          <a
+                            href={c.enlace_gps_tracking || 'https://volvoconnect.com/'}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 3,
+                              fontSize: 10.5,
+                              color: '#2563eb',
+                              fontWeight: 700,
+                              textDecoration: 'none',
+                              marginTop: 2,
+                            }}
+                          >
+                            🚛 Volvo Connect ↗
+                          </a>
+                        </div>
                       </div>
                     ) : (
                       <span style={{ color: '#94a3b8', fontSize: 11 }}>Sin GPS</span>
