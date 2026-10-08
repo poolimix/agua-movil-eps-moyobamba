@@ -129,6 +129,13 @@ export const ExecutiveAnalyticsShowcase: React.FC<ExecutiveAnalyticsProps> = ({
     return `${strokeDash} ${c}`;
   };
 
+  const totalProgSemana = dailyBarData.reduce((acc, curr) => acc + curr.Programado, 0);
+  const totalEntSemana = dailyBarData.reduce((acc, curr) => acc + curr.Entregado, 0);
+  const totalSaldoSemana = Math.max(0, totalProgSemana - totalEntSemana);
+  const scoreGlobal = (pctCalidad > 0 || pctFlota > 0 || pctCobertura > 0 || pctVolumenPNSU > 0)
+    ? Math.round((pctCalidad + pctFlota + pctCobertura + pctVolumenPNSU) / 4)
+    : 0;
+
   return (
     <div className="executive-showcase-container">
       {/* ─── FILA 1: 4 TARJETAS CLAVE CON MICRO-GRÁFICOS INTEGRADOS ──────────────── */}
@@ -382,7 +389,7 @@ export const ExecutiveAnalyticsShowcase: React.FC<ExecutiveAnalyticsProps> = ({
               <span className="comp-pill-dot dot-blue" />
               <div className="comp-pill-info">
                 <span className="comp-pill-label">PROGRAMADO</span>
-                <strong className="comp-pill-num">15,000 L</strong>
+                <strong className="comp-pill-num">{totalProgSemana.toLocaleString()} L</strong>
               </div>
             </div>
 
@@ -401,7 +408,7 @@ export const ExecutiveAnalyticsShowcase: React.FC<ExecutiveAnalyticsProps> = ({
               <div className="comp-pill-info">
                 <span className="comp-pill-label">POR ENTREGAR</span>
                 <strong className="comp-pill-num" style={{ color: '#f59e0b' }}>
-                  {Math.max(0, 15000 - volRepartido).toLocaleString()} L
+                  {totalSaldoSemana.toLocaleString()} L
                 </strong>
               </div>
             </div>
@@ -418,7 +425,7 @@ export const ExecutiveAnalyticsShowcase: React.FC<ExecutiveAnalyticsProps> = ({
             </div>
             <div className="efficiency-score-tag">
               <span className="score-num">
-                {Math.round((pctCalidad + pctFlota + pctCobertura + (pctVolumenPNSU || 10)) / 4)}%
+                {scoreGlobal}%
               </span>
               <span className="score-lbl">GLOBAL</span>
             </div>
