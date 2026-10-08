@@ -89,19 +89,13 @@ export default function AnalyticsMetasYProyecciones({
   ].filter(d => d.value > 0);
 
   // Global Goal calculation
-  const metaGlobalM3 = objetivoGlobal?.meta_convenio_m3 || 15000;
-  const entregadoGlobalM3 = objetivoGlobal?.total_entregado_m3 || 4280.5;
+  const metaGlobalM3 = Number(objetivoGlobal?.meta_convenio_m3 ?? 15000);
+  const entregadoGlobalM3 = Number(objetivoGlobal?.total_entregado_m3 ?? 0);
   const saldoGlobalM3 = Math.max(0, metaGlobalM3 - entregadoGlobalM3);
-  const avanceGlobalPct = objetivoGlobal?.avance_pct || Math.min(100, Math.round((entregadoGlobalM3 / metaGlobalM3) * 100));
+  const avanceGlobalPct = metaGlobalM3 > 0 ? Math.min(100, Math.round((entregadoGlobalM3 / metaGlobalM3) * 100)) : 0;
 
-  // Programaciones advance data
-  const progData = programacionesAvance.length > 0 ? programacionesAvance : [
-    { id: 6, fecha_label: '20 Sep', zona: 'Sol de Indañe', estado_display: 'Completada', cisterna_placa: 'EGA-451', conductor_nombre: 'Carlos Ruiz', m3_programados: 35.0, m3_entregados: 35.0, cumplimiento_pct: 100, viajes_estimados: 3, familias_atendidas: 48, es_proyeccion: false },
-    { id: 7, fecha_label: '22 Sep', zona: 'Las Brisas + San Borja', estado_display: 'Completada', cisterna_placa: 'EGA-452', conductor_nombre: 'Miguel Castro', m3_programados: 45.8, m3_entregados: 42.5, cumplimiento_pct: 93, viajes_estimados: 4, familias_atendidas: 60, es_proyeccion: false },
-    { id: 8, fecha_label: '28 Sep', zona: 'Los Eucaliptos', estado_display: 'En Ruta / Parcial', cisterna_placa: 'EGA-451', conductor_nombre: 'Carlos Ruiz', m3_programados: 30.0, m3_entregados: 21.0, cumplimiento_pct: 70, viajes_estimados: 2, familias_atendidas: 32, es_proyeccion: false },
-    { id: 9, fecha_label: '05 Oct', zona: 'Santiago 8 Valles', estado_display: 'Proyectada', cisterna_placa: 'EGA-452', conductor_nombre: 'Miguel Castro', m3_programados: 28.5, m3_entregados: 0, cumplimiento_pct: 0, viajes_estimados: 2, familias_atendidas: 28, es_proyeccion: true },
-    { id: 10, fecha_label: '08 Oct', zona: 'Sol de Indañe (Ciclo 2)', estado_display: 'Proyectada', cisterna_placa: 'EGA-451', conductor_nombre: 'Carlos Ruiz', m3_programados: 35.0, m3_entregados: 0, cumplimiento_pct: 0, viajes_estimados: 3, familias_atendidas: 48, es_proyeccion: true },
-  ];
+  // Programaciones advance data (Cero o datos reales)
+  const progData = programacionesAvance;
 
   return (
     <div style={{ marginTop: 24, marginBottom: 28 }}>
@@ -311,7 +305,7 @@ export default function AnalyticsMetasYProyecciones({
                 pointerEvents: 'none'
               }}>
                 <div style={{ fontSize: 24, fontWeight: 900, color: '#0f172a', lineHeight: 1 }}>
-                  {Math.round((cumplidosCount / totalBens) * 100)}%
+                  {totalBens > 0 ? Math.round((cumplidosCount / totalBens) * 100) : 0}%
                 </div>
                 <div style={{ fontSize: 10, fontWeight: 700, color: '#64748b' }}>CUMPLIMIENTO</div>
               </div>
@@ -372,110 +366,139 @@ export default function AnalyticsMetasYProyecciones({
           </div>
         </div>
 
-        {/* Gráfico de Barras Agrupadas: Programado vs Entregado */}
-        <div style={{ height: 260, width: '100%', marginBottom: 18 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={progData} margin={{ top: 10, right: 10, left: -10, bottom: 10 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-              <XAxis
-                dataKey="fecha_label"
-                tick={{ fontSize: 11, fill: '#475569', fontWeight: 600 }}
-              />
-              <YAxis
-                tick={{ fontSize: 11, fill: '#64748b' }}
-                unit=" m³"
-              />
-              <Tooltip
-                formatter={(val: any, name: any) => [
-                  `${Number(val).toLocaleString()} m³ (${(Number(val) * 1000).toLocaleString()} L)`,
-                  name === 'm3_programados' ? 'Volumen Programado' : 'Volumen Entregado'
-                ]}
-                labelFormatter={(_label, payload) => {
-                  const item = payload?.[0]?.payload;
-                  return item ? `Prog #${item.id} (${item.fecha_label}) - ${item.zona}` : '';
-                }}
-                contentStyle={{ borderRadius: 10, border: '1px solid #cbd5e1', fontSize: 12 }}
-              />
-              <Legend
-                verticalAlign="top"
-                align="right"
-                wrapperStyle={{ fontSize: 12, paddingBottom: 10 }}
-                formatter={(v) => v === 'm3_programados' ? 'Meta Programada (m³)' : 'Real Entregado (m³)'}
-              />
-              <Bar dataKey="m3_programados" fill="#818cf8" radius={[4, 4, 0, 0]} name="m3_programados" />
-              <Bar dataKey="m3_entregados" fill="#10b981" radius={[4, 4, 0, 0]} name="m3_entregados" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+        {progData.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '36px 20px', background: '#f8fafc', borderRadius: 12, border: '1px dashed #cbd5e1' }}>
+            <div style={{ fontSize: 32, marginBottom: 8 }}>📅</div>
+            <strong style={{ fontSize: 14, color: '#334155', display: 'block' }}>Sin programaciones de reparto registradas aún</strong>
+            <p style={{ fontSize: 12, color: '#64748b', margin: '4px 0 14px' }}>
+              En cuanto crees la primera jornada en el módulo <strong>Programaciones</strong>, aquí se graficará automáticamente el avance (m³) de cada cisterna.
+            </p>
+            <a
+              href="/programaciones"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '8px 16px',
+                background: '#0284c7',
+                color: '#ffffff',
+                borderRadius: 8,
+                fontSize: 12,
+                fontWeight: 700,
+                textDecoration: 'none',
+              }}
+            >
+              ➕ Ir a Crear Programación
+            </a>
+          </div>
+        ) : (
+          <>
+            {/* Gráfico de Barras Agrupadas: Programado vs Entregado */}
+            <div style={{ height: 260, width: '100%', marginBottom: 18 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={progData} margin={{ top: 10, right: 10, left: -10, bottom: 10 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis
+                    dataKey="fecha_label"
+                    tick={{ fontSize: 11, fill: '#475569', fontWeight: 600 }}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 11, fill: '#64748b' }}
+                    unit=" m³"
+                  />
+                  <Tooltip
+                    formatter={(val: any, name: any) => [
+                      `${Number(val).toLocaleString()} m³ (${(Number(val) * 1000).toLocaleString()} L)`,
+                      name === 'm3_programados' ? 'Volumen Programado' : 'Volumen Entregado'
+                    ]}
+                    labelFormatter={(_label, payload) => {
+                      const item = payload?.[0]?.payload;
+                      return item ? `Prog #${item.id} (${item.fecha_label}) - ${item.zona}` : '';
+                    }}
+                    contentStyle={{ borderRadius: 10, border: '1px solid #cbd5e1', fontSize: 12 }}
+                  />
+                  <Legend
+                    verticalAlign="top"
+                    align="right"
+                    wrapperStyle={{ fontSize: 12, paddingBottom: 10 }}
+                    formatter={(v) => v === 'm3_programados' ? 'Meta Programada (m³)' : 'Real Entregado (m³)'}
+                  />
+                  <Bar dataKey="m3_programados" fill="#818cf8" radius={[4, 4, 0, 0]} name="m3_programados" />
+                  <Bar dataKey="m3_entregados" fill="#10b981" radius={[4, 4, 0, 0]} name="m3_entregados" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
 
-        {/* Tabla Dinámica de Avance y Proyección */}
-        <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: 10 }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-            <thead>
-              <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569', textAlign: 'left' }}>
-                <th style={{ padding: '10px 14px' }}>PROGRAMACIÓN</th>
-                <th style={{ padding: '10px 14px' }}>SECTOR / ZONA</th>
-                <th style={{ padding: '10px 14px' }}>CISTERNA & CHOFER</th>
-                <th style={{ padding: '10px 14px', textAlign: 'center' }}>PROGRAMADO</th>
-                <th style={{ padding: '10px 14px', textAlign: 'center' }}>ENTREGADO</th>
-                <th style={{ padding: '10px 14px', textAlign: 'center' }}>AVANCE</th>
-                <th style={{ padding: '10px 14px', textAlign: 'center' }}>ESTADO</th>
-              </tr>
-            </thead>
-            <tbody>
-              {progData.map((p) => {
-                const isCompl = p.cumplimiento_pct >= 100 || p.estado_display === 'Completada';
-                const isProy = p.es_proyeccion;
-                return (
-                  <tr key={p.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                    <td style={{ padding: '10px 14px', fontWeight: 800, color: '#0f172a' }}>
-                      Prog #{p.id} ({p.fecha_label})
-                    </td>
-                    <td style={{ padding: '10px 14px', color: '#334155' }}>
-                      {p.zona}
-                    </td>
-                    <td style={{ padding: '10px 14px', color: '#64748b' }}>
-                      <strong>{p.cisterna_placa}</strong> • {p.conductor_nombre}
-                    </td>
-                    <td style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 700 }}>
-                      {p.m3_programados} m³ ({p.viajes_estimados} v.)
-                    </td>
-                    <td style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 700, color: isCompl ? '#16a34a' : '#0284c7' }}>
-                      {p.m3_entregados} m³
-                    </td>
-                    <td style={{ padding: '10px 14px', textAlign: 'center' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
-                        <div style={{ width: 60, height: 6, background: '#f1f5f9', borderRadius: 999, overflow: 'hidden' }}>
-                          <div style={{
-                            width: `${p.cumplimiento_pct}%`,
-                            height: '100%',
-                            background: isCompl ? '#10b981' : (isProy ? '#a855f7' : '#0284c7')
-                          }} />
-                        </div>
-                        <span style={{ fontSize: 11, fontWeight: 700 }}>{p.cumplimiento_pct}%</span>
-                      </div>
-                    </td>
-                    <td style={{ padding: '10px 14px', textAlign: 'center' }}>
-                      {isCompl ? (
-                        <span style={{ background: '#dcfce7', color: '#166534', padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700 }}>
-                          ✓ Completada
-                        </span>
-                      ) : isProy ? (
-                        <span style={{ background: '#f3e8ff', color: '#7e22ce', padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700 }}>
-                          🔮 Proyectada
-                        </span>
-                      ) : (
-                        <span style={{ background: '#e0f2fe', color: '#0369a1', padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700 }}>
-                          🚚 En Ruta ({p.familias_atendidas} fam)
-                        </span>
-                      )}
-                    </td>
+            {/* Tabla Dinámica de Avance y Proyección */}
+            <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: 10 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569', textAlign: 'left' }}>
+                    <th style={{ padding: '10px 14px' }}>PROGRAMACIÓN</th>
+                    <th style={{ padding: '10px 14px' }}>SECTOR / ZONA</th>
+                    <th style={{ padding: '10px 14px' }}>CISTERNA & CHOFER</th>
+                    <th style={{ padding: '10px 14px', textAlign: 'center' }}>PROGRAMADO</th>
+                    <th style={{ padding: '10px 14px', textAlign: 'center' }}>ENTREGADO</th>
+                    <th style={{ padding: '10px 14px', textAlign: 'center' }}>AVANCE</th>
+                    <th style={{ padding: '10px 14px', textAlign: 'center' }}>ESTADO</th>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                </thead>
+                <tbody>
+                  {progData.map((p) => {
+                    const isCompl = p.cumplimiento_pct >= 100 || p.estado_display === 'Completada';
+                    const isProy = p.es_proyeccion;
+                    return (
+                      <tr key={p.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '10px 14px', fontWeight: 800, color: '#0f172a' }}>
+                          Prog #{p.id} ({p.fecha_label})
+                        </td>
+                        <td style={{ padding: '10px 14px', color: '#334155' }}>
+                          {p.zona}
+                        </td>
+                        <td style={{ padding: '10px 14px', color: '#64748b' }}>
+                          <strong>{p.cisterna_placa}</strong> • {p.conductor_nombre}
+                        </td>
+                        <td style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 700 }}>
+                          {p.m3_programados} m³ ({p.viajes_estimados} v.)
+                        </td>
+                        <td style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 700, color: isCompl ? '#16a34a' : '#0284c7' }}>
+                          {p.m3_entregados} m³
+                        </td>
+                        <td style={{ padding: '10px 14px', textAlign: 'center' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
+                            <div style={{ width: 60, height: 6, background: '#f1f5f9', borderRadius: 999, overflow: 'hidden' }}>
+                              <div style={{
+                                width: `${p.cumplimiento_pct}%`,
+                                height: '100%',
+                                background: isCompl ? '#10b981' : (isProy ? '#a855f7' : '#0284c7')
+                              }} />
+                            </div>
+                            <span style={{ fontSize: 11, fontWeight: 700 }}>{p.cumplimiento_pct}%</span>
+                          </div>
+                        </td>
+                        <td style={{ padding: '10px 14px', textAlign: 'center' }}>
+                          {isCompl ? (
+                            <span style={{ background: '#dcfce7', color: '#166534', padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700 }}>
+                              ✓ Completada
+                            </span>
+                          ) : isProy ? (
+                            <span style={{ background: '#f3e8ff', color: '#7e22ce', padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700 }}>
+                              🔮 Proyectada
+                            </span>
+                          ) : (
+                            <span style={{ background: '#e0f2fe', color: '#0369a1', padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700 }}>
+                              🚚 En Ruta ({p.familias_atendidas} fam)
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
