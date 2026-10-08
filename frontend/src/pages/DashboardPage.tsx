@@ -246,14 +246,14 @@ export default function DashboardPage() {
     totalM3: ((data?.totalLitros || 0) / 1000).toFixed(2),
     volumenRepartidoLitros: data?.totalLitros || 0,
     volumenRepartidoM3: ((data?.totalLitros || 0) / 1000).toFixed(2),
-    volumenPromedioFamilia: 350,
-    volumenPromedioPersona: 50,
+    volumenPromedioFamilia: 0,
+    volumenPromedioPersona: 0,
     poblacionBeneficiada: 0,
     familiasAtendidas: 0,
     montoTotalSoles: (((data?.totalLitros || 0) / 1000) * 39.13).toFixed(2),
     tarifaRefM3: 39.13,
     metaMensualLitros: 10000,
-    avanceMetaPct: 27
+    avanceMetaPct: 0
   };
 
   const vales = data?.vales || { total_vales: 0, entregados: 0, pendientes: 0, tasa_canje: 0 };
