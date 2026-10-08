@@ -117,16 +117,42 @@ export const updateParametrosConfiguracion = async (
     updates.push({ clave: 'PH_MAX', valor: Number(nuevosParametros.ph_max) });
   }
 
-  for (const item of updates) {
-    await query(
-      `INSERT INTO configuracion_sistema (clave, valor, updated_at, updated_by)
-       VALUES ($1, $2, CURRENT_TIMESTAMP, $3)
-       ON CONFLICT (clave) DO UPDATE 
-       SET valor = EXCLUDED.valor, 
-           updated_at = CURRENT_TIMESTAMP, 
-           updated_by = EXCLUDED.updated_by`,
-      [item.clave, item.valor, updatedBy]
-    );
+  try {
+    for (const item of updates) {
+      await query(
+        `INSERT INTO configuracion_sistema (clave, valor, updated_at, updated_by)
+         VALUES ($1, $2, CURRENT_TIMESTAMP, $3)
+         ON CONFLICT (clave) DO UPDATE 
+         SET valor = EXCLUDED.valor, 
+             updated_at = CURRENT_TIMESTAMP, 
+             updated_by = EXCLUDED.updated_by`,
+        [item.clave, item.valor, updatedBy]
+      );
+    }
+  } catch (err: any) {
+    await query(`
+      CREATE TABLE IF NOT EXISTS configuracion_sistema (
+        id SERIAL PRIMARY KEY,
+        clave VARCHAR(100) UNIQUE NOT NULL,
+        valor NUMERIC(10,2) NOT NULL,
+        descripcion TEXT,
+        unidad VARCHAR(30),
+        categoria VARCHAR(50) DEFAULT 'GENERAL',
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_by VARCHAR(150) DEFAULT 'SISTEMA'
+      );
+    `);
+    for (const item of updates) {
+      await query(
+        `INSERT INTO configuracion_sistema (clave, valor, updated_at, updated_by)
+         VALUES ($1, $2, CURRENT_TIMESTAMP, $3)
+         ON CONFLICT (clave) DO UPDATE 
+         SET valor = EXCLUDED.valor, 
+             updated_at = CURRENT_TIMESTAMP, 
+             updated_by = EXCLUDED.updated_by`,
+        [item.clave, item.valor, updatedBy]
+      );
+    }
   }
 
   // Invalidate memory cache so next read pulls freshly saved values

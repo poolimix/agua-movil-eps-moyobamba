@@ -93,16 +93,20 @@ export const updateConfiguracionHandler = async (req: Request, res: Response) =>
 
     // Si se modificó la dotación o los días y recalcular_vales está activo, sincronizar vales emitidos
     if (recalcular_vales && (dotacion_diaria_litros !== undefined || dias_entrega_semanal !== undefined)) {
-      const dotacionSemanal = updatedConfig.dotacion_semanal_por_habitante;
-      const updVales = await query(`
-        UPDATE vales_entrega v
-        SET litros_sugeridos = (COALESCE(b.num_miembros, 1) * ${dotacionSemanal}),
-            qr_data = v.codigo_unico || '|' || b.dni || '|' || (COALESCE(b.num_miembros, 1) * ${dotacionSemanal}) || 'L|' || v.programacion_id
-        FROM beneficiarios b
-        WHERE v.beneficiario_id = b.id AND (v.estado = 'EMITIDO' OR v.estado = 'PENDIENTE' OR v.estado = 'Emitido' OR v.estado = 'Pendiente')
-        RETURNING v.id;
-      `);
-      valesActualizadosCount = updVales.rowCount || 0;
+      try {
+        const dotacionSemanal = updatedConfig.dotacion_semanal_por_habitante;
+        const updVales = await query(`
+          UPDATE vales_entrega v
+          SET litros_sugeridos = (COALESCE(b.num_miembros, 1) * ${dotacionSemanal}),
+              qr_data = v.codigo_unico || '|' || b.dni || '|' || (COALESCE(b.num_miembros, 1) * ${dotacionSemanal}) || 'L|' || v.programacion_id
+          FROM beneficiarios b
+          WHERE v.beneficiario_id = b.id AND (v.estado = 'EMITIDO' OR v.estado = 'PENDIENTE' OR v.estado = 'Emitido' OR v.estado = 'Pendiente')
+          RETURNING v.id;
+        `);
+        valesActualizadosCount = updVales.rowCount || 0;
+      } catch (valesErr) {
+        console.warn('Sincronización opcional de vales omitida (sin tabla o datos):', valesErr);
+      }
     }
 
     res.json({
