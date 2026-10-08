@@ -67,28 +67,30 @@ export const ExecutiveAnalyticsShowcase: React.FC<ExecutiveAnalyticsProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'DIAS' | 'SECTORES'>('DIAS');
 
-  // Valores normalizados
-  const volRepartido = Number(kpis.volumenRepartidoLitros || kpis.totalLitros || 80);
-  const volRepartidoM3 = kpis.volumenRepartidoM3 || kpis.totalM3 || (volRepartido / 1000).toFixed(2);
-  const volPromedio = kpis.volumenPromedioFamilia || (kpis.entregasRealizadas ? Math.round(volRepartido / kpis.entregasRealizadas) : 80);
-  const volPromedioPersona = kpis.volumenPromedioPersona || 50;
-  const poblacion = kpis.poblacionBeneficiada || kpis.totalPersonas || 586;
-  const familias = kpis.familiasAtendidas || kpis.entregasRealizadas || 1;
-  const monto = Number(kpis.montoTotalSoles || ((volRepartido / 1000) * 39.13));
+  // Valores normalizados (Cero real cuando la base de datos está vacía)
+  const volRepartido = Number(kpis.volumenRepartidoLitros ?? kpis.totalLitros ?? 0);
+  const volRepartidoM3 = kpis.volumenRepartidoM3 ?? kpis.totalM3 ?? (volRepartido > 0 ? (volRepartido / 1000).toFixed(2) : '0.00');
+  const volPromedio = Number(kpis.volumenPromedioFamilia ?? (kpis.entregasRealizadas ? Math.round(volRepartido / kpis.entregasRealizadas) : 0));
+  const volPromedioPersona = Number(kpis.volumenPromedioPersona ?? (poblacionReal => poblacionReal > 0 ? Math.round(volRepartido / (poblacionReal * 7)) : 0)(Number(kpis.poblacionBeneficiada ?? kpis.totalPersonas ?? 0)));
+  const poblacion = Number(kpis.poblacionBeneficiada ?? kpis.totalPersonas ?? 0);
+  const familias = Number(kpis.familiasAtendidas ?? kpis.entregasRealizadas ?? 0);
+  const totalBeneficiarios = Number(kpis.totalBeneficiarios ?? 0);
+  const monto = Number(kpis.montoTotalSoles ?? (volRepartido > 0 ? (volRepartido / 1000) * 39.13 : 0));
 
-  const pctVolumenPNSU = Math.min(100, Number(kpis.avanceMetaPct || Math.round((volRepartido / 150000) * 100)));
-  const pctCalidad = Math.min(100, Number(calidad.cumplimiento_pct || 83));
-  const pctVales = Math.min(100, Number(vales.tasa_canje || 0));
-  const pctFlota = Math.min(100, Math.round(((flota.operativas || 2) / (flota.total || 3)) * 100));
-  const pctCobertura = Math.min(100, Math.round((familias / (kpis.totalBeneficiarios || 151)) * 100));
+  const pctVolumenPNSU = volRepartido > 0 ? Math.min(100, Number(kpis.avanceMetaPct ?? Math.round((volRepartido / 150000) * 100))) : 0;
+  const pctCalidad = Math.min(100, Number(calidad.cumplimiento_pct ?? 0));
+  const pctVales = Math.min(100, Number(vales.tasa_canje ?? 0));
+  const totalFlota = Number(flota.total ?? 0);
+  const operativasFlota = Number(flota.operativas ?? 0);
+  const pctFlota = totalFlota > 0 ? Math.min(100, Math.round((operativasFlota / totalFlota) * 100)) : 0;
+  const pctCobertura = totalBeneficiarios > 0 ? Math.min(100, Math.round((familias / totalBeneficiarios) * 100)) : 0;
 
   // Datos para comparativa de barras por día (Lun - Dom)
   const diasSemana = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
   const dailyBarData = diasSemana.map((dia, idx) => {
-    // Si hay datos en tendencia, usamos los valores reales, o calculamos distribución proporcional
     const tItem = tendencia[idx];
-    const programado = 15000 + (idx % 3) * 2500;
-    const entregado = tItem ? tItem.litros : (idx === 0 ? volRepartido : (idx < 3 ? Math.round(volRepartido * 0.4) : 0));
+    const entregado = tItem ? tItem.litros : 0;
+    const programado = tItem ? tItem.litros : 0;
     const saldo = Math.max(0, programado - entregado);
 
     return {
@@ -100,31 +102,19 @@ export const ExecutiveAnalyticsShowcase: React.FC<ExecutiveAnalyticsProps> = ({
   });
 
   // Datos para comparativa de barras por Sectores
-  const sectoresBarData = (sectores.length > 0 ? sectores : [
-    { sector_nombre: 'Sol de Indañe', litros_entregados: 4200, meta_litros: 15000, total_beneficiarios: 165 },
-    { sector_nombre: 'Santiago 8 Valles', litros_entregados: 3100, meta_litros: 12000, total_beneficiarios: 168 },
-    { sector_nombre: 'San Borja', litros_entregados: 700, meta_litros: 5000, total_beneficiarios: 17 },
-    { sector_nombre: 'Las Brisas', litros_entregados: 2500, meta_litros: 8000, total_beneficiarios: 85 },
-    { sector_nombre: 'Los Eucaliptos', litros_entregados: 1800, meta_litros: 6500, total_beneficiarios: 42 },
-  ]).slice(0, 6).map((s) => ({
+  const sectoresBarData = sectores.slice(0, 6).map((s) => ({
     name: s.sector_nombre.length > 12 ? s.sector_nombre.substring(0, 10) + '...' : s.sector_nombre,
     fullName: s.sector_nombre,
-    Programado: s.meta_litros || 10000,
+    Programado: s.meta_litros || 0,
     Entregado: s.litros_entregados || 0,
-    Saldo: Math.max(0, (s.meta_litros || 10000) - (s.litros_entregados || 0)),
+    Saldo: Math.max(0, (s.meta_litros || 0) - (s.litros_entregados || 0)),
   }));
 
   // Datos para gráfico circular (Donut de distribución por sectores)
   const donutColors = ['#0284c7', '#0ea5e9', '#38bdf8', '#10b981', '#8b5cf6', '#f59e0b'];
-  const pieData = (sectores.length > 0 ? sectores : [
-    { sector_nombre: 'Sol de Indañe', litros_entregados: 3200 },
-    { sector_nombre: 'Santiago 8 Valles', litros_entregados: 2400 },
-    { sector_nombre: 'San Borja', litros_entregados: 1100 },
-    { sector_nombre: 'Las Brisas', litros_entregados: 1800 },
-    { sector_nombre: 'Otros AA.HH.', litros_entregados: 900 },
-  ]).map((s, i) => ({
+  const pieData = sectores.map((s, i) => ({
     name: s.sector_nombre,
-    value: s.litros_entregados > 0 ? s.litros_entregados : 1000 + i * 500,
+    value: s.litros_entregados || 0,
     color: donutColors[i % donutColors.length],
   }));
 
@@ -248,7 +238,7 @@ export const ExecutiveAnalyticsShowcase: React.FC<ExecutiveAnalyticsProps> = ({
           </div>
 
           <div className="microcard-footer">
-            <span className="microcard-foot-text">🏠 {familias} de {kpis.totalBeneficiarios || 151} hogares</span>
+            <span className="microcard-foot-text">🏠 {familias} de {totalBeneficiarios} hogares</span>
             <span className="microcard-badge badge-purple">Padrón PUB</span>
           </div>
         </div>

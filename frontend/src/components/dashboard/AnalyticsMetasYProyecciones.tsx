@@ -74,27 +74,13 @@ export default function AnalyticsMetasYProyecciones({
 }: Props) {
   const [sectorViewMode, setSectorViewMode] = useState<'semanal' | 'mensual'>('semanal');
 
-  const currentSectoresData = sectorViewMode === 'semanal'
-    ? (sectoresSemanal.length > 0 ? sectoresSemanal : [
-        { sector_nombre: 'Sol de Indañe', m3_entregados: 25.5, meta_m3: 35.0, cumplimiento_pct: 73, total_beneficiarios: 48, litros_entregados: 25500 },
-        { sector_nombre: 'Las Brisas', m3_entregados: 22.0, meta_m3: 28.0, cumplimiento_pct: 79, total_beneficiarios: 35, litros_entregados: 22000 },
-        { sector_nombre: 'Los Eucaliptos', m3_entregados: 18.5, meta_m3: 24.5, cumplimiento_pct: 75, total_beneficiarios: 30, litros_entregados: 18500 },
-        { sector_nombre: 'San Borja', m3_entregados: 15.0, meta_m3: 21.0, cumplimiento_pct: 71, total_beneficiarios: 25, litros_entregados: 15000 },
-        { sector_nombre: 'Santiago 8 Valles', m3_entregados: 12.0, meta_m3: 17.5, cumplimiento_pct: 69, total_beneficiarios: 20, litros_entregados: 12000 },
-      ])
-    : (sectoresMensual.length > 0 ? sectoresMensual : [
-        { sector_nombre: 'Sol de Indañe', m3_entregados: 110.0, meta_m3: 140.0, cumplimiento_pct: 79, total_beneficiarios: 48, litros_entregados: 110000 },
-        { sector_nombre: 'Las Brisas', m3_entregados: 95.0, meta_m3: 112.0, cumplimiento_pct: 85, total_beneficiarios: 35, litros_entregados: 95000 },
-        { sector_nombre: 'Los Eucaliptos', m3_entregados: 78.0, meta_m3: 98.0, cumplimiento_pct: 80, total_beneficiarios: 30, litros_entregados: 78000 },
-        { sector_nombre: 'San Borja', m3_entregados: 65.0, meta_m3: 84.0, cumplimiento_pct: 77, total_beneficiarios: 25, litros_entregados: 65000 },
-        { sector_nombre: 'Santiago 8 Valles', m3_entregados: 52.0, meta_m3: 70.0, cumplimiento_pct: 74, total_beneficiarios: 20, litros_entregados: 52000 },
-      ]);
+  const currentSectoresData = sectorViewMode === 'semanal' ? sectoresSemanal : sectoresMensual;
 
   // Beneficiary Goal pie data
-  const totalBens = metasBeneficiarios?.total || 151;
-  const cumplidosCount = metasBeneficiarios?.cumplidos || 98;
-  const parcialesCount = metasBeneficiarios?.parciales || 32;
-  const pendientesCount = metasBeneficiarios ? metasBeneficiarios.pendientes : (totalBens - cumplidosCount - parcialesCount);
+  const totalBens = metasBeneficiarios?.total || 0;
+  const cumplidosCount = metasBeneficiarios?.cumplidos || 0;
+  const parcialesCount = metasBeneficiarios?.parciales || 0;
+  const pendientesCount = metasBeneficiarios ? metasBeneficiarios.pendientes : 0;
 
   const pieData = [
     { name: 'Meta Semanal Cumplida (100%)', value: cumplidosCount, color: '#10b981' },
