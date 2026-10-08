@@ -11,15 +11,49 @@ import {
 export const getConfiguracionHandler = async (_req: Request, res: Response) => {
   try {
     const config = await getConfiguracion();
-    const rowsRes = await query(`
-      SELECT id, clave, valor, descripcion, unidad, categoria, updated_at, updated_by 
-      FROM configuracion_sistema 
-      ORDER BY categoria ASC, id ASC
-    `);
+    let rows: any[] = [];
+    try {
+      const rowsRes = await query(`
+        SELECT id, clave, valor, descripcion, unidad, categoria, updated_at, updated_by 
+        FROM configuracion_sistema 
+        ORDER BY categoria ASC, id ASC
+      `);
+      rows = rowsRes.rows;
+    } catch {
+      // Auto-inicializar la tabla si aún no existía
+      await query(`
+        CREATE TABLE IF NOT EXISTS configuracion_sistema (
+          id SERIAL PRIMARY KEY,
+          clave VARCHAR(100) UNIQUE NOT NULL,
+          valor NUMERIC(10,2) NOT NULL,
+          descripcion TEXT,
+          unidad VARCHAR(30),
+          categoria VARCHAR(50) DEFAULT 'GENERAL',
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_by VARCHAR(150) DEFAULT 'SISTEMA'
+        );
+        INSERT INTO configuracion_sistema (clave, valor, descripcion, unidad, categoria)
+        VALUES 
+          ('DOTACION_DIARIA_LITROS', 50.00, 'Dotación de agua potable diaria por habitante/familiar', 'L/hab/día', 'DOTACION'),
+          ('DIAS_ENTREGA_SEMANAL', 7.00, 'Días de abastecimiento continuo por ciclo periódico semanal', 'días', 'DOTACION'),
+          ('TURBIEDAD_MAX_NTU', 5.00, 'Límite Máximo Permisible (LMP) de Turbiedad', 'NTU', 'CALIDAD'),
+          ('CLORO_MIN_PPM', 0.50, 'Límite mínimo reglamentario de Cloro Residual Libre', 'mg/L (ppm)', 'CALIDAD'),
+          ('CLORO_MAX_PPM', 2.00, 'Límite máximo recomendado de Cloro Residual Libre', 'mg/L (ppm)', 'CALIDAD'),
+          ('PH_MIN', 6.50, 'Límite mínimo de potencial de hidrógeno (pH)', 'pH', 'CALIDAD'),
+          ('PH_MAX', 8.50, 'Límite máximo de potencial de hidrógeno (pH)', 'pH', 'CALIDAD')
+        ON CONFLICT (clave) DO NOTHING;
+      `);
+      const rowsRes = await query(`
+        SELECT id, clave, valor, descripcion, unidad, categoria, updated_at, updated_by 
+        FROM configuracion_sistema 
+        ORDER BY categoria ASC, id ASC
+      `);
+      rows = rowsRes.rows;
+    }
 
     res.json({
       config,
-      parametros: rowsRes.rows
+      parametros: rows
     });
   } catch (error: any) {
     console.error('Error al obtener configuración:', error);

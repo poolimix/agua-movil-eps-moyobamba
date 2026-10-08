@@ -18,6 +18,7 @@ import balanceRoutes from './routes/balance.routes';
 import configuracionRoutes from './routes/configuracion.routes';
 import usuariosRoutes from './routes/usuarios.routes';
 import { bootstrapSuperAdmin } from './controllers/usuarios.controller';
+import { bootstrapSchema } from './db/bootstrapSchema';
 import { volvoConnectService } from './services/VolvoConnectService';
 import { pool } from './db';
 
@@ -92,6 +93,7 @@ app.get('/', (req, res) => {
 
 const server = app.listen(port, () => {
   console.log(`🚀 Servidor ejecutándose en el puerto ${port} [Modo: ${process.env.NODE_ENV || 'development'}]`);
+  bootstrapSchema();
   bootstrapSuperAdmin();
 
   // Iniciar sincronización de Volvo Connect si está habilitado
