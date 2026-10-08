@@ -112,12 +112,13 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     setLoading(true);
 
     try {
-      const candidateUrls = [
-        `${BACKEND_URL}/auth/google`,
-        'http://192.168.161.226:3000/api/v1/auth/google',
-        'http://localhost:3000/api/v1/auth/google',
-        'http://10.0.2.2:3000/api/v1/auth/google',
-      ];
+      const candidateUrls = __DEV__
+        ? [
+            `${BACKEND_URL}/auth/google`,
+            'http://10.0.2.2:3000/api/v1/auth/google',
+            'http://localhost:3000/api/v1/auth/google',
+          ]
+        : [`${BACKEND_URL}/auth/google`];
       const uniqueUrls = Array.from(new Set(candidateUrls));
 
       let response: Response | null = null;

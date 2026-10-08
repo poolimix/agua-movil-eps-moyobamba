@@ -346,18 +346,48 @@ export default function CisternasPage() {
                         >
                           📍 {parseFloat(String(c.latitud_actual)).toFixed(4)}, {parseFloat(String(c.longitud_actual)).toFixed(4)}
                         </a>
-                        {c.enlace_gps_tracking && (
+                        {c.enlace_gps_tracking ? (
                           <div>
                             <a
                               href={c.enlace_gps_tracking}
                               target="_blank"
                               rel="noopener noreferrer"
-                              style={{ fontSize: 10.5, color: '#059669', textDecoration: 'underline' }}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 3,
+                                fontSize: 10.5,
+                                color: (c.enlace_gps_tracking || '').includes('volvo') ? '#2563eb' : '#059669',
+                                fontWeight: 700,
+                                textDecoration: 'none',
+                                marginTop: 3,
+                              }}
                             >
-                              🔗 Plataforma Satelital
+                              {(c.enlace_gps_tracking || '').includes('volvo') ? '🚛 Volvo Connect' : '🔗 Plataforma Satelital'} ↗
                             </a>
                           </div>
-                        )}
+                        ) : (c.marca_modelo || '').toLowerCase().includes('volvo') ? (
+                          <div>
+                            <a
+                              href="https://volvoconnect.com/"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 3,
+                                fontSize: 10.5,
+                                color: '#2563eb',
+                                fontWeight: 600,
+                                textDecoration: 'none',
+                                marginTop: 3,
+                              }}
+                              title="Portal oficial de telemetría Volvo Connect"
+                            >
+                              🚛 Volvo Connect ↗
+                            </a>
+                          </div>
+                        ) : null}
                       </div>
                     ) : (
                       <span style={{ color: '#94a3b8', fontSize: 11 }}>Sin GPS</span>
@@ -524,13 +554,33 @@ export default function CisternasPage() {
                 </div>
 
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label style={{ fontSize: 12 }}>Enlace a Plataforma de Seguimiento Satelital (Opcional)</label>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <label style={{ fontSize: 12 }}>Enlace a Plataforma de Seguimiento Satelital (Opcional)</label>
+                    {formData.marca_modelo.toUpperCase().includes('VOLVO') && (
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        style={{ fontSize: 10, padding: '2px 6px' }}
+                        onClick={() =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            enlace_gps_tracking: prev.enlace_gps_tracking || 'https://volvoconnect.com/',
+                          }))
+                        }
+                      >
+                        🚛 Pegar URL Volvo Connect
+                      </button>
+                    )}
+                  </div>
                   <input
-                    placeholder="https://tracking.proveedor.com/live/..."
+                    placeholder="https://volvoconnect.com/... o https://tracking.proveedor.com/..."
                     className="form-input"
                     value={formData.enlace_gps_tracking}
                     onChange={(e) => setFormData({ ...formData, enlace_gps_tracking: e.target.value })}
                   />
+                  <small style={{ color: '#64748b', fontSize: 11 }}>
+                    Para camiones Volvo FMX, puede vincular directamente el seguimiento en línea de Volvo Connect.
+                  </small>
                 </div>
               </div>
 

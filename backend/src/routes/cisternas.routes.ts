@@ -10,6 +10,8 @@ router.get('/', cisternasController.getAllCisternas);
 router.post('/', verifyToken, requireRole(['ADMIN', 'SUPERVISOR']), cisternasController.createCisterna);
 router.put('/:id', verifyToken, requireRole(['ADMIN', 'SUPERVISOR']), cisternasController.updateCisterna);
 router.patch('/:id/ubicacion', verifyToken, cisternasController.updateUbicacionGps);
+router.get('/volvo/status', cisternasController.getVolvoIntegrationStatus);
+router.post('/volvo/sync', verifyToken, requireRole(['ADMIN', 'SUPERVISOR']), cisternasController.triggerVolvoSync);
 router.delete('/:id', verifyToken, requireRole(['ADMIN']), cisternasController.deleteCisterna);
 
 export default router;

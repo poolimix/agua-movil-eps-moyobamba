@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { query } from '../db';
 import { LITROS_POR_M3 } from '../config/constants';
+import { volvoConnectService } from '../services/VolvoConnectService';
 
 export const getAllCisternas = async (req: Request, res: Response) => {
   try {
@@ -204,3 +205,41 @@ export const deleteCisterna = async (req: Request, res: Response) => {
     res.status(500).json({ message: 'Error al eliminar cisterna', error: error.message });
   }
 };
+
+/**
+ * Obtener estado de la integración con Volvo Connect / rFMS
+ */
+export const getVolvoIntegrationStatus = async (_req: Request, res: Response) => {
+  try {
+    res.json(volvoConnectService.getStatus());
+  } catch (error: any) {
+    res.status(500).json({ message: 'Error consultando estado de Volvo Connect', error: error.message });
+  }
+};
+
+/**
+ * Sincronizar bajo demanda las posiciones de las cisternas Volvo
+ */
+export const triggerVolvoSync = async (_req: Request, res: Response) => {
+  try {
+    if (!volvoConnectService.isEnabled()) {
+      return res.status(400).json({
+        message: 'La integración con Volvo Connect no está habilitada. Configure VOLVO_CONNECT_ENABLED=true y sus credenciales en el archivo .env',
+        status: volvoConnectService.getStatus(),
+      });
+    }
+
+    const syncResult = await volvoConnectService.syncWithDatabase();
+    res.json({
+      message: 'Sincronización con Volvo Connect completada',
+      result: syncResult,
+    });
+  } catch (error: any) {
+    console.error('Error sincronizando con Volvo Connect:', error);
+    res.status(500).json({
+      message: 'Fallo al sincronizar con Volvo Connect. Verifique conectividad y credenciales de API.',
+      error: error.message,
+    });
+  }
+};
+

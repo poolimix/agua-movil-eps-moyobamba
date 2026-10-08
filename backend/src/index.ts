@@ -18,13 +18,25 @@ import balanceRoutes from './routes/balance.routes';
 import configuracionRoutes from './routes/configuracion.routes';
 import usuariosRoutes from './routes/usuarios.routes';
 import { bootstrapSuperAdmin } from './controllers/usuarios.controller';
+import { volvoConnectService } from './services/VolvoConnectService';
+import { pool } from './db';
 
 dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 3000;
 
-app.use(cors());
+// Configuración flexible de CORS para producción y desarrollo
+const allowedOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim())
+  : '*';
+
+app.use(
+  cors({
+    origin: allowedOrigins,
+    credentials: true,
+  })
+);
 
 // HTTP Security Headers (Defense-in-depth, OWASP & Apple/Google compliance)
 app.use((_req, res, next) => {
@@ -41,6 +53,21 @@ app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
 // Serve static uploads (evidence photos)
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+
+// Health check endpoints para Nginx, balanceadores de carga y monitores de uptime
+const healthHandler = (_req: express.Request, res: express.Response) => {
+  res.json({
+    status: 'ok',
+    service: 'AguaTrack EPS Moyobamba API',
+    timestamp: new Date().toISOString(),
+    uptimeSeconds: Math.floor(process.uptime()),
+    environment: process.env.NODE_ENV || 'development',
+    volvoConnect: volvoConnectService.getStatus().enabled ? 'ACTIVE' : 'STANDBY',
+  });
+};
+
+app.get('/health', healthHandler);
+app.get('/api/v1/health', healthHandler);
 
 // API Routes
 app.use('/api/v1/auth', authRoutes);
@@ -59,12 +86,34 @@ app.use('/api/v1/configuracion', configuracionRoutes);
 app.use('/api/v1/usuarios', usuariosRoutes);
 app.use('/api/v1', valesRoutes);
 
-
 app.get('/', (req, res) => {
   res.send('Agua Móvil API is running - EPS Moyobamba');
 });
 
-app.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
+const server = app.listen(port, () => {
+  console.log(`🚀 Servidor ejecutándose en el puerto ${port} [Modo: ${process.env.NODE_ENV || 'development'}]`);
   bootstrapSuperAdmin();
+
+  // Iniciar sincronización de Volvo Connect si está habilitado
+  const syncInterval = parseInt(process.env.VOLVO_CONNECT_SYNC_INTERVAL_MS || '120000', 10);
+  volvoConnectService.startBackgroundSync(syncInterval);
 });
+
+// Cierre elegante (Graceful Shutdown) para PM2 y contenedores Docker
+const handleShutdown = async (signal: string) => {
+  console.log(`🛑 Señal ${signal} recibida. Cerrando conexiones de manera ordenada...`);
+  volvoConnectService.stopBackgroundSync();
+  server.close(async () => {
+    try {
+      await pool.end();
+      console.log('✅ Pool de base de datos cerrado. Proceso terminado con éxito.');
+      process.exit(0);
+    } catch (err) {
+      console.error('Error cerrando pool de base de datos:', err);
+      process.exit(1);
+    }
+  });
+};
+
+process.on('SIGTERM', () => handleShutdown('SIGTERM'));
+process.on('SIGINT', () => handleShutdown('SIGINT'));
