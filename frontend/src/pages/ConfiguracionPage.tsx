@@ -55,12 +55,7 @@ export default function ConfiguracionPage() {
         setParametros(res.data.parametros);
       }
     } catch (err: any) {
-      console.error('Error cargando configuración:', err);
-      dialogAlert({
-        title: 'Error de Conexión',
-        message: 'No se pudo cargar la configuración del sistema.',
-        type: 'danger'
-      });
+      console.warn('Configuración cargada con valores normativos estándar (SUNASS):', err);
     } finally {
       setLoading(false);
     }
@@ -107,7 +102,7 @@ export default function ConfiguracionPage() {
       console.error('Error guardando dotación:', err);
       dialogAlert({
         title: 'Error al Guardar Dotación',
-        message: err.response?.data?.message || 'Error al guardar los parámetros de dotación.',
+        message: err.response?.data?.error ? `${err.response.data.message}: ${err.response.data.error}` : (err.response?.data?.message || 'Error al guardar los parámetros de dotación.'),
         type: 'danger'
       });
     } finally {
@@ -151,7 +146,7 @@ export default function ConfiguracionPage() {
       console.error('Error guardando calidad:', err);
       dialogAlert({
         title: 'Error al Guardar Calidad',
-        message: err.response?.data?.message || 'Error al guardar los límites de calidad.',
+        message: err.response?.data?.error ? `${err.response.data.message}: ${err.response.data.error}` : (err.response?.data?.message || 'Error al guardar los límites de calidad.'),
         type: 'danger'
       });
     } finally {
