@@ -57,6 +57,7 @@ export default function FleetLiveMap({
     const map = L.map(mapContainerRef.current, {
       center: MOYOBAMBA_CENTER,
       zoom: 14,
+      maxZoom: 21,
       zoomControl: true,
       attributionControl: true,
     });
@@ -87,44 +88,40 @@ export default function FleetLiveMap({
     activeTileLayersRef.current = [];
 
     if (tileMode === 'HYBRID') {
-      // Satélite Esri World Imagery + Capa de Calles y Nombres Híbrida
+      // 🛰️ Google Satélite Híbrido HD (Fotos Satelitales oficiales + Nombres de calles y carreteras hasta zoom 21)
       const satLayer = L.tileLayer(
-        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        'https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
         {
-          attribution: 'Tiles &copy; Esri, Maxar, Earthstar Geographics',
-          maxZoom: 19,
-        }
-      );
-      const labelsLayer = L.tileLayer(
-        'https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
-        {
-          attribution: 'Labels &copy; Esri',
-          maxZoom: 19,
+          attribution: '&copy; Google Maps Satélite | EPS Moyobamba',
+          subdomains: ['0', '1', '2', '3'],
+          maxZoom: 21,
+          maxNativeZoom: 20,
         }
       );
       satLayer.addTo(map);
-      labelsLayer.addTo(map);
-      activeTileLayersRef.current = [satLayer, labelsLayer];
+      activeTileLayersRef.current = [satLayer];
     } else if (tileMode === 'STREETS') {
-      // CartoDB Voyager (Calles limpias de alta resolución y legibilidad)
+      // 🗺️ Google Maps Calles HD (Calles limpias de alta resolución y legibilidad)
       const streetsLayer = L.tileLayer(
-        'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+        'https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
         {
-          attribution: '&copy; CARTO &copy; OpenStreetMap contributors',
-          subdomains: 'abcd',
-          maxZoom: 20,
+          attribution: '&copy; Google Maps | EPS Moyobamba',
+          subdomains: ['0', '1', '2', '3'],
+          maxZoom: 21,
+          maxNativeZoom: 20,
         }
       );
       streetsLayer.addTo(map);
       activeTileLayersRef.current = [streetsLayer];
     } else if (tileMode === 'DARK') {
-      // CartoDB Dark Matter (Estilo centro de control nocturno)
+      // 🌙 CartoDB Dark Matter (Estilo centro de control nocturno)
       const darkLayer = L.tileLayer(
         'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
         {
           attribution: '&copy; CARTO &copy; OpenStreetMap contributors',
           subdomains: 'abcd',
           maxZoom: 20,
+          maxNativeZoom: 19,
         }
       );
       darkLayer.addTo(map);
