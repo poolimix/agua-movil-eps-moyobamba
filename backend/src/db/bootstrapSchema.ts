@@ -106,6 +106,24 @@ export const bootstrapSchema = async () => {
       ALTER TABLE sectores ADD COLUMN IF NOT EXISTS distrito VARCHAR(100) DEFAULT 'Moyobamba';
       ALTER TABLE sectores ADD COLUMN IF NOT EXISTS descripcion TEXT;
       ALTER TABLE sectores ADD COLUMN IF NOT EXISTS meta_semanal_litros NUMERIC(12,2) DEFAULT 25000;
+      ALTER TABLE sectores ADD COLUMN IF NOT EXISTS meta_semanal_m3 NUMERIC(10,2) DEFAULT 25.00;
+      ALTER TABLE sectores ADD COLUMN IF NOT EXISTS dias_entrega VARCHAR(150) DEFAULT 'Lunes, Miércoles, Viernes';
+      ALTER TABLE sectores ADD COLUMN IF NOT EXISTS coordenadas_centro JSONB;
+
+      -- Sincronizar automáticamente sectores desde beneficiarios si aún no existen en el catálogo
+      INSERT INTO sectores (nombre, distrito, descripcion, meta_semanal_litros, meta_semanal_m3, dias_entrega)
+      SELECT 
+        b.sector_aahh, 
+        COALESCE(b.distrito, 'Moyobamba'), 
+        'Sector registrado automáticamente desde Padrón de Beneficiarios',
+        COALESCE(SUM(b.num_miembros) * 50 * 7, 25000),
+        COALESCE((SUM(b.num_miembros) * 50 * 7) / 1000.0, 25.0),
+        'Lunes, Miércoles, Viernes'
+      FROM beneficiarios b
+      WHERE b.sector_aahh IS NOT NULL AND TRIM(b.sector_aahh) <> ''
+        AND NOT EXISTS (SELECT 1 FROM sectores s WHERE LOWER(TRIM(s.nombre)) = LOWER(TRIM(b.sector_aahh)))
+      GROUP BY b.sector_aahh, b.distrito
+      ON CONFLICT (nombre) DO NOTHING;
 
       -- Asegurar indice unico en dni para que ON CONFLICT (dni) opere sin fallos
       CREATE UNIQUE INDEX IF NOT EXISTS idx_beneficiarios_dni_unique ON beneficiarios (dni);
