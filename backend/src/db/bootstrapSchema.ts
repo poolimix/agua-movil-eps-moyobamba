@@ -146,9 +146,32 @@ export const bootstrapSchema = async () => {
       ALTER TABLE entregas_agua ADD COLUMN IF NOT EXISTS firma_url TEXT;
       ALTER TABLE entregas_agua ADD COLUMN IF NOT EXISTS observaciones TEXT;
 
+      -- Asegurar tabla y columnas en programaciones
+      CREATE TABLE IF NOT EXISTS programaciones (
+        id SERIAL PRIMARY KEY,
+        fecha DATE NOT NULL DEFAULT CURRENT_DATE,
+        zona VARCHAR(150),
+        estado VARCHAR(50) DEFAULT 'Activa'
+      );
+      ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS fecha DATE DEFAULT CURRENT_DATE;
+      ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS zona VARCHAR(150);
+      ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS estado VARCHAR(50) DEFAULT 'Activa';
+      ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS cisterna_id INT REFERENCES cisternas(id) ON DELETE SET NULL;
+      ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS conductor_id INT REFERENCES personal_operativo(id) ON DELETE SET NULL;
+      ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS ayudante_id INT REFERENCES personal_operativo(id) ON DELETE SET NULL;
       ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS litros_programados INT DEFAULT 0;
       ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS viajes_estimados INT DEFAULT 1;
-      ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS dias_semana VARCHAR(100);
+      ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS dias_semana VARCHAR(100) DEFAULT 'Lunes, Miércoles, Viernes';
+
+      -- Asegurar columnas en control_calidad
+      ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS programacion_id INT REFERENCES programaciones(id) ON DELETE SET NULL;
+      ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS etapa_control VARCHAR(50) DEFAULT 'CARGA';
+      ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS conductor_nombre VARCHAR(150);
+      ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS punto_muestreo VARCHAR(50) DEFAULT 'CISTERNA_SALIDA';
+      ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS aspecto_organoleptico VARCHAR(50) DEFAULT 'LIMPIDO_INCOLORO';
+      ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS conforme_sanitario BOOLEAN DEFAULT TRUE;
+      ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS observaciones TEXT;
+      ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS fecha_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
     `);
 
     console.log('✅ [DB Bootstrap] Todas las tablas y parámetros operativos verificados con éxito.');

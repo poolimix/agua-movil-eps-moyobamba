@@ -3,8 +3,36 @@ import PDFDocument from 'pdfkit';
 import * as xlsx from 'xlsx';
 import { query } from '../db';
 
+const ensureProgramacionesSchema = async () => {
+  try {
+    await query(`
+      CREATE TABLE IF NOT EXISTS programaciones (
+        id SERIAL PRIMARY KEY,
+        fecha DATE NOT NULL DEFAULT CURRENT_DATE,
+        zona VARCHAR(150),
+        estado VARCHAR(50) DEFAULT 'Activa'
+      );
+      ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS fecha DATE DEFAULT CURRENT_DATE;
+      ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS zona VARCHAR(150);
+      ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS estado VARCHAR(50) DEFAULT 'Activa';
+      ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS cisterna_id INT REFERENCES cisternas(id) ON DELETE SET NULL;
+      ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS conductor_id INT REFERENCES personal_operativo(id) ON DELETE SET NULL;
+      ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS ayudante_id INT REFERENCES personal_operativo(id) ON DELETE SET NULL;
+      ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS litros_programados INT DEFAULT 0;
+      ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS viajes_estimados INT DEFAULT 1;
+      ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS dias_semana VARCHAR(100) DEFAULT 'Lunes, Miércoles, Viernes';
+
+      ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS programacion_id INT REFERENCES programaciones(id) ON DELETE SET NULL;
+      ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS etapa_control VARCHAR(50) DEFAULT 'CARGA';
+    `);
+  } catch (err) {
+    console.warn('Auto-reparación programaciones:', err);
+  }
+};
+
 export const getAllProgramaciones = async (req: Request, res: Response) => {
   try {
+    await ensureProgramacionesSchema();
     const result = await query(`
       SELECT 
         p.*,
@@ -47,6 +75,7 @@ export const getAllProgramaciones = async (req: Request, res: Response) => {
 
 export const createProgramacion = async (req: Request, res: Response) => {
   try {
+    await ensureProgramacionesSchema();
     const {
       fecha,
       zona,
@@ -99,6 +128,7 @@ export const createProgramacion = async (req: Request, res: Response) => {
 
 export const updateProgramacion = async (req: Request, res: Response) => {
   try {
+    await ensureProgramacionesSchema();
     const { id } = req.params;
     const {
       fecha,
