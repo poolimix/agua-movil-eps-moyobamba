@@ -277,10 +277,10 @@ export default function ConductorScreen({ user, onLogout }: ConductorScreenProps
   };
 
   const getProgMetrics = (prog: any) => {
-    if (!prog) return { volRepartido: 15000, volPromedio: 350, poblacion: 140, monto: 586.95 };
-    const volRepartido = Number(prog.total_litros || prog.litros_programados || 15000);
-    const volPromedio = prog.volumen_promedio ? Number(prog.volumen_promedio) : 350;
-    const poblacion = prog.poblacion_beneficiada ? Number(prog.poblacion_beneficiada) : (prog.poblacion_programada || Math.round((volRepartido / 350) * 4));
+    if (!prog) return { volRepartido: 0, volPromedio: 0, poblacion: 0, monto: 0 };
+    const volRepartido = Number(prog.total_litros || prog.litros_programados || 0);
+    const volPromedio = prog.volumen_promedio ? Number(prog.volumen_promedio) : (volRepartido > 0 ? 350 : 0);
+    const poblacion = prog.poblacion_beneficiada ? Number(prog.poblacion_beneficiada) : (prog.poblacion_programada || (volRepartido > 0 ? Math.round((volRepartido / 350) * 4) : 0));
     const monto = Number(prog.monto_valorizado || prog.monto_programado || ((volRepartido / 1000) * 39.13));
     return { volRepartido, volPromedio, poblacion, monto };
   };
@@ -390,17 +390,17 @@ export default function ConductorScreen({ user, onLogout }: ConductorScreenProps
                 <View style={styles.detailCol}>
                   <Text style={styles.detailLabel}>CISTERNA ASIGNADA</Text>
                   <Text style={styles.detailValBold}>
-                    🚚 {masReciente.cisterna_placa || 'EGA-401'}
+                    🚚 {masReciente.cisterna_placa || 'Sin cisterna'}
                   </Text>
                   <Text style={styles.detailValSub}>
-                    {masReciente.cisterna_marca || 'Capacidad'}: {masReciente.capacidad_m3 || '15'} m³
+                    {masReciente.cisterna_marca || 'Capacidad'}: {masReciente.capacidad_m3 || '0'} m³
                   </Text>
                 </View>
 
                 <View style={styles.detailCol}>
                   <Text style={styles.detailLabel}>VOLUMEN DE JORNADA</Text>
                   <Text style={styles.detailValBold}>
-                    💧 {Number(masReciente.litros_programados || 15000).toLocaleString()} L
+                    💧 {Number(masReciente.litros_programados || 0).toLocaleString()} L
                   </Text>
                   <Text style={styles.detailValSub}>
                     Viajes aprox: {masReciente.viajes_estimados || 1} viaje(s)
@@ -448,7 +448,7 @@ export default function ConductorScreen({ user, onLogout }: ConductorScreenProps
                 <View style={{ flex: 1, marginLeft: 8 }}>
                   <Text style={styles.gestorBannerLabel}>GESTOR DE ENTREGA (COPILOTO):</Text>
                   <Text style={styles.gestorBannerName}>
-                    {masReciente.ayudante_nombre || masReciente.gestor_nombre || 'Segundo Vásquez Gómez'}
+                    {masReciente.ayudante_nombre || masReciente.gestor_nombre || 'Sin gestor asignado'}
                   </Text>
                 </View>
                 <View style={styles.gestorStatusPill}>
@@ -542,7 +542,7 @@ export default function ConductorScreen({ user, onLogout }: ConductorScreenProps
                   <Text style={styles.rowZoneName}>{p.zona || 'Moyobamba'}</Text>
 
                   <Text style={styles.rowMetaInfo}>
-                    Cisterna: <strong>{p.cisterna_placa || 'EGA-401'}</strong> • {Number(p.litros_programados || 15000).toLocaleString()} Litros
+                    Cisterna: {p.cisterna_placa || 'Sin asignar'} • {Number(p.litros_programados || 0).toLocaleString()} Litros
                   </Text>
                 </View>
 
@@ -651,18 +651,18 @@ export default function ConductorScreen({ user, onLogout }: ConductorScreenProps
                   <Text style={styles.cardHeaderSmall}>🚚 DATOS DE CISTERNA Y FLOTA</Text>
                   <View style={styles.infoRow}>
                     <Text style={styles.infoRowKey}>Placa de Rodaje:</Text>
-                    <Text style={styles.infoRowVal}>{selectedProg.cisterna_placa || 'EGA-401'}</Text>
+                    <Text style={styles.infoRowVal}>{selectedProg.cisterna_placa || 'Sin asignar'}</Text>
                   </View>
                   <View style={styles.infoRow}>
                     <Text style={styles.infoRowKey}>Capacidad Móvil:</Text>
                     <Text style={styles.infoRowVal}>
-                      {selectedProg.capacidad_m3 || '15'} m³ ({Number(selectedProg.capacidad_litros || 15000).toLocaleString()} L)
+                      {selectedProg.capacidad_m3 || '0'} m³ ({Number(selectedProg.capacidad_litros || 0).toLocaleString()} L)
                     </Text>
                   </View>
                   <View style={styles.infoRow}>
                     <Text style={styles.infoRowKey}>Gestor de Entrega Asignado:</Text>
                     <Text style={[styles.infoRowVal, { color: '#0369a1', fontWeight: '800' }]}>
-                      {selectedProg.ayudante_nombre || selectedProg.gestor_nombre || 'Segundo Vásquez Gómez'}
+                      {selectedProg.ayudante_nombre || selectedProg.gestor_nombre || 'Sin gestor asignado'}
                     </Text>
                   </View>
                 </View>
@@ -767,7 +767,7 @@ export default function ConductorScreen({ user, onLogout }: ConductorScreenProps
                 <View style={styles.modalCardInfo}>
                   <Text style={styles.cardHeaderSmall}>📍 SECTORES AUTORIZADOS EN ESTA JORNADA</Text>
                   <Text style={{ fontSize: 13, color: '#334155', fontWeight: '700', marginTop: 4 }}>
-                    {selectedProg.zona || 'Sol de Indañe • Las Brisas • Los Eucaliptos'}
+                    {selectedProg.zona || 'Sin sectores asignados'}
                   </Text>
                   <Text style={{ fontSize: 11.5, color: '#64748b', marginTop: 4 }}>
                     El Gestor de Entrega ({selectedProg.ayudante_nombre || selectedProg.gestor_nombre || 'Copiloto'}) registrará los vales y firmas en estos sectores con su módulo móvil.

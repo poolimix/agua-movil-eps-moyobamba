@@ -182,47 +182,18 @@ export const initDatabase = async () => {
     }
   }
 
-  // Insert initial seed data
-  await database.execAsync(`
-    INSERT OR REPLACE INTO cisternas (id, placa, marca_modelo, capacidad_m3, capacidad_litros, estado)
-    VALUES 
-      (1, 'EGA-401', 'Mercedes-Benz Actros 3331', 15.0, 15000.0, 'OPERATIVO'),
-      (2, 'EGB-502', 'Volvo FMX 440 6x4', 20.0, 20000.0, 'OPERATIVO'),
-      (3, 'EGC-108', 'Hino 500 FG 1726', 10.0, 10000.0, 'MANTENIMIENTO');
-
-    INSERT OR REPLACE INTO personal_operativo (id, dni, nombres, apellidos, tipo_personal, licencia_conducir, estado)
-    VALUES 
-      (1, '45892134', 'Carlos', 'Mendoza Ríos', 'CONDUCTOR', 'Q45892134', 'ACTIVO'),
-      (2, '72109845', 'Manuel', 'Rojas Tapia', 'CONDUCTOR', 'Q72109845', 'ACTIVO');
-
-    INSERT OR REPLACE INTO programaciones (id, fecha, zona, estado)
-    VALUES 
-      (1, '2026-08-26', 'AA.HH. Sol de Indañe - Sector Alto', 'Activa'),
-      (2, '2026-08-26', 'Sector Santiago 8 Valles - Mz A y B', 'Activa'),
-      (3, '2026-08-27', 'AA.HH. San Borja - Sector Los Eucaliptos', 'Pendiente'),
-      (4, '2026-08-27', 'Barrio San Lorenzo - Sector Cococho', 'Pendiente'),
-      (5, '2026-08-25', 'AA.HH. Brisas del Mayo', 'Completada');
-
-    INSERT OR REPLACE INTO beneficiarios (id, dni, nombres_apellidos, distrito, sector_aahh, sector, num_vivienda, num_miembros, mz, lt, calle_direccion, direccion, telefono)
-    VALUES 
-      (1, '47891234', 'Segundo Juan Pérez García', 'Moyobamba', 'Sol de Indañe', 'Sol de Indañe', '01', 4, 'A', '01', 'Jr. Los Cedros s/n', 'Jr. Los Cedros s/n', '942111222'),
-      (2, '45123987', 'María Elena Flores Silva', 'Moyobamba', 'Sol de Indañe', 'Sol de Indañe', '02', 5, 'A', '02', 'Pasaje Las Flores 140', 'Pasaje Las Flores 140', '942333444'),
-      (3, '48901234', 'Jorge Luis Tapia Delgado', 'Moyobamba', 'Sol de Indañe', 'Sol de Indañe', '03', 3, 'B', '05', 'Jr. San Francisco Mz B Lt 5', 'Jr. San Francisco Mz B Lt 5', '942555666'),
-      (4, '70123456', 'Rosa Amelia Mori Vásquez', 'Moyobamba', 'Santiago 8 Valles', 'Santiago 8 Valles', '12', 6, 'C', '08', 'Av. Principal s/n', 'Av. Principal s/n', '942777888'),
-      (5, '72345678', 'Víctor Raúl Chávez Rengifo', 'Moyobamba', 'Santiago 8 Valles', 'Santiago 8 Valles', '15', 4, 'C', '09', 'Calle Los Laureles 210', 'Calle Los Laureles 210', '942999000'),
-      (6, '41234567', 'Carmen Rosa Alarcón Díaz', 'Moyobamba', 'San Borja', 'San Borja', '05', 2, 'D', '03', 'Jr. Amazonas 450', 'Jr. Amazonas 450', '942123789'),
-      (7, '43890123', 'Manuel Antonio Ríos Gómez', 'Moyobamba', 'San Lorenzo', 'San Lorenzo', '08', 5, 'E', '11', 'Sector Cococho s/n', 'Sector Cococho s/n', '942987654');
-
-    INSERT OR REPLACE INTO vales_consumo (id, codigo_unico, beneficiario_id, programacion_id, litros_sugeridos, estado, fecha_emision)
-    VALUES 
-      (1, 'VALE-20260826-001', 1, 1, 200.0, 'Emitido', '2026-08-26'),
-      (2, 'VALE-20260826-002', 2, 1, 250.0, 'Emitido', '2026-08-26'),
-      (3, 'VALE-20260826-003', 3, 1, 150.0, 'Emitido', '2026-08-26'),
-      (4, 'VALE-20260826-004', 4, 2, 300.0, 'Emitido', '2026-08-26'),
-      (5, 'VALE-20260826-005', 5, 2, 200.0, 'Emitido', '2026-08-26'),
-      (6, 'VALE-20260826-006', 6, 3, 100.0, 'Emitido', '2026-08-27'),
-      (7, 'VALE-20260825-007', 7, 4, 250.0, 'Emitido', '2026-08-25');
-  `);
+  // Purge any legacy mock seed data to ensure 100% clean production environment
+  try {
+    await database.execAsync(`
+      DELETE FROM beneficiarios WHERE dni IN ('47891234', '45123987', '48901234', '70123456', '72345678', '41234567', '43890123');
+      DELETE FROM vales_consumo WHERE codigo_unico LIKE 'VALE-20260826-%' OR codigo_unico LIKE 'VALE-20260825-%';
+      DELETE FROM programaciones WHERE zona IN ('AA.HH. Sol de Indañe - Sector Alto', 'Sector Santiago 8 Valles - Mz A y B', 'AA.HH. San Borja - Sector Los Eucaliptos', 'Barrio San Lorenzo - Sector Cococho', 'AA.HH. Brisas del Mayo');
+      DELETE FROM personal_operativo WHERE dni IN ('45892134', '72109845');
+      DELETE FROM cisternas WHERE placa IN ('EGA-401', 'EGB-502', 'EGC-108');
+    `);
+  } catch (_) {
+    // Ignore cleanup error if tables are fresh
+  }
   
   console.log('✅ SQLite Database Initialized with Vales, Calidad, Photo Evidence & GPS');
 };

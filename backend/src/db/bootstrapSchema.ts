@@ -97,6 +97,10 @@ export const bootstrapSchema = async () => {
       ALTER TABLE entregas_agua ADD COLUMN IF NOT EXISTS foto_url TEXT;
       ALTER TABLE entregas_agua ADD COLUMN IF NOT EXISTS firma_url TEXT;
       ALTER TABLE entregas_agua ADD COLUMN IF NOT EXISTS observaciones TEXT;
+
+      ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS litros_programados INT DEFAULT 0;
+      ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS viajes_estimados INT DEFAULT 1;
+      ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS dias_semana VARCHAR(100);
     `);
 
     console.log('✅ [DB Bootstrap] Todas las tablas y parámetros operativos verificados con éxito.');

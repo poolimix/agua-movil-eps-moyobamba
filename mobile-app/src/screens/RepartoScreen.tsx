@@ -746,10 +746,10 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
   const activeCisterna = cisternas.find((c) => c.id === selectedCisternaId);
 
   const getProgMetrics = (prog: any) => {
-    if (!prog) return { volRepartido: 15000, volPromedio: 350, poblacion: 140, monto: 586.95 };
-    const volRepartido = Number(prog.total_litros || prog.litros_programados || 15000);
-    const volPromedio = prog.volumen_promedio ? Number(prog.volumen_promedio) : 350;
-    const poblacion = prog.poblacion_beneficiada ? Number(prog.poblacion_beneficiada) : (prog.poblacion_programada || Math.round((volRepartido / 350) * 4));
+    if (!prog) return { volRepartido: 0, volPromedio: 0, poblacion: 0, monto: 0 };
+    const volRepartido = Number(prog.total_litros || prog.litros_programados || 0);
+    const volPromedio = prog.volumen_promedio ? Number(prog.volumen_promedio) : (volRepartido > 0 ? 350 : 0);
+    const poblacion = prog.poblacion_beneficiada ? Number(prog.poblacion_beneficiada) : (prog.poblacion_programada || (volRepartido > 0 ? Math.round((volRepartido / 350) * 4) : 0));
     const monto = Number(prog.monto_valorizado || prog.monto_programado || ((volRepartido / 1000) * 39.13));
     return { volRepartido, volPromedio, poblacion, monto };
   };
@@ -945,10 +945,10 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.cisternaPlacaTitle} numberOfLines={1}>
-                    {selectedProg?.cisterna_placa || activeCisterna?.placa || 'EGA-401'}
+                    {selectedProg?.cisterna_placa || activeCisterna?.placa || 'Sin cisterna'}
                   </Text>
                   <Text style={styles.cisternaMarcaText} numberOfLines={1}>
-                    {selectedProg?.cisterna_marca || activeCisterna?.marca_modelo || 'Mercedes-Benz Actros 3331'}
+                    {selectedProg?.cisterna_marca || activeCisterna?.marca_modelo || 'Flota EPS Moyobamba'}
                   </Text>
                 </View>
               </View>
@@ -963,7 +963,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
                 <Text style={styles.volumenLabel}>CAPACIDAD TOTAL</Text>
                 <Text style={styles.volumenValue}>
-                  {selectedProg?.cisterna_capacidad_m3 || activeCisterna?.capacidad_m3 || 15} m³ • {Number(selectedProg?.cisterna_capacidad_litros || activeCisterna?.capacidad_litros || 15000).toLocaleString('es-PE')} Lts
+                  {selectedProg?.cisterna_capacidad_m3 || activeCisterna?.capacidad_m3 || 0} m³ • {Number(selectedProg?.cisterna_capacidad_litros || activeCisterna?.capacidad_litros || 0).toLocaleString('es-PE')} Lts
                 </Text>
               </View>
               <View style={styles.volumenProgressBarBg}>
@@ -993,7 +993,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                   <Text style={styles.cuadrillaRoleLabel}>CONDUCTOR</Text>
                 </View>
                 <Text style={styles.cuadrillaMemberName} numberOfLines={2}>
-                  {selectedProg?.conductor_nombre || 'Carlos Mendoza Ríos'}
+                  {selectedProg?.conductor_nombre || 'Sin conductor'}
                 </Text>
                 {selectedProg?.conductor_telefono && (
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 }}>
@@ -1034,7 +1034,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
             </View>
 
             <View style={styles.sectoresPillsRow}>
-              {(selectedProg?.zona ? selectedProg.zona.split(',') : ['AA.HH. Sol de Indañe - Sector Alto', 'Sector Santiago 8 Valles']).map((sec: string, idx: number) => (
+              {(selectedProg?.zona ? selectedProg.zona.split(',') : []).map((sec: string, idx: number) => (
                 <View key={idx} style={styles.sectorItemBadge}>
                   <Ionicons name="navigate-outline" size={11} color="#0369a1" style={{ marginRight: 4 }} />
                   <Text style={styles.sectorItemBadgeText}>{sec.trim()}</Text>
@@ -1299,7 +1299,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, flexWrap: 'wrap' }}>
             <Ionicons name="water-outline" size={14} color="#0369a1" />
             <Text style={{ fontSize: 11.5, color: '#0369a1', fontWeight: '800' }}>
-              Capacidad: {activeCisterna?.capacidad_m3 || 15} m³ • {Number(activeCisterna?.capacidad_litros || 15000).toLocaleString()} Lts
+              Capacidad: {activeCisterna?.capacidad_m3 || 0} m³ • {Number(activeCisterna?.capacidad_litros || 0).toLocaleString()} Lts
             </Text>
           </View>
           <View style={styles.tripBadge}>
