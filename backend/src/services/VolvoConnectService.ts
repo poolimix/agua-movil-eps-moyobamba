@@ -71,10 +71,16 @@ class VolvoConnectService {
     };
   }
 
+  private lastVehiclesFetchTime: number = 0;
+
   /**
    * Consultar lista de camiones registrados en Volvo Connect / rFMS
    */
-  public async fetchVehicles(): Promise<VolvoVehicleInfo[]> {
+  public async fetchVehicles(forceRefresh = false): Promise<VolvoVehicleInfo[]> {
+    if (!forceRefresh && this.cachedVehicles.length > 0 && Date.now() - this.lastVehiclesFetchTime < 10 * 60 * 1000) {
+      return this.cachedVehicles;
+    }
+
     const { baseUrl } = this.getCredentials();
     const headers = this.getAuthHeaders('application/vnd.fmsstandard.com.vehicles.v2.1+json');
 
@@ -92,6 +98,7 @@ class VolvoConnectService {
       emissionLevel: v.EmissionLevel,
       type: v.Type,
     }));
+    this.lastVehiclesFetchTime = Date.now();
 
     return this.cachedVehicles;
   }
@@ -111,22 +118,26 @@ class VolvoConnectService {
 
       const positions = res.data?.VehiclePosition || [];
       return positions.map((p: any) => {
-        const pos = p.Position || p;
+        // En rFMS v2.1 de Volvo Trucks, el bloque satelital viene en GNSSPosition o Position
+        const pos = p.GNSSPosition || p.Position || p;
+        const lat = Number(pos.Latitude !== undefined ? pos.Latitude : pos.latitude);
+        const lng = Number(pos.Longitude !== undefined ? pos.Longitude : pos.longitude);
+        const speed = p.WheelBasedSpeed !== undefined ? Number(p.WheelBasedSpeed) : Number(pos.Speed || pos.speed || 0);
+
         return {
           vin: p.VIN,
-          latitude: Number(pos.Latitude || pos.latitude),
-          longitude: Number(pos.Longitude || pos.longitude),
+          latitude: lat,
+          longitude: lng,
           altitude: pos.Altitude || pos.altitude,
           heading: pos.Heading || pos.heading,
-          speedKilometersPerHour: pos.WheelBasedSpeed || pos.speed,
-          timestamp: p.TriggerDateTime || pos.PositionDateTime || new Date().toISOString(),
+          speedKilometersPerHour: speed,
+          timestamp: pos.PositionDateTime || p.TriggerDateTime || p.CreatedDateTime || new Date().toISOString(),
           odometerKilometers: p.TotalDistance ? Number(p.TotalDistance) / 1000 : undefined,
           fuelLevelPercent: p.FuelLevel1,
-          ignitionState: p.EngineStatus === 'RUNNING' ? 'RUNNING' : 'OFF',
+          ignitionState: (speed > 0 || p.EngineStatus === 'RUNNING') ? 'RUNNING' : 'OFF',
         };
       });
     } catch (err: any) {
-      // Si Volvo rFMS devuelve 404 o no hay posiciones activas en este instante
       if (err.response?.status === 404 || err.response?.status === 204) {
         return [];
       }
@@ -191,8 +202,8 @@ class VolvoConnectService {
         }
       }
 
-      // Pequeña pausa para respetar el rate-limiting de Volvo (1 seg)
-      await new Promise(resolve => setTimeout(resolve, 1100));
+      // Pausa prudente para respetar el rate-limiting de Volvo (mínimo 1.5s entre llamadas)
+      await new Promise(resolve => setTimeout(resolve, 1800));
 
       // 3. Consultar posiciones GPS en tiempo real
       let positionsUpdated = 0;
@@ -203,15 +214,19 @@ class VolvoConnectService {
             continue;
           }
 
+          const directTrackingUrl = pos.vin === '93KPYM0D2SE201041'
+            ? 'https://volvoconnect.com/positioning/vehicle/63291F0ED416BF59C15D338F3B425CA4'
+            : 'https://volvoconnect.com/';
+
           const updateRes = await query(
             `UPDATE cisternas
              SET latitud_actual = $1,
                  longitud_actual = $2,
                  ultima_actualizacion_gps = $3,
-                 enlace_gps_tracking = COALESCE(enlace_gps_tracking, 'https://volvoconnect.com/')
+                 enlace_gps_tracking = $5
              WHERE codigo_gps = $4 OR placa = $4
              RETURNING placa;`,
-            [pos.latitude, pos.longitude, pos.timestamp, pos.vin]
+            [pos.latitude, pos.longitude, pos.timestamp, pos.vin, directTrackingUrl]
           );
 
           if (updateRes.rows.length > 0) {
@@ -227,6 +242,7 @@ class VolvoConnectService {
         }
       } catch (posErr: any) {
         console.warn('⚠️ [Volvo Connect] Consulta de posiciones en espera:', posErr.message);
+        this.lastError = posErr.message;
       }
 
       this.lastSyncTime = new Date().toISOString();
