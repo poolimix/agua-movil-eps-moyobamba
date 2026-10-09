@@ -23,7 +23,11 @@
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
-        "CAMERA"
+        "CAMERA",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
       ]
     },
     "web": {
@@ -45,6 +49,12 @@
           "locationAlwaysAndWhenInUsePermission": "Permite registrar las coordenadas GPS de la cisterna durante el reparto."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "a2d50ddf-6917-41eb-a72b-2d33d2a4288f"
+      }
+    },
+    "owner": "poolimix"
   }
 }
