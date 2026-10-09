@@ -23,6 +23,30 @@ let configCache: ConfiguracionSistema | null = null;
 let lastCacheTime = 0;
 const CACHE_TTL_MS = 60 * 1000; // 1 minute TTL
 
+export const ensureConfiguracionSchema = async () => {
+  try {
+    await query(`
+      CREATE TABLE IF NOT EXISTS configuracion_sistema (
+        id SERIAL PRIMARY KEY,
+        clave VARCHAR(100) UNIQUE NOT NULL,
+        valor NUMERIC(10,2) NOT NULL,
+        descripcion TEXT,
+        unidad VARCHAR(30),
+        categoria VARCHAR(50) DEFAULT 'GENERAL',
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_by VARCHAR(150) DEFAULT 'SISTEMA'
+      );
+      ALTER TABLE configuracion_sistema ADD COLUMN IF NOT EXISTS updated_by VARCHAR(150) DEFAULT 'SISTEMA';
+      ALTER TABLE configuracion_sistema ADD COLUMN IF NOT EXISTS unidad VARCHAR(30);
+      ALTER TABLE configuracion_sistema ADD COLUMN IF NOT EXISTS descripcion TEXT;
+      ALTER TABLE configuracion_sistema ADD COLUMN IF NOT EXISTS categoria VARCHAR(50) DEFAULT 'GENERAL';
+      ALTER TABLE configuracion_sistema ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+    `);
+  } catch (err) {
+    console.warn('Auto-reparación configuracion_sistema:', err);
+  }
+};
+
 export const getConfiguracion = async (): Promise<ConfiguracionSistema> => {
   const now = Date.now();
   if (configCache && (now - lastCacheTime) < CACHE_TTL_MS) {
@@ -30,6 +54,7 @@ export const getConfiguracion = async (): Promise<ConfiguracionSistema> => {
   }
 
   try {
+    await ensureConfiguracionSchema();
     const res = await query('SELECT clave, valor, updated_at, updated_by FROM configuracion_sistema');
     if (res.rows.length === 0) {
       return getDefaultConfig();
@@ -117,42 +142,18 @@ export const updateParametrosConfiguracion = async (
     updates.push({ clave: 'PH_MAX', valor: Number(nuevosParametros.ph_max) });
   }
 
-  try {
-    for (const item of updates) {
-      await query(
-        `INSERT INTO configuracion_sistema (clave, valor, updated_at, updated_by)
-         VALUES ($1, $2, CURRENT_TIMESTAMP, $3)
-         ON CONFLICT (clave) DO UPDATE 
-         SET valor = EXCLUDED.valor, 
-             updated_at = CURRENT_TIMESTAMP, 
-             updated_by = EXCLUDED.updated_by`,
-        [item.clave, item.valor, updatedBy]
-      );
-    }
-  } catch (err: any) {
-    await query(`
-      CREATE TABLE IF NOT EXISTS configuracion_sistema (
-        id SERIAL PRIMARY KEY,
-        clave VARCHAR(100) UNIQUE NOT NULL,
-        valor NUMERIC(10,2) NOT NULL,
-        descripcion TEXT,
-        unidad VARCHAR(30),
-        categoria VARCHAR(50) DEFAULT 'GENERAL',
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_by VARCHAR(150) DEFAULT 'SISTEMA'
-      );
-    `);
-    for (const item of updates) {
-      await query(
-        `INSERT INTO configuracion_sistema (clave, valor, updated_at, updated_by)
-         VALUES ($1, $2, CURRENT_TIMESTAMP, $3)
-         ON CONFLICT (clave) DO UPDATE 
-         SET valor = EXCLUDED.valor, 
-             updated_at = CURRENT_TIMESTAMP, 
-             updated_by = EXCLUDED.updated_by`,
-        [item.clave, item.valor, updatedBy]
-      );
-    }
+  await ensureConfiguracionSchema();
+
+  for (const item of updates) {
+    await query(
+      `INSERT INTO configuracion_sistema (clave, valor, updated_at, updated_by)
+       VALUES ($1, $2, CURRENT_TIMESTAMP, $3)
+       ON CONFLICT (clave) DO UPDATE 
+       SET valor = EXCLUDED.valor, 
+           updated_at = CURRENT_TIMESTAMP, 
+           updated_by = EXCLUDED.updated_by`,
+      [item.clave, item.valor, updatedBy]
+    );
   }
 
   // Invalidate memory cache so next read pulls freshly saved values

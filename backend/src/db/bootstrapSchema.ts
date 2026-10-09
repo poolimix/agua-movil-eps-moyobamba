@@ -21,6 +21,12 @@ export const bootstrapSchema = async () => {
         updated_by VARCHAR(150) DEFAULT 'SISTEMA'
       );
 
+      ALTER TABLE configuracion_sistema ADD COLUMN IF NOT EXISTS updated_by VARCHAR(150) DEFAULT 'SISTEMA';
+      ALTER TABLE configuracion_sistema ADD COLUMN IF NOT EXISTS unidad VARCHAR(30);
+      ALTER TABLE configuracion_sistema ADD COLUMN IF NOT EXISTS descripcion TEXT;
+      ALTER TABLE configuracion_sistema ADD COLUMN IF NOT EXISTS categoria VARCHAR(50) DEFAULT 'GENERAL';
+      ALTER TABLE configuracion_sistema ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+
       INSERT INTO configuracion_sistema (clave, valor, descripcion, unidad, categoria)
       VALUES 
         ('DOTACION_DIARIA_LITROS', 50.00, 'Dotación de agua potable diaria por habitante/familiar (Norma SUNASS)', 'L/hab/día', 'DOTACION'),

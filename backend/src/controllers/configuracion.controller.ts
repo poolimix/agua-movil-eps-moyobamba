@@ -2,7 +2,8 @@ import { Request, Response } from 'express';
 import { query } from '../db';
 import { 
   getConfiguracion, 
-  updateParametrosConfiguracion 
+  updateParametrosConfiguracion,
+  ensureConfiguracionSchema
 } from '../services/configuracion.service';
 
 /**
@@ -10,6 +11,7 @@ import {
  */
 export const getConfiguracionHandler = async (_req: Request, res: Response) => {
   try {
+    await ensureConfiguracionSchema();
     const config = await getConfiguracion();
     let rows: any[] = [];
     try {
@@ -20,6 +22,7 @@ export const getConfiguracionHandler = async (_req: Request, res: Response) => {
       `);
       rows = rowsRes.rows;
     } catch {
+      await ensureConfiguracionSchema();
       // Auto-inicializar la tabla si aún no existía
       await query(`
         CREATE TABLE IF NOT EXISTS configuracion_sistema (
