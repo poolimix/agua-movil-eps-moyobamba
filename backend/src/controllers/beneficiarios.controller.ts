@@ -379,6 +379,33 @@ export const importExcel = async (req: Request, res: Response) => {
     const sectorsSummary: { [sector: string]: { beneficiarios: number; miembros: number; m3: number; litros: number } } = {};
     const customSectorOverride = req.body.sector ? String(req.body.sector).trim() : '';
 
+    // Auto-reparación preventiva del esquema de base de datos
+    try {
+      await query(`
+        ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS nombres_apellidos VARCHAR(255);
+        ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS nombres VARCHAR(150);
+        ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS apellidos VARCHAR(150);
+        ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS distrito VARCHAR(100) DEFAULT 'Moyobamba';
+        ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS sector VARCHAR(100);
+        ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS sector_aahh VARCHAR(150);
+        ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS num_vivienda VARCHAR(50);
+        ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS num_miembros INT DEFAULT 1;
+        ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS mz VARCHAR(50);
+        ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS lt VARCHAR(50);
+        ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS calle_direccion TEXT;
+        ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS direccion TEXT;
+        ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS telefono VARCHAR(50);
+        ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS email VARCHAR(150);
+        ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS litros_sugeridos NUMERIC(10,2);
+        ALTER TABLE sectores ADD COLUMN IF NOT EXISTS distrito VARCHAR(100) DEFAULT 'Moyobamba';
+        ALTER TABLE sectores ADD COLUMN IF NOT EXISTS descripcion TEXT;
+        ALTER TABLE sectores ADD COLUMN IF NOT EXISTS meta_semanal_litros NUMERIC(12,2) DEFAULT 25000;
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_beneficiarios_dni_unique ON beneficiarios (dni);
+      `);
+    } catch (dbInitErr) {
+      console.warn('Auto-reparación de columnas beneficiarios:', dbInitErr);
+    }
+
     for (const file of files) {
       const workbook = xlsx.read(file.buffer, { type: 'buffer' });
 

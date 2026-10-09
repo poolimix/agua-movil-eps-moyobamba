@@ -79,12 +79,36 @@ export const bootstrapSchema = async () => {
       );
     `);
 
-    // 5. Asegurar columnas normativas en beneficiarios, cisternas y entregas
+    // 5. Asegurar columnas normativas y padrón en beneficiarios, sectores, cisternas y entregas
     await query(`
+      ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS nombres_apellidos VARCHAR(255);
+      ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS nombres VARCHAR(150);
+      ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS apellidos VARCHAR(150);
+      ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS distrito VARCHAR(100) DEFAULT 'Moyobamba';
+      ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS sector VARCHAR(100);
+      ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS sector_aahh VARCHAR(150);
+      ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS num_vivienda VARCHAR(50);
       ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS num_miembros INT DEFAULT 1;
-      ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS sector_aahh VARCHAR(100);
+      ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS mz VARCHAR(50);
+      ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS lt VARCHAR(50);
       ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS calle_direccion TEXT;
+      ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS direccion TEXT;
+      ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS telefono VARCHAR(50);
+      ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS email VARCHAR(150);
       ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS litros_sugeridos NUMERIC(10,2);
+
+      -- Sincronizar nombres_apellidos en registros existentes si estaba en null
+      UPDATE beneficiarios 
+      SET nombres_apellidos = TRIM(CONCAT(COALESCE(nombres, ''), ' ', COALESCE(apellidos, '')))
+      WHERE (nombres_apellidos IS NULL OR nombres_apellidos = '') AND (nombres IS NOT NULL OR apellidos IS NOT NULL);
+
+      -- Asegurar columnas en sectores
+      ALTER TABLE sectores ADD COLUMN IF NOT EXISTS distrito VARCHAR(100) DEFAULT 'Moyobamba';
+      ALTER TABLE sectores ADD COLUMN IF NOT EXISTS descripcion TEXT;
+      ALTER TABLE sectores ADD COLUMN IF NOT EXISTS meta_semanal_litros NUMERIC(12,2) DEFAULT 25000;
+
+      -- Asegurar indice unico en dni para que ON CONFLICT (dni) opere sin fallos
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_beneficiarios_dni_unique ON beneficiarios (dni);
 
       ALTER TABLE cisternas ADD COLUMN IF NOT EXISTS codigo_gps VARCHAR(100);
       ALTER TABLE cisternas ADD COLUMN IF NOT EXISTS latitud_actual NUMERIC(10, 8);
