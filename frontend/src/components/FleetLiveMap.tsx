@@ -30,6 +30,8 @@ interface FleetLiveMapProps {
 // Centro de operaciones EPS Moyobamba
 const MOYOBAMBA_CENTER: [number, number] = [-6.03417, -76.97139];
 
+export type MapTileMode = 'HYBRID' | 'STREETS' | 'DARK' | 'OSM';
+
 export default function FleetLiveMap({
   cisternas = [],
   onRefresh,
@@ -40,10 +42,105 @@ export default function FleetLiveMap({
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const markersRef = useRef<{ [key: number]: L.Marker }>({});
+  const activeTileLayersRef = useRef<L.Layer[]>([]);
+  const hasAutoCenteredRef = useRef<boolean>(false);
+
+  const [mapReady, setMapReady] = useState(false);
+  const [tileMode, setTileMode] = useState<MapTileMode>('HYBRID');
   const [selectedCisternaId, setSelectedCisternaId] = useState<number | null>(null);
   const [filterEstado, setFilterEstado] = useState<'TODOS' | 'OPERATIVO' | 'MANTENIMIENTO'>('TODOS');
 
-  // Reaccionar a coordenadas de foco exterior (ej. desde tabla de entregas)
+  // Inicializar mapa de Leaflet una sola vez
+  useEffect(() => {
+    if (!mapContainerRef.current || mapInstanceRef.current) return;
+
+    const map = L.map(mapContainerRef.current, {
+      center: MOYOBAMBA_CENTER,
+      zoom: 14,
+      zoomControl: true,
+      attributionControl: true,
+    });
+
+    mapInstanceRef.current = map;
+    setMapReady(true);
+
+    const timer = setTimeout(() => {
+      map.invalidateSize();
+    }, 250);
+
+    return () => {
+      clearTimeout(timer);
+      map.remove();
+      mapInstanceRef.current = null;
+    };
+  }, []);
+
+  // Manejar cambio de tipo de mapa (Satélite HD / Calles Modernas / Radar Oscuro / Estándar)
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapReady) return;
+
+    // Remover capas de mapas anteriores
+    activeTileLayersRef.current.forEach((layer) => {
+      map.removeLayer(layer);
+    });
+    activeTileLayersRef.current = [];
+
+    if (tileMode === 'HYBRID') {
+      // Satélite Esri World Imagery + Capa de Calles y Nombres Híbrida
+      const satLayer = L.tileLayer(
+        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        {
+          attribution: 'Tiles &copy; Esri, Maxar, Earthstar Geographics',
+          maxZoom: 19,
+        }
+      );
+      const labelsLayer = L.tileLayer(
+        'https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+        {
+          attribution: 'Labels &copy; Esri',
+          maxZoom: 19,
+        }
+      );
+      satLayer.addTo(map);
+      labelsLayer.addTo(map);
+      activeTileLayersRef.current = [satLayer, labelsLayer];
+    } else if (tileMode === 'STREETS') {
+      // CartoDB Voyager (Calles limpias de alta resolución y legibilidad)
+      const streetsLayer = L.tileLayer(
+        'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+        {
+          attribution: '&copy; CARTO &copy; OpenStreetMap contributors',
+          subdomains: 'abcd',
+          maxZoom: 20,
+        }
+      );
+      streetsLayer.addTo(map);
+      activeTileLayersRef.current = [streetsLayer];
+    } else if (tileMode === 'DARK') {
+      // CartoDB Dark Matter (Estilo centro de control nocturno)
+      const darkLayer = L.tileLayer(
+        'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+        {
+          attribution: '&copy; CARTO &copy; OpenStreetMap contributors',
+          subdomains: 'abcd',
+          maxZoom: 20,
+        }
+      );
+      darkLayer.addTo(map);
+      activeTileLayersRef.current = [darkLayer];
+    } else {
+      // OpenStreetMap Estándar
+      const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap | EPS Moyobamba',
+        maxZoom: 19,
+      });
+      osmLayer.addTo(map);
+      activeTileLayersRef.current = [osmLayer];
+    }
+  }, [mapReady, tileMode]);
+
+  // Reaccionar a coordenadas de foco exterior (ej. desde entregas)
   useEffect(() => {
     if (focusCoords && mapInstanceRef.current && focusCoords.lat && focusCoords.lng) {
       mapInstanceRef.current.flyTo([focusCoords.lat, focusCoords.lng], 16, { duration: 1.2 });
@@ -54,36 +151,6 @@ export default function FleetLiveMap({
     }
   }, [focusCoords]);
 
-  // Inicializar mapa de Leaflet
-  useEffect(() => {
-    if (!mapContainerRef.current) return;
-
-    if (!mapInstanceRef.current) {
-      const map = L.map(mapContainerRef.current, {
-        center: MOYOBAMBA_CENTER,
-        zoom: 14,
-        zoomControl: true,
-        attributionControl: true,
-      });
-
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> | EPS Moyobamba',
-        maxZoom: 19,
-      }).addTo(map);
-
-      mapInstanceRef.current = map;
-    }
-
-    // Invalida tamaño para asegurar renderizado correcto dentro de flexbox / grids
-    const timer = setTimeout(() => {
-      mapInstanceRef.current?.invalidateSize();
-    }, 200);
-
-    return () => {
-      clearTimeout(timer);
-    };
-  }, []);
-
   // Filtrar cisternas
   const filteredCisternas = cisternas.filter((c) => {
     if (filterEstado === 'TODOS') return true;
@@ -91,15 +158,26 @@ export default function FleetLiveMap({
   });
 
   const cisternasConGps = filteredCisternas.filter(
-    (c) => c.latitud_actual !== null && c.longitud_actual !== null && !isNaN(Number(c.latitud_actual)) && !isNaN(Number(c.longitud_actual))
+    (c) =>
+      c.latitud_actual !== null &&
+      c.longitud_actual !== null &&
+      !isNaN(Number(c.latitud_actual)) &&
+      !isNaN(Number(c.longitud_actual)) &&
+      Number(c.latitud_actual) !== 0 &&
+      Number(c.longitud_actual) !== 0
   );
 
-  // Actualizar marcadores cuando cambian los datos o filtros
+  // Clave reactiva para asegurar que cualquier cambio en coordenadas actualice el mapa
+  const coordsFingerprint = cisternasConGps
+    .map((c) => `${c.id}:${c.latitud_actual}:${c.longitud_actual}:${c.estado}:${c.placa}`)
+    .join(';');
+
+  // Renderizar y sincronizar marcadores de cisternas
   useEffect(() => {
     const map = mapInstanceRef.current;
-    if (!map) return;
+    if (!map || !mapReady) return;
 
-    // Remover marcadores antiguos
+    // Remover marcadores anteriores
     Object.values(markersRef.current).forEach((marker) => marker.remove());
     markersRef.current = {};
 
@@ -112,26 +190,30 @@ export default function FleetLiveMap({
 
       const isOperativo = c.estado === 'OPERATIVO';
       const pinColor = isOperativo ? '#10b981' : '#f59e0b';
-      const pulseColor = isOperativo ? 'rgba(16, 185, 129, 0.4)' : 'rgba(245, 158, 11, 0.4)';
+      const pulseColor = isOperativo ? 'rgba(16, 185, 129, 0.45)' : 'rgba(245, 158, 11, 0.45)';
 
-      // Icono HTML moderno y estilizado para cisterna
+      // Icono HTML moderno y estilizado para cisterna con pulso radar en vivo
       const icon = L.divIcon({
         className: 'custom-fleet-marker-container',
         html: `
           <div class="fleet-marker-wrapper" style="--pulse-color: ${pulseColor};">
             <div class="fleet-marker-pulse"></div>
             <div class="fleet-marker-pin" style="background-color: ${pinColor};">
-              <span class="fleet-marker-icon">🚛</span>
+              <span class="fleet-marker-truck">🚛</span>
+              <span class="fleet-marker-live-dot"></span>
             </div>
-            <div class="fleet-marker-plate">${c.placa}</div>
+            <div class="fleet-marker-plate-pill">
+              <span class="plate-text">${c.placa}</span>
+              <span class="status-micro">${isOperativo ? 'EN RUTA' : c.estado}</span>
+            </div>
           </div>
         `,
-        iconSize: [60, 60],
-        iconAnchor: [30, 45],
-        popupAnchor: [0, -42],
+        iconSize: [80, 80],
+        iconAnchor: [40, 50],
+        popupAnchor: [0, -48],
       });
 
-      const marker = L.marker([lat, lng], { icon }).addTo(map);
+      const marker = L.marker([lat, lng], { icon, title: `Cisterna ${c.placa} - EPS Moyobamba` }).addTo(map);
 
       // Popup informativo con detalle de la cisterna y acciones
       const popupHtml = `
@@ -161,17 +243,13 @@ export default function FleetLiveMap({
               </div>
             ` : ''}
             <div class="fleet-popup-row">
-              <span class="fleet-popup-label">Dispositivo GPS:</span>
-              <span class="fleet-popup-value font-mono">${c.codigo_gps || 'Integrado'}</span>
-            </div>
-            <div class="fleet-popup-row">
-              <span class="fleet-popup-label">Coordenadas:</span>
-              <span class="fleet-popup-value font-mono">${lat.toFixed(5)}, ${lng.toFixed(5)}</span>
+              <span class="fleet-popup-label">Telemetría GPS:</span>
+              <span class="fleet-popup-value font-mono font-bold text-emerald">${lat.toFixed(5)}, ${lng.toFixed(5)}</span>
             </div>
             ${c.ultima_actualizacion_gps ? `
               <div class="fleet-popup-row">
                 <span class="fleet-popup-label">Última señal:</span>
-                <span class="fleet-popup-value text-muted">${new Date(c.ultima_actualizacion_gps).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}</span>
+                <span class="fleet-popup-value text-muted">${new Date(c.ultima_actualizacion_gps).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
               </div>
             ` : ''}
           </div>
@@ -181,14 +259,14 @@ export default function FleetLiveMap({
             </a>
             ${c.enlace_gps_tracking ? `
               <a href="${c.enlace_gps_tracking}" target="_blank" rel="noopener noreferrer" class="btn-popup-tracking">
-                🛰️ Plataforma GPS
+                🛰️ Abrir Volvo Connect
               </a>
             ` : ''}
           </div>
         </div>
       `;
 
-      marker.bindPopup(popupHtml, { maxWidth: 300 });
+      marker.bindPopup(popupHtml, { maxWidth: 320 });
 
       marker.on('click', () => {
         setSelectedCisternaId(c.id);
@@ -198,19 +276,18 @@ export default function FleetLiveMap({
       markersRef.current[c.id] = marker;
     });
 
-    // Ajustar vista a las cisternas si existen
-    if (bounds.length > 0) {
+    // Auto-centrar en la flota con animación la primera vez que se cargan coordenadas
+    if (bounds.length > 0 && !hasAutoCenteredRef.current) {
+      hasAutoCenteredRef.current = true;
       if (bounds.length === 1) {
-        map.setView(bounds[0], 15);
+        map.flyTo(bounds[0], 15, { duration: 1.5 });
       } else {
-        map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
+        map.fitBounds(bounds, { padding: [70, 70], maxZoom: 16 });
       }
-    } else {
-      map.setView(MOYOBAMBA_CENTER, 14);
     }
-  }, [filteredCisternas.length, filterEstado]);
+  }, [mapReady, coordsFingerprint, filterEstado]);
 
-  // Centrar en cisterna seleccionada desde la lista lateral
+  // Centrar en una cisterna específica
   const handleSelectCisterna = (c: CisternaUbicacion) => {
     setSelectedCisternaId(c.id);
     onSelectCisterna?.(c.placa);
@@ -220,12 +297,34 @@ export default function FleetLiveMap({
     if (c.latitud_actual && c.longitud_actual) {
       const lat = Number(c.latitud_actual);
       const lng = Number(c.longitud_actual);
-      map.flyTo([lat, lng], 16, { duration: 1.2 });
+      if (!isNaN(lat) && !isNaN(lng)) {
+        map.flyTo([lat, lng], 16, { duration: 1.3 });
 
-      const marker = markersRef.current[c.id];
-      if (marker) {
-        marker.openPopup();
+        const marker = markersRef.current[c.id];
+        if (marker) {
+          setTimeout(() => marker.openPopup(), 400);
+        }
       }
+    }
+  };
+
+  // Función para re-enfocar la flota en cualquier momento
+  const handleFitFleet = () => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    if (cisternasConGps.length === 1) {
+      const c = cisternasConGps[0];
+      map.flyTo([Number(c.latitud_actual), Number(c.longitud_actual)], 16, { duration: 1.3 });
+      markersRef.current[c.id]?.openPopup();
+    } else if (cisternasConGps.length > 1) {
+      const bounds: [number, number][] = cisternasConGps.map((c) => [
+        Number(c.latitud_actual),
+        Number(c.longitud_actual),
+      ]);
+      map.fitBounds(bounds, { padding: [60, 60], maxZoom: 16 });
+    } else {
+      map.flyTo(MOYOBAMBA_CENTER, 14, { duration: 1.3 });
     }
   };
 
@@ -246,24 +345,49 @@ export default function FleetLiveMap({
         </div>
 
         <div className="fleet-map-controls">
+          {/* Selector de capa de mapa */}
+          <div className="fleet-tile-selector" title="Cambiar tipo de mapa">
+            <button
+              type="button"
+              className={`btn-tile-mode ${tileMode === 'HYBRID' ? 'active' : ''}`}
+              onClick={() => setTileMode('HYBRID')}
+            >
+              🛰️ Satélite HD
+            </button>
+            <button
+              type="button"
+              className={`btn-tile-mode ${tileMode === 'STREETS' ? 'active' : ''}`}
+              onClick={() => setTileMode('STREETS')}
+            >
+              🗺️ Calles HD
+            </button>
+            <button
+              type="button"
+              className={`btn-tile-mode ${tileMode === 'DARK' ? 'active' : ''}`}
+              onClick={() => setTileMode('DARK')}
+            >
+              🌙 Radar Oscuro
+            </button>
+          </div>
+
           <div className="fleet-filter-pills">
             <button
               type="button"
-              className={`filter-pill ${filterEstado === 'TODOS' ? 'active' : ''}`}
+              className={`pill-btn ${filterEstado === 'TODOS' ? 'active' : ''}`}
               onClick={() => setFilterEstado('TODOS')}
             >
               Todas ({cisternas.length})
             </button>
             <button
               type="button"
-              className={`filter-pill pill-success ${filterEstado === 'OPERATIVO' ? 'active' : ''}`}
+              className={`pill-btn ${filterEstado === 'OPERATIVO' ? 'active' : ''}`}
               onClick={() => setFilterEstado('OPERATIVO')}
             >
               Operativas ({cisternas.filter((c) => c.estado === 'OPERATIVO').length})
             </button>
             <button
               type="button"
-              className={`filter-pill pill-warning ${filterEstado === 'MANTENIMIENTO' ? 'active' : ''}`}
+              className={`pill-btn ${filterEstado === 'MANTENIMIENTO' ? 'active' : ''}`}
               onClick={() => setFilterEstado('MANTENIMIENTO')}
             >
               Mantenimiento ({cisternas.filter((c) => c.estado === 'MANTENIMIENTO').length})
@@ -282,10 +406,22 @@ export default function FleetLiveMap({
         {/* Contenedor del Mapa Leaflet */}
         <div className="fleet-map-canvas-container">
           <div ref={mapContainerRef} className="fleet-leaflet-map" />
-          
+
+          {/* Botón flotante para centrar flota activa */}
+          <button
+            type="button"
+            className="fleet-btn-floating-center"
+            onClick={handleFitFleet}
+            title="Centrar mapa en cisterna activa"
+          >
+            🎯 Centrar en Cisterna
+          </button>
+
           <div className="fleet-map-overlay-badge">
             <span className="live-indicator"></span>
-            <span>{cisternasConGps.length} de {cisternas.length} con señal GPS activa</span>
+            <span>
+              {cisternasConGps.length} de {cisternas.length} con señal GPS activa
+            </span>
           </div>
         </div>
 
@@ -301,13 +437,19 @@ export default function FleetLiveMap({
               <div className="fleet-no-units">No hay cisternas para el filtro seleccionado.</div>
             ) : (
               filteredCisternas.map((c) => {
-                const hasGps = c.latitud_actual !== null && c.longitud_actual !== null;
+                const hasGps =
+                  c.latitud_actual !== null &&
+                  c.longitud_actual !== null &&
+                  !isNaN(Number(c.latitud_actual)) &&
+                  Number(c.latitud_actual) !== 0;
                 const isSelected = selectedCisternaId === c.id || selectedCisternaPlaca === c.placa;
 
                 return (
                   <div
                     key={c.id}
-                    className={`fleet-unit-item ${isSelected ? 'selected' : ''} ${c.estado === 'OPERATIVO' ? 'is-operativo' : 'is-mantenimiento'}`}
+                    className={`fleet-unit-item ${isSelected ? 'selected' : ''} ${
+                      c.estado === 'OPERATIVO' ? 'is-operativo' : 'is-mantenimiento'
+                    }`}
                     onClick={() => handleSelectCisterna(c)}
                   >
                     <div className="unit-item-top">
@@ -327,7 +469,9 @@ export default function FleetLiveMap({
                       </div>
                       <div className="unit-detail-row">
                         <span className="detail-label">Capacidad:</span>
-                        <span className="detail-val"><strong>{c.capacidad_m3} m³</strong> ({Number(c.capacidad_litros).toLocaleString('es-PE')} L)</span>
+                        <span className="detail-val">
+                          <strong>{c.capacidad_m3} m³</strong> ({Number(c.capacidad_litros).toLocaleString('es-PE')} L)
+                        </span>
                       </div>
                       <div className="unit-detail-row">
                         <span className="detail-label">Chofer:</span>

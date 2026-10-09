@@ -88,6 +88,40 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
+}
+
+.fleet-tile-selector {
+  display: flex;
+  background: rgba(255, 255, 255, 0.12);
+  padding: 3px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  gap: 2px;
+}
+
+.btn-tile-mode {
+  background: transparent;
+  border: none;
+  color: #e2e8f0;
+  padding: 5px 11px;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.btn-tile-mode:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+}
+
+.btn-tile-mode.active {
+  background: #0284c7;
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(2, 132, 199, 0.45);
 }
 
 .fleet-filter-pills {
@@ -96,39 +130,34 @@
   padding: 3px;
   border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.15);
+  gap: 2px;
 }
 
+.pill-btn,
 .filter-pill {
   background: transparent;
   border: none;
   color: #cbd5e1;
-  padding: 6px 12px;
+  padding: 5px 10px;
   border-radius: 8px;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
+  white-space: nowrap;
 }
 
+.pill-btn:hover,
 .filter-pill:hover {
   color: #ffffff;
   background: rgba(255, 255, 255, 0.1);
 }
 
+.pill-btn.active,
 .filter-pill.active {
-  background: #0284c7;
-  color: #ffffff;
-  box-shadow: 0 2px 8px rgba(2, 132, 199, 0.4);
-}
-
-.filter-pill.pill-success.active {
   background: #10b981;
+  color: #ffffff;
   box-shadow: 0 2px 8px rgba(16, 185, 129, 0.4);
-}
-
-.filter-pill.pill-warning.active {
-  background: #f59e0b;
-  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.4);
 }
 
 .btn-fleet-refresh {
@@ -141,6 +170,7 @@
   font-weight: 600;
   cursor: pointer;
   transition: background 0.2s ease;
+  white-space: nowrap;
 }
 
 .btn-fleet-refresh:hover {
@@ -172,6 +202,33 @@
   height: 100%;
   min-height: 480px;
   z-index: 1;
+}
+
+.fleet-btn-floating-center {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 999;
+  background: #0f172a;
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.fleet-btn-floating-center:hover {
+  background: #0284c7;
+  color: #ffffff;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(2, 132, 199, 0.5);
 }
 
 .fleet-map-overlay-badge {
@@ -406,54 +463,99 @@
 
 .fleet-marker-pulse {
   position: absolute;
-  width: 38px;
-  height: 38px;
+  width: 52px;
+  height: 52px;
   border-radius: 50%;
-  background: var(--pulse-color, rgba(16, 185, 129, 0.4));
+  background: var(--pulse-color, rgba(16, 185, 129, 0.45));
   animation: fleetPulse 2s infinite ease-out;
-  top: 0;
+  top: -4px;
   left: 50%;
   transform: translateX(-50%);
+  pointer-events: none;
 }
 
 @keyframes fleetPulse {
-  0% { transform: translateX(-50%) scale(0.8); opacity: 0.9; }
-  100% { transform: translateX(-50%) scale(1.8); opacity: 0; }
+  0% { transform: translateX(-50%) scale(0.7); opacity: 1; }
+  70% { transform: translateX(-50%) scale(1.6); opacity: 0.25; }
+  100% { transform: translateX(-50%) scale(2.0); opacity: 0; }
 }
 
 .fleet-marker-pin {
-  width: 38px;
-  height: 38px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #ffffff;
-  font-size: 18px;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
-  border: 2px solid #ffffff;
+  font-size: 22px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5), 0 0 0 3px #ffffff;
   position: relative;
   z-index: 2;
-  transition: transform 0.2s ease;
+  transition: transform 0.25s ease;
+}
+
+.fleet-marker-truck {
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.3));
+  display: inline-block;
+  line-height: 1;
+}
+
+.fleet-marker-live-dot {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 10px;
+  height: 10px;
+  background: #38bdf8;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 0 6px #38bdf8;
+  animation: pulseLiveDot 1.5s infinite;
+}
+
+@keyframes pulseLiveDot {
+  0% { transform: scale(0.9); opacity: 1; }
+  50% { transform: scale(1.4); opacity: 0.6; }
+  100% { transform: scale(0.9); opacity: 1; }
 }
 
 .fleet-marker-wrapper:hover .fleet-marker-pin {
-  transform: scale(1.15);
+  transform: scale(1.18);
 }
 
-.fleet-marker-plate {
-  margin-top: 4px;
-  background: #0f172a;
+.fleet-marker-plate-pill {
+  margin-top: 6px;
+  background: rgba(15, 23, 42, 0.95);
+  backdrop-filter: blur(6px);
   color: #ffffff;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid #38bdf8;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  z-index: 3;
+}
+
+.plate-text {
   font-family: 'JetBrains Mono', monospace, sans-serif;
   font-size: 11px;
   font-weight: 800;
-  padding: 2px 6px;
-  border-radius: 4px;
-  border: 1px solid #334155;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
-  white-space: nowrap;
   letter-spacing: 0.5px;
+  color: #ffffff;
+}
+
+.status-micro {
+  font-size: 8px;
+  font-weight: 800;
+  background: #10b981;
+  color: #ffffff;
+  padding: 1px 4px;
+  border-radius: 3px;
+  letter-spacing: 0.3px;
 }
 
 /* Popup Card en Leaflet */
