@@ -30,6 +30,7 @@ export default function PersonalPage() {
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [formData, setFormData] = useState({
     dni: '',
@@ -106,29 +107,34 @@ export default function PersonalPage() {
     }
 
     try {
+      setIsSubmitting(true);
       if (editingId) {
         await api.put(`/personal/${editingId}`, formData);
-        await dialogAlert({
+        setModalOpen(false);
+        fetchPersonal();
+        dialogAlert({
           title: 'Personal actualizado',
           message: '✅ Personal actualizado exitosamente',
           type: 'success',
         });
       } else {
         await api.post('/personal', formData);
-        await dialogAlert({
+        setModalOpen(false);
+        fetchPersonal();
+        dialogAlert({
           title: 'Personal registrado',
           message: '✅ Personal registrado exitosamente',
           type: 'success',
         });
       }
-      setModalOpen(false);
-      fetchPersonal();
     } catch (error: any) {
-      await dialogAlert({
+      dialogAlert({
         title: 'Error en personal',
         message: `❌ Error: ${error.response?.data?.message || error.message}`,
         type: 'danger',
       });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -434,11 +440,11 @@ export default function PersonalPage() {
               </div>
 
               <div className="modal-footer">
-                <button type="button" className="btn-secondary" onClick={() => setModalOpen(false)}>
+                <button type="button" className="btn-secondary" onClick={() => setModalOpen(false)} disabled={isSubmitting}>
                   Cancelar
                 </button>
-                <button type="submit" className="btn-primary">
-                  {editingId ? 'Guardar Cambios' : 'Registrar Personal'}
+                <button type="submit" className="btn-primary" disabled={isSubmitting}>
+                  {isSubmitting ? 'Guardando...' : editingId ? 'Guardar Cambios' : 'Registrar Personal'}
                 </button>
               </div>
             </form>
