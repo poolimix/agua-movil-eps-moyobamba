@@ -48,7 +48,8 @@
         {
           "locationAlwaysAndWhenInUsePermission": "Permite registrar las coordenadas GPS de la cisterna durante el reparto."
         }
-      ]
+      ],
+      "expo-font"
     ],
     "extra": {
       "eas": {
