@@ -126,6 +126,8 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
 
       for (const url of uniqueUrls) {
         try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 8000);
           const res = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -133,7 +135,9 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
               idToken: 'direct_auth_token',
               email: cleanEmail,
             }),
+            signal: controller.signal,
           });
+          clearTimeout(timeoutId);
           if (res) {
             response = res;
             break;
@@ -174,7 +178,8 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         [data.user.email]
       );
 
-      Alert.alert('Bienvenido', `Sesión iniciada como: ${data.user.nombres} (${data.user.rol})`);
+      // Transition smoothly to main screen without native dialog lock
+      setLoading(false);
       onLoginSuccess(data.user);
     } catch (err: any) {
       // Offline fallback: ONLY allow offline access if this exact user was previously verified and stored in local SQLite
@@ -186,7 +191,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         ) as any;
 
         if (existingSession && existingSession.email) {
-          Alert.alert('Modo Offline', `Iniciando sesión previamente autorizada como ${existingSession.nombres} (${existingSession.rol}).`);
+          setLoading(false);
           onLoginSuccess(existingSession);
         } else {
           Alert.alert(
@@ -195,7 +200,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
           );
         }
       } catch (offlineErr: any) {
-        Alert.alert('Error de conexión', 'No se pudo conectar con el servidor: ' + err.message);
+        Alert.alert('Error de conexión', 'No se pudo conectar con el servidor: ' + (err?.message || 'Tiempo de espera agotado.'));
       }
     } finally {
       setLoading(false);

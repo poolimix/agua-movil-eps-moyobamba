@@ -29,8 +29,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           ☰
         </button>
         <div className="mobile-brand">
-          <span className="mobile-brand-icon">💧</span>
-          <span className="mobile-brand-title">Agua Móvil</span>
+          <span className="mobile-brand-title">AguaTrack</span>
         </div>
       </header>
 

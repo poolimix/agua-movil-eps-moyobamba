@@ -1393,7 +1393,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
               maxLength={15}
               onFocus={() => {
                 setTimeout(() => {
-                  scrollViewRef.current?.scrollTo({ y: 380, animated: true });
+                  scrollViewRef.current?.scrollTo({ y: 620, animated: true });
                 }, 120);
               }}
               onSubmitEditing={() => handleSearchDNI()}
@@ -1514,6 +1514,11 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                       value={litrosEntregar}
                       onChangeText={setLitrosEntregar}
                       keyboardType="numeric"
+                      onFocus={() => {
+                        setTimeout(() => {
+                          scrollViewRef.current?.scrollTo({ y: 880, animated: true });
+                        }, 120);
+                      }}
                     />
                     <Text style={styles.litersSuffix}>Lts</Text>
                   </View>
