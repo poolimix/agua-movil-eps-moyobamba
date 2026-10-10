@@ -3,6 +3,27 @@ import { query } from '../db';
 
 export const getAllPersonal = async (req: Request, res: Response) => {
   try {
+    // Sincronizar automáticamente usuarios creados con rol CONDUCTOR o GESTOR_ENTREGA en personal_operativo
+    try {
+      await query(`
+        INSERT INTO personal_operativo (dni, nombres, apellidos, tipo_personal, email, estado)
+        SELECT 
+          COALESCE(u.dni, LPAD((u.id * 1000 + 100)::text, 8, '0')),
+          SPLIT_PART(u.nombres, ' ', 1),
+          COALESCE(NULLIF(SUBSTRING(u.nombres FROM POSITION(' ' IN u.nombres) + 1), ''), 'EPS'),
+          u.rol,
+          u.email,
+          COALESCE(u.estado, 'ACTIVO')
+        FROM usuarios u
+        WHERE u.rol IN ('CONDUCTOR', 'GESTOR_ENTREGA')
+          AND NOT EXISTS (
+            SELECT 1 FROM personal_operativo p 
+            WHERE LOWER(TRIM(p.email)) = LOWER(TRIM(u.email))
+          )
+        ON CONFLICT DO NOTHING;
+      `);
+    } catch (_) {}
+
     const { tipo, estado } = req.query;
     let sql = 'SELECT * FROM personal_operativo WHERE 1=1';
     const params: any[] = [];

@@ -204,7 +204,9 @@ export default function ProgramacionesPage() {
     const trips = calculateTrips(formData.litros_programados, cisternaId);
 
     // If cisterna has a habitual driver, auto-select it! (allow manual change too)
-    const autoDriverId = selectedCis?.conductor_habitual_id || formData.conductor_id || (conductores[0]?.id || '');
+    const habitualDriver = conductores.find((c) => c.id === Number(selectedCis?.conductor_habitual_id));
+    const currentDriver = conductores.find((c) => c.id === Number(formData.conductor_id));
+    const autoDriverId = habitualDriver ? habitualDriver.id : (currentDriver ? currentDriver.id : (conductores[0]?.id || ''));
 
     setFormData({
       ...formData,
@@ -220,7 +222,8 @@ export default function ProgramacionesPage() {
     const initialSelectedSectores = defaultSec ? [defaultSec.nombre] : [];
     const demandLitros = defaultSec?.meta_semanal_litros || 15000;
     const defaultCis = cisternas[0];
-    const defaultDriverId = defaultCis?.conductor_habitual_id || (conductores[0]?.id || '');
+    const habitualDriver = conductores.find((c) => c.id === Number(defaultCis?.conductor_habitual_id));
+    const defaultDriverId = habitualDriver ? habitualDriver.id : (conductores[0]?.id || '');
     const trips = calculateTrips(demandLitros, defaultCis?.id || 1);
 
     setFormData({
@@ -374,7 +377,7 @@ export default function ProgramacionesPage() {
     } catch (error: any) {
       await dialogAlert({
         title: 'Error al guardar programación',
-        message: `❌ Error: ${error.response?.data?.message || error.message}`,
+        message: `❌ Error: ${error.response?.data?.error || error.response?.data?.message || error.message}`,
         type: 'danger',
       });
     }
@@ -1060,6 +1063,7 @@ export default function ProgramacionesPage() {
                           value={formData.conductor_id}
                           onChange={(e) => setFormData({ ...formData, conductor_id: e.target.value })}
                         >
+                          <option value="">-- Seleccionar Conductor --</option>
                           {conductores.map((cond) => (
                             <option key={cond.id} value={cond.id}>
                               {cond.nombres} {cond.apellidos} ({cond.licencia_conducir || 'Licencia'})
@@ -1147,8 +1151,8 @@ export default function ProgramacionesPage() {
                       • <strong>Sectores a Cubrir:</strong> {formData.selectedSectores.length > 0 ? formData.selectedSectores.join(' + ') : 'Ninguno seleccionado'}<br />
                       • 💧 <strong>Demanda Total:</strong> {formData.litros_programados.toLocaleString()} Lts ({(formData.litros_programados / 1000).toFixed(2)} m³)<br />
                       • 🚛 <strong>Cisterna:</strong> {currentSelectedCisterna?.placa || 'Seleccionada'} ({currentSelectedCisterna?.capacidad_litros || 15000} Lts)<br />
-                      • 👤 <strong>Conductor:</strong> {conductores.find(c => c.id === Number(formData.conductor_id)) ? `${conductores.find(c => c.id === Number(formData.conductor_id))?.nombres} ${conductores.find(c => c.id === Number(formData.conductor_id))?.apellidos}` : 'Sin chofer'}<br />
-                      • 🤝 <strong>Gestor de Entrega:</strong> {ayudantes.find(a => a.id === Number(formData.ayudante_id)) ? `${ayudantes.find(a => a.id === Number(formData.ayudante_id))?.nombres} ${ayudantes.find(a => a.id === Number(formData.ayudante_id))?.apellidos}` : 'Sin gestor asignado'}<br />
+                      • 👤 <strong>Conductor:</strong> {conductores.find(c => c.id === Number(formData.conductor_id)) ? `${conductores.find(c => c.id === Number(formData.conductor_id))?.nombres} ${conductores.find(c => c.id === Number(formData.conductor_id))?.apellidos}` : (formData.conductor_id ? `Conductor asignado` : 'Sin chofer')}<br />
+                      • 🤝 <strong>Gestor de Entrega:</strong> {ayudantes.find(a => a.id === Number(formData.ayudante_id)) ? `${ayudantes.find(a => a.id === Number(formData.ayudante_id))?.nombres} ${ayudantes.find(a => a.id === Number(formData.ayudante_id))?.apellidos}` : (formData.ayudante_id ? `Gestor asignado` : 'Sin gestor asignado')}<br />
                       • 🏁 <strong>Total de Viajes Calculados:</strong> <strong style={{ color: '#0284c7', fontSize: 15 }}>{formData.viajes_estimados} {formData.viajes_estimados === 1 ? 'Viaje' : 'Viajes'}</strong>
                     </div>
                   </div>

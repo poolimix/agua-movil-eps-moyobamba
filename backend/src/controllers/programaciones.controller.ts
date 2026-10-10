@@ -9,18 +9,22 @@ const ensureProgramacionesSchema = async () => {
       CREATE TABLE IF NOT EXISTS programaciones (
         id SERIAL PRIMARY KEY,
         fecha DATE NOT NULL DEFAULT CURRENT_DATE,
-        zona VARCHAR(150),
-        estado VARCHAR(50) DEFAULT 'Activa'
+        zona TEXT,
+        estado VARCHAR(100) DEFAULT 'Activa'
       );
       ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS fecha DATE DEFAULT CURRENT_DATE;
-      ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS zona VARCHAR(150);
-      ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS estado VARCHAR(50) DEFAULT 'Activa';
+      ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS zona TEXT;
+      ALTER TABLE programaciones ALTER COLUMN zona TYPE TEXT;
+      ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS estado VARCHAR(100) DEFAULT 'Activa';
+      ALTER TABLE programaciones ALTER COLUMN estado TYPE VARCHAR(100);
       ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS cisterna_id INT REFERENCES cisternas(id) ON DELETE SET NULL;
       ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS conductor_id INT REFERENCES personal_operativo(id) ON DELETE SET NULL;
       ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS ayudante_id INT REFERENCES personal_operativo(id) ON DELETE SET NULL;
       ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS litros_programados INT DEFAULT 0;
       ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS viajes_estimados INT DEFAULT 1;
-      ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS dias_semana VARCHAR(100) DEFAULT 'Lunes, Miércoles, Viernes';
+      ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS dias_semana TEXT DEFAULT 'Lunes, Miércoles, Viernes';
+      ALTER TABLE programaciones ALTER COLUMN dias_semana TYPE TEXT;
+      ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS sectores_seleccionados TEXT;
 
       ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS programacion_id INT REFERENCES programaciones(id) ON DELETE SET NULL;
       ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS etapa_control VARCHAR(50) DEFAULT 'CARGA';
@@ -79,6 +83,7 @@ export const createProgramacion = async (req: Request, res: Response) => {
     const {
       fecha,
       zona,
+      sectores_seleccionados,
       estado = 'Activa',
       cisterna_id,
       conductor_id,
@@ -88,41 +93,66 @@ export const createProgramacion = async (req: Request, res: Response) => {
       dias_semana = 'Lunes, Miércoles, Viernes',
     } = req.body;
 
-    let viajes = parseInt(viajes_estimados, 10);
+    // Validación segura de IDs numéricos para evitar errores con strings vacías o NaN
+    const parsedCisternaId = cisterna_id && !isNaN(parseInt(String(cisterna_id), 10)) && parseInt(String(cisterna_id), 10) > 0 
+      ? parseInt(String(cisterna_id), 10) 
+      : null;
+    let parsedConductorId = conductor_id && !isNaN(parseInt(String(conductor_id), 10)) && parseInt(String(conductor_id), 10) > 0 
+      ? parseInt(String(conductor_id), 10) 
+      : null;
+    let parsedAyudanteId = ayudante_id && !isNaN(parseInt(String(ayudante_id), 10)) && parseInt(String(ayudante_id), 10) > 0 
+      ? parseInt(String(ayudante_id), 10) 
+      : null;
 
-    // If trips not explicitly provided, calculate based on cisterna capacity and sector demand
+    // Verificar existencia de foreign keys para prevenir violación de constraints
+    if (parsedConductorId) {
+      const condCheck = await query('SELECT id FROM personal_operativo WHERE id = $1', [parsedConductorId]);
+      if (condCheck.rows.length === 0) parsedConductorId = null;
+    }
+
+    if (parsedAyudanteId) {
+      const ayudCheck = await query('SELECT id FROM personal_operativo WHERE id = $1', [parsedAyudanteId]);
+      if (ayudCheck.rows.length === 0) parsedAyudanteId = null;
+    }
+
+    let viajes = parseInt(String(viajes_estimados), 10);
+
+    // Si los viajes no están definidos, calcular según capacidad de cisterna y demanda
     if (!viajes || isNaN(viajes) || viajes <= 0) {
-      if (cisterna_id && litros_programados) {
-        const cisternaRes = await query('SELECT capacidad_litros FROM cisternas WHERE id = $1', [cisterna_id]);
+      if (parsedCisternaId && litros_programados) {
+        const cisternaRes = await query('SELECT capacidad_litros FROM cisternas WHERE id = $1', [parsedCisternaId]);
         const cap = cisternaRes.rows[0]?.capacidad_litros || 15000;
-        viajes = Math.max(1, Math.ceil(parseInt(litros_programados, 10) / cap));
+        viajes = Math.max(1, Math.ceil(parseInt(String(litros_programados), 10) / cap));
       } else {
         viajes = 1;
       }
     }
 
     const insertQuery = `
-      INSERT INTO programaciones (fecha, zona, estado, cisterna_id, conductor_id, ayudante_id, litros_programados, viajes_estimados, dias_semana)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      INSERT INTO programaciones (
+        fecha, zona, sectores_seleccionados, estado, cisterna_id, conductor_id, ayudante_id, litros_programados, viajes_estimados, dias_semana
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING *;
     `;
 
     const result = await query(insertQuery, [
       fecha || new Date(),
-      zona,
-      estado,
-      cisterna_id ? parseInt(cisterna_id, 10) : null,
-      conductor_id ? parseInt(conductor_id, 10) : null,
-      ayudante_id ? parseInt(ayudante_id, 10) : null,
-      parseInt(litros_programados, 10) || 0,
+      zona || sectores_seleccionados || 'Sector General',
+      sectores_seleccionados || zona || null,
+      estado || 'Activa',
+      parsedCisternaId,
+      parsedConductorId,
+      parsedAyudanteId,
+      parseInt(String(litros_programados), 10) || 0,
       viajes,
-      dias_semana,
+      dias_semana || 'Lunes, Miércoles, Viernes',
     ]);
 
     res.status(201).json(result.rows[0]);
   } catch (error: any) {
     console.error('Error creating programacion:', error);
-    res.status(500).json({ message: 'Error creating programacion', error: error.message });
+    res.status(500).json({ message: 'Error al crear la programación', error: error.message });
   }
 };
 
@@ -142,13 +172,34 @@ export const updateProgramacion = async (req: Request, res: Response) => {
       dias_semana,
     } = req.body;
 
-    let viajes = parseInt(viajes_estimados, 10);
+    // Validación segura de IDs numéricos
+    const parsedCisternaId = cisterna_id && !isNaN(parseInt(String(cisterna_id), 10)) && parseInt(String(cisterna_id), 10) > 0 
+      ? parseInt(String(cisterna_id), 10) 
+      : null;
+    let parsedConductorId = conductor_id && !isNaN(parseInt(String(conductor_id), 10)) && parseInt(String(conductor_id), 10) > 0 
+      ? parseInt(String(conductor_id), 10) 
+      : null;
+    let parsedAyudanteId = ayudante_id && !isNaN(parseInt(String(ayudante_id), 10)) && parseInt(String(ayudante_id), 10) > 0 
+      ? parseInt(String(ayudante_id), 10) 
+      : null;
+
+    if (parsedConductorId) {
+      const condCheck = await query('SELECT id FROM personal_operativo WHERE id = $1', [parsedConductorId]);
+      if (condCheck.rows.length === 0) parsedConductorId = null;
+    }
+
+    if (parsedAyudanteId) {
+      const ayudCheck = await query('SELECT id FROM personal_operativo WHERE id = $1', [parsedAyudanteId]);
+      if (ayudCheck.rows.length === 0) parsedAyudanteId = null;
+    }
+
+    let viajes = parseInt(String(viajes_estimados), 10);
 
     if (!viajes || isNaN(viajes) || viajes <= 0) {
-      if (cisterna_id && litros_programados) {
-        const cisternaRes = await query('SELECT capacidad_litros FROM cisternas WHERE id = $1', [cisterna_id]);
+      if (parsedCisternaId && litros_programados) {
+        const cisternaRes = await query('SELECT capacidad_litros FROM cisternas WHERE id = $1', [parsedCisternaId]);
         const cap = cisternaRes.rows[0]?.capacidad_litros || 15000;
-        viajes = Math.max(1, Math.ceil(parseInt(litros_programados, 10) / cap));
+        viajes = Math.max(1, Math.ceil(parseInt(String(litros_programados), 10) / cap));
       } else {
         viajes = 1;
       }
@@ -173,10 +224,10 @@ export const updateProgramacion = async (req: Request, res: Response) => {
       fecha,
       zona,
       estado,
-      cisterna_id ? parseInt(cisterna_id, 10) : null,
-      conductor_id ? parseInt(conductor_id, 10) : null,
-      ayudante_id ? parseInt(ayudante_id, 10) : null,
-      parseInt(litros_programados, 10) || 0,
+      parsedCisternaId,
+      parsedConductorId,
+      parsedAyudanteId,
+      parseInt(String(litros_programados), 10) || 0,
       viajes,
       dias_semana || 'Lunes, Miércoles, Viernes',
       id,
