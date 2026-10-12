@@ -70,19 +70,52 @@ export const bootstrapSchema = async () => {
       );
     `);
 
-    // 4. Tabla de Vales de Consumo
+    // 4. Tabla de Vales de Consumo y Notificaciones
     await query(`
       CREATE TABLE IF NOT EXISTS vales_entrega (
         id SERIAL PRIMARY KEY,
-        codigo_vale VARCHAR(50) UNIQUE NOT NULL,
+        codigo_vale VARCHAR(50),
+        codigo_unico VARCHAR(50),
         beneficiario_id INT REFERENCES beneficiarios(id) ON DELETE CASCADE,
-        litros_asignados NUMERIC(10,2) NOT NULL,
-        estado VARCHAR(30) DEFAULT 'PENDIENTE',
+        litros_asignados NUMERIC(10,2) DEFAULT 0,
+        litros_sugeridos NUMERIC(10,2) DEFAULT 0,
+        qr_data TEXT,
+        whatsapp_enviado BOOLEAN DEFAULT FALSE,
+        sms_enviado BOOLEAN DEFAULT FALSE,
+        correo_enviado BOOLEAN DEFAULT FALSE,
+        fecha_despacho TIMESTAMP,
+        errores_notificacion JSONB DEFAULT '{}'::jsonb,
+        estado VARCHAR(30) DEFAULT 'EMITIDO',
         fecha_emision DATE DEFAULT CURRENT_DATE,
         fecha_canje TIMESTAMP,
         programacion_id INT REFERENCES programaciones(id) ON DELETE SET NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+
+      -- Asegurar todas las columnas en vales_entrega si la tabla fue creada previamente
+      ALTER TABLE vales_entrega ADD COLUMN IF NOT EXISTS codigo_unico VARCHAR(50);
+      ALTER TABLE vales_entrega ADD COLUMN IF NOT EXISTS codigo_vale VARCHAR(50);
+      ALTER TABLE vales_entrega ADD COLUMN IF NOT EXISTS litros_sugeridos NUMERIC(10,2) DEFAULT 0;
+      ALTER TABLE vales_entrega ADD COLUMN IF NOT EXISTS litros_asignados NUMERIC(10,2) DEFAULT 0;
+      ALTER TABLE vales_entrega ADD COLUMN IF NOT EXISTS qr_data TEXT;
+      ALTER TABLE vales_entrega ADD COLUMN IF NOT EXISTS whatsapp_enviado BOOLEAN DEFAULT FALSE;
+      ALTER TABLE vales_entrega ADD COLUMN IF NOT EXISTS sms_enviado BOOLEAN DEFAULT FALSE;
+      ALTER TABLE vales_entrega ADD COLUMN IF NOT EXISTS correo_enviado BOOLEAN DEFAULT FALSE;
+      ALTER TABLE vales_entrega ADD COLUMN IF NOT EXISTS fecha_despacho TIMESTAMP;
+      ALTER TABLE vales_entrega ADD COLUMN IF NOT EXISTS errores_notificacion JSONB DEFAULT '{}'::jsonb;
+      ALTER TABLE vales_entrega ADD COLUMN IF NOT EXISTS estado VARCHAR(30) DEFAULT 'EMITIDO';
+      ALTER TABLE vales_entrega ADD COLUMN IF NOT EXISTS fecha_emision DATE DEFAULT CURRENT_DATE;
+      ALTER TABLE vales_entrega ADD COLUMN IF NOT EXISTS fecha_canje TIMESTAMP;
+      ALTER TABLE vales_entrega ADD COLUMN IF NOT EXISTS programacion_id INT REFERENCES programaciones(id) ON DELETE SET NULL;
+
+      -- Flexibilizar columnas heredadas para evitar conflictos de constraint
+      ALTER TABLE vales_entrega ALTER COLUMN codigo_vale DROP NOT NULL;
+      ALTER TABLE vales_entrega ALTER COLUMN litros_asignados DROP NOT NULL;
+      ALTER TABLE vales_entrega ALTER COLUMN estado SET DEFAULT 'EMITIDO';
+
+      CREATE INDEX IF NOT EXISTS idx_vales_prog ON vales_entrega(programacion_id);
+      CREATE INDEX IF NOT EXISTS idx_vales_benef ON vales_entrega(beneficiario_id);
+      CREATE INDEX IF NOT EXISTS idx_vales_cod_unico ON vales_entrega(codigo_unico);
     `);
 
     // 5. Asegurar columnas normativas y padrón en beneficiarios, sectores, cisternas y entregas

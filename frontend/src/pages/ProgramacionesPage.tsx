@@ -282,10 +282,10 @@ export default function ProgramacionesPage() {
   const handleDespacharVales = async () => {
     if (!selectedProgForVales) return;
     const ok = await dialogConfirm({
-      title: '¿Despachar vales digitales?',
-      message: `¿Confirmas el despacho masivo multicanal (WhatsApp + SMS + Email) para la programación #${selectedProgForVales.id}?`,
+      title: '¿Generar y despachar vales?',
+      message: `¿Confirmas la emisión de vales para la programación #${selectedProgForVales.id}? Los vales quedarán generados con QR listos para impresión física y se enviarán por correo a quienes tengan email registrado. (WhatsApp y SMS quedan en espera sin cobro a terceros).`,
       type: 'info',
-      confirmText: 'Sí, despachar',
+      confirmText: 'Sí, generar y despachar',
     });
     if (!ok) return;
 
@@ -293,8 +293,8 @@ export default function ProgramacionesPage() {
       setDispatching(true);
       const res = await api.post(`/programaciones/${selectedProgForVales.id}/despachar-vales`);
       await dialogAlert({
-        title: 'Despacho Completado',
-        message: `✅ ${res.data.message}\nResumen:\n• WhatsApp: ${res.data.resumen.whatsappEnviados}\n• SMS: ${res.data.resumen.smsEnviados}\n• Correo: ${res.data.resumen.correoEnviados}`,
+        title: 'Vales Generados y Despachados',
+        message: `✅ ${res.data.message}\n\nResumen:\n• Vales generados listos para imprimir: ${res.data.valesGenerados || res.data.totalBeneficiarios}\n• Correos enviados: ${res.data.resumen.correoEnviados}\n• Beneficiarios sin correo: ${res.data.resumen.sinCorreo || 0}\n• WhatsApp / SMS: En espera (sin cobro a terceros)`,
         type: 'success',
       });
       fetchVales(selectedProgForVales.id);
@@ -316,14 +316,14 @@ export default function ProgramacionesPage() {
       setRetrying(true);
       const res = await api.post(`/programaciones/${selectedProgForVales.id}/reintentar-vales-fallidos`);
       await dialogAlert({
-        title: 'Reintento Exitoso',
+        title: 'Reintento de Correos',
         message: `✅ ${res.data.message}`,
         type: 'success',
       });
       fetchVales(selectedProgForVales.id);
     } catch (error: any) {
       await dialogAlert({
-        title: 'Error al reintentar',
+        title: 'Error al reintentar correos',
         message: `❌ ${error.response?.data?.message || error.message}`,
         type: 'danger',
       });
@@ -801,14 +801,15 @@ export default function ProgramacionesPage() {
                   disabled={dispatching}
                   style={{ background: '#059669' }}
                 >
-                  🚀 {dispatching ? 'Despachando por lotes (15)...' : 'Despachar a Todos (3 Canales)'}
+                  🚀 {dispatching ? 'Generando y emitiendo vales...' : 'Generar y Despachar Vales (Email + Impresión)'}
                 </button>
                 <button
                   className="btn-secondary"
                   onClick={handleReintentarFallidos}
                   disabled={retrying}
+                  title="Reintentar envío para beneficiarios con correo electrónico no entregado"
                 >
-                  🔄 {retrying ? 'Reintentando...' : 'Reintentar Canales Fallidos'}
+                  📧 {retrying ? 'Reintentando correos...' : 'Reintentar Correos Fallidos'}
                 </button>
               </div>
             </div>
@@ -826,7 +827,7 @@ export default function ProgramacionesPage() {
                     <th>WhatsApp</th>
                     <th>SMS</th>
                     <th>Correo</th>
-                    <th>QR</th>
+                    <th>Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -839,7 +840,7 @@ export default function ProgramacionesPage() {
                   ) : filteredVales.length === 0 ? (
                     <tr>
                       <td colSpan={9} className="empty-state">
-                        <span>🎟️</span> No hay vales emitidos aún. Presiona "Despachar a Todos" para generarlos y enviarlos.
+                        <span>🎟️</span> No hay vales emitidos aún. Presiona "Generar y Despachar Vales" para crearlos y habilitar la impresión.
                       </td>
                     </tr>
                   ) : (
@@ -864,21 +865,23 @@ export default function ProgramacionesPage() {
                           {v.whatsapp_enviado ? (
                             <span title="Enviado con éxito" style={{ fontSize: 14 }}>🟢</span>
                           ) : (
-                            <span title={v.errores_notificacion?.whatsapp || 'Pendiente / Fallido'} style={{ fontSize: 14, cursor: 'help' }}>🔴</span>
+                            <span title={v.errores_notificacion?.whatsapp || 'En espera: no estipulado pago a terceros'} style={{ fontSize: 14, cursor: 'help' }}>⏸️</span>
                           )}
                         </td>
                         <td style={{ textAlign: 'center' }}>
                           {v.sms_enviado ? (
                             <span title="Enviado con éxito" style={{ fontSize: 14 }}>🟢</span>
                           ) : (
-                            <span title={v.errores_notificacion?.sms || 'Pendiente / Fallido'} style={{ fontSize: 14, cursor: 'help' }}>🔴</span>
+                            <span title={v.errores_notificacion?.sms || 'En espera: no estipulado pago a terceros'} style={{ fontSize: 14, cursor: 'help' }}>⏸️</span>
                           )}
                         </td>
                         <td style={{ textAlign: 'center' }}>
                           {v.correo_enviado ? (
-                            <span title="Enviado con éxito" style={{ fontSize: 14 }}>🟢</span>
+                            <span title="Correo enviado con éxito" style={{ fontSize: 14 }}>🟢</span>
+                          ) : !v.email ? (
+                            <span title="Sin correo registrado en padrón" style={{ fontSize: 14, opacity: 0.6 }}>⚪</span>
                           ) : (
-                            <span title={v.errores_notificacion?.correo || 'Pendiente / Fallido'} style={{ fontSize: 14, cursor: 'help' }}>🔴</span>
+                            <span title={v.errores_notificacion?.email || 'Fallo de entrega SMTP'} style={{ fontSize: 14, cursor: 'help' }}>🔴</span>
                           )}
                         </td>
                         <td>

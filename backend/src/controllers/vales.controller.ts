@@ -89,15 +89,48 @@ export const despacharValesProgramacion = async (req: Request, res: Response) =>
     }
     const programacion = progRes.rows[0];
 
-    // 2. Fetch beneficiaries (matching sector/zone or all available)
-    const benefRes = await query(`
-      SELECT 
-        id, dni, nombres_apellidos, distrito, sector_aahh, sector,
-        num_vivienda, COALESCE(num_miembros, 1) as num_miembros,
-        calle_direccion, direccion, telefono, email
-      FROM beneficiarios
-      ORDER BY id ASC
-    `);
+    // 2. Fetch beneficiaries (matching sector/zone if specific, or all padrón)
+    let sectoresProg: string[] = [];
+    if (programacion.sectores_seleccionados) {
+      if (Array.isArray(programacion.sectores_seleccionados)) {
+        sectoresProg = programacion.sectores_seleccionados;
+      } else if (typeof programacion.sectores_seleccionados === 'string') {
+        try {
+          const parsed = JSON.parse(programacion.sectores_seleccionados);
+          if (Array.isArray(parsed)) sectoresProg = parsed;
+        } catch {
+          sectoresProg = programacion.sectores_seleccionados.split(',').map((s: string) => s.trim());
+        }
+      }
+    }
+    if (sectoresProg.length === 0 && programacion.zona) {
+      sectoresProg = programacion.zona.split(',').map((s: string) => s.trim()).filter(Boolean);
+    }
+
+    let benefRes;
+    if (sectoresProg.length > 0) {
+      benefRes = await query(`
+        SELECT 
+          id, dni, nombres_apellidos, distrito, sector_aahh, sector,
+          num_vivienda, COALESCE(num_miembros, 1) as num_miembros,
+          calle_direccion, direccion, telefono, email
+        FROM beneficiarios
+        WHERE UPPER(TRIM(COALESCE(sector_aahh, sector, ''))) = ANY($1::text[])
+        ORDER BY id ASC
+      `, [sectoresProg.map(s => s.toUpperCase().trim())]);
+    }
+
+    // Si no se encontró por sector específico, tomar todo el padrón de beneficiarios
+    if (!benefRes || benefRes.rows.length === 0) {
+      benefRes = await query(`
+        SELECT 
+          id, dni, nombres_apellidos, distrito, sector_aahh, sector,
+          num_vivienda, COALESCE(num_miembros, 1) as num_miembros,
+          calle_direccion, direccion, telefono, email
+        FROM beneficiarios
+        ORDER BY id ASC
+      `);
+    }
 
     let beneficiarios = benefRes.rows;
 
@@ -105,18 +138,19 @@ export const despacharValesProgramacion = async (req: Request, res: Response) =>
       return res.status(400).json({ message: 'No hay beneficiarios en el padrón para despachar vales.' });
     }
 
-    const fechaFormateada = new Date(programacion.fecha).toLocaleDateString('es-PE', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    });
+    const fechaObj = programacion.fecha ? new Date(programacion.fecha) : new Date();
+    const fechaFormateada = !isNaN(fechaObj.getTime())
+      ? fechaObj.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+      : new Date().toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
-    const dateSlug = new Date(programacion.fecha).toISOString().slice(0, 10).replace(/-/g, '');
+    const dateSlug = !isNaN(fechaObj.getTime())
+      ? fechaObj.toISOString().slice(0, 10).replace(/-/g, '')
+      : new Date().toISOString().slice(0, 10).replace(/-/g, '');
 
     // 3. Generate or retrieve Vouchers (vales_entrega)
     const valesToProcess: any[] = [];
     const config = await getConfiguracion();
-    const dotacionSemanal = config.dotacion_semanal_por_habitante;
+    const dotacionSemanal = config.dotacion_semanal_por_habitante || 350;
 
     for (const b of beneficiarios) {
       // Regla de Negocio: Dotación familiar semanal según configuración del sistema
@@ -133,23 +167,24 @@ export const despacharValesProgramacion = async (req: Request, res: Response) =>
       let vale;
       if (existing.rows.length > 0) {
         vale = existing.rows[0];
-        // Si el vale previo tenía el valor diario antiguo (< dotación semanal), actualizarlo a la dotación semanal
-        if (parseFloat(vale.litros_sugeridos) < litros) {
-          const upd = await query(
-            `UPDATE vales_entrega 
-             SET litros_sugeridos = $1, qr_data = $2 
-             WHERE id = $3 
-             RETURNING *`,
-            [litros, qrData, vale.id]
-          );
-          vale = upd.rows[0];
-        }
+        const upd = await query(
+          `UPDATE vales_entrega 
+           SET litros_sugeridos = $1,
+               litros_asignados = $1,
+               qr_data = $2,
+               codigo_unico = COALESCE(codigo_unico, $3),
+               codigo_vale = COALESCE(codigo_vale, $3)
+           WHERE id = $4 
+           RETURNING *`,
+          [litros, qrData, codigoUnico, vale.id]
+        );
+        vale = upd.rows[0];
       } else {
         const ins = await query(
           `INSERT INTO vales_entrega (
-            programacion_id, beneficiario_id, codigo_unico, litros_sugeridos, qr_data, estado
+            programacion_id, beneficiario_id, codigo_unico, codigo_vale, litros_sugeridos, litros_asignados, qr_data, estado
           )
-          VALUES ($1, $2, $3, $4, $5, 'EMITIDO')
+          VALUES ($1, $2, $3, $3, $4, $4, $5, 'EMITIDO')
           RETURNING *`,
           [programacion.id, b.id, codigoUnico, litros, qrData]
         );
@@ -160,73 +195,99 @@ export const despacharValesProgramacion = async (req: Request, res: Response) =>
         vale,
         beneficiario: b,
         litros,
-        codigoUnico: vale.codigo_unico,
-        qrData: vale.qr_data,
+        codigoUnico: vale.codigo_unico || codigoUnico,
+        qrData: vale.qr_data || qrData,
       });
     }
 
-    // 4. Batch Dispatch in chunks of 15
-    let waSuccessCount = 0;
-    let smsSuccessCount = 0;
+    // 4. Batch Dispatch
+    // Regla: WhatsApp y SMS quedan en espera (no se paga a proveedores terceros).
+    // Correo se envía a los usuarios que tengan e-mail registrado.
     let emailSuccessCount = 0;
+    let emailSinRegistroCount = 0;
+    let emailErrorCount = 0;
 
     for (let i = 0; i < valesToProcess.length; i += BATCH_SIZE) {
       const chunk = valesToProcess.slice(i, i + BATCH_SIZE);
 
       await Promise.all(
         chunk.map(async (item) => {
-          const payload = {
-            beneficiario: {
-              nombres_apellidos: item.beneficiario.nombres_apellidos,
-              dni: item.beneficiario.dni,
-              telefono: item.beneficiario.telefono,
-              email: item.beneficiario.email,
-              sector: item.beneficiario.sector_aahh || item.beneficiario.sector,
-            },
-            codigo_unico: item.codigoUnico,
-            fecha_programada: fechaFormateada,
-            litros: item.litros,
-            qr_data: item.qrData,
-          };
+          let isEmailOk = false;
+          let emailStatusDetail: string | null = null;
+          const tieneEmail = Boolean(item.beneficiario.email && item.beneficiario.email.includes('@'));
 
-          const dispatchResult = await MultichannelNotificationService.dispatchAll(payload);
+          if (tieneEmail) {
+            try {
+              const payload = {
+                beneficiario: {
+                  nombres_apellidos: item.beneficiario.nombres_apellidos,
+                  dni: item.beneficiario.dni,
+                  telefono: item.beneficiario.telefono,
+                  email: item.beneficiario.email,
+                  sector: item.beneficiario.sector_aahh || item.beneficiario.sector,
+                },
+                codigo_unico: item.codigoUnico,
+                fecha_programada: fechaFormateada,
+                litros: item.litros,
+                qr_data: item.qrData,
+              };
 
-          const isWaOk = dispatchResult.whatsapp.success;
-          const isSmsOk = dispatchResult.sms.success;
-          const isEmailOk = dispatchResult.email.success;
+              const dispatchResult = await MultichannelNotificationService.dispatchAll(payload, {
+                channels: {
+                  whatsapp: false,
+                  sms: false,
+                  email: true,
+                },
+              });
 
-          if (isWaOk) waSuccessCount++;
-          if (isSmsOk) smsSuccessCount++;
-          if (isEmailOk) emailSuccessCount++;
+              if (dispatchResult.email.success) {
+                isEmailOk = true;
+                emailSuccessCount++;
+              } else {
+                emailErrorCount++;
+                emailStatusDetail = dispatchResult.email.error || 'Error SMTP al enviar correo';
+              }
+            } catch (err: any) {
+              emailErrorCount++;
+              emailStatusDetail = err.message || 'Excepción enviando correo';
+            }
+          } else {
+            emailSinRegistroCount++;
+            emailStatusDetail = 'Sin correo electrónico registrado';
+          }
 
           const erroresJson = {
-            whatsapp: dispatchResult.whatsapp.error || null,
-            sms: dispatchResult.sms.error || null,
-            email: dispatchResult.email.error || null,
+            whatsapp: 'En espera (sin cobro a terceros)',
+            sms: 'En espera (sin cobro a terceros)',
+            email: emailStatusDetail,
           };
 
           await query(
             `UPDATE vales_entrega 
-             SET whatsapp_enviado = $1,
-                 sms_enviado = $2,
-                 correo_enviado = $3,
+             SET whatsapp_enviado = FALSE,
+                 sms_enviado = FALSE,
+                 correo_enviado = $1,
                  fecha_despacho = CURRENT_TIMESTAMP,
-                 errores_notificacion = $4
-             WHERE id = $5`,
-            [isWaOk, isSmsOk, isEmailOk, JSON.stringify(erroresJson), item.vale.id]
+                 errores_notificacion = $2
+             WHERE id = $3`,
+            [isEmailOk, JSON.stringify(erroresJson), item.vale.id]
           );
         })
       );
     }
 
     res.status(200).json({
-      message: `Despacho multicanal completado para ${valesToProcess.length} beneficiarios.`,
+      message: `Se emitieron ${valesToProcess.length} vales listos para impresión. Correo enviado a ${emailSuccessCount} beneficiarios.`,
       totalBeneficiarios: valesToProcess.length,
+      valesGenerados: valesToProcess.length,
       resumen: {
-        whatsappEnviados: waSuccessCount,
-        smsEnviados: smsSuccessCount,
+        whatsappEnviados: 0,
+        smsEnviados: 0,
         correoEnviados: emailSuccessCount,
+        sinCorreo: emailSinRegistroCount,
+        erroresCorreo: emailErrorCount,
       },
+      politicaTerceros: 'WhatsApp y SMS permanecen en espera sin cobros de terceros.',
     });
   } catch (error: any) {
     console.error('Error despachando vales:', error);
@@ -292,21 +353,22 @@ export const reintentarValesFallidos = async (req: Request, res: Response) => {
       FROM vales_entrega v
       INNER JOIN beneficiarios b ON v.beneficiario_id = b.id
       WHERE v.programacion_id = $1
-        AND (v.whatsapp_enviado = FALSE OR v.sms_enviado = FALSE OR v.correo_enviado = FALSE)
+        AND v.correo_enviado = FALSE
+        AND b.email IS NOT NULL
+        AND b.email LIKE '%@%'
     `, [id]);
 
     if (valesFallidos.rows.length === 0) {
       return res.status(200).json({
-        message: 'No existen vales con canales pendientes o fallidos en esta programación.',
+        message: 'No existen beneficiarios con correo pendiente o fallido en esta programación.',
         reintentadosCount: 0,
       });
     }
 
-    const fechaFormateada = new Date(programacion.fecha).toLocaleDateString('es-PE', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    });
+    const fechaObj = programacion.fecha ? new Date(programacion.fecha) : new Date();
+    const fechaFormateada = !isNaN(fechaObj.getTime())
+      ? fechaObj.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+      : new Date().toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
     let reintentados = 0;
 
@@ -315,55 +377,61 @@ export const reintentarValesFallidos = async (req: Request, res: Response) => {
 
       await Promise.all(
         chunk.map(async (v) => {
-          const payload = {
-            beneficiario: {
-              nombres_apellidos: v.nombres_apellidos,
-              dni: v.dni,
-              telefono: v.telefono,
-              email: v.email,
-              sector: v.sector_aahh,
-            },
-            codigo_unico: v.codigo_unico,
-            fecha_programada: fechaFormateada,
-            litros: v.litros_sugeridos,
-            qr_data: v.qr_data,
-          };
+          let isEmailOk = false;
+          let emailError: string | null = null;
 
-          const dispatchResult = await MultichannelNotificationService.dispatchAll(payload, {
-            channels: {
-              whatsapp: !v.whatsapp_enviado,
-              sms: !v.sms_enviado,
-              email: !v.correo_enviado,
-            },
-          });
+          try {
+            const payload = {
+              beneficiario: {
+                nombres_apellidos: v.nombres_apellidos,
+                dni: v.dni,
+                telefono: v.telefono,
+                email: v.email,
+                sector: v.sector_aahh,
+              },
+              codigo_unico: v.codigo_unico,
+              fecha_programada: fechaFormateada,
+              litros: v.litros_sugeridos,
+              qr_data: v.qr_data,
+            };
 
-          const newWa = v.whatsapp_enviado || dispatchResult.whatsapp.success;
-          const newSms = v.sms_enviado || dispatchResult.sms.success;
-          const newEmail = v.correo_enviado || dispatchResult.email.success;
+            const dispatchResult = await MultichannelNotificationService.dispatchAll(payload, {
+              channels: {
+                whatsapp: false,
+                sms: false,
+                email: true,
+              },
+            });
+
+            if (dispatchResult.email.success) {
+              isEmailOk = true;
+              reintentados++;
+            } else {
+              emailError = dispatchResult.email.error || 'Error al reintentar correo';
+            }
+          } catch (err: any) {
+            emailError = err.message || 'Excepción al reintentar correo';
+          }
 
           const updatedErrores = {
-            whatsapp: newWa ? null : (dispatchResult.whatsapp.error || v.errores_notificacion?.whatsapp),
-            sms: newSms ? null : (dispatchResult.sms.error || v.errores_notificacion?.sms),
-            email: newEmail ? null : (dispatchResult.email.error || v.errores_notificacion?.email),
+            whatsapp: 'En espera (sin cobro a terceros)',
+            sms: 'En espera (sin cobro a terceros)',
+            email: isEmailOk ? null : emailError,
           };
 
           await query(`
             UPDATE vales_entrega
-            SET whatsapp_enviado = $1,
-                sms_enviado = $2,
-                correo_enviado = $3,
+            SET correo_enviado = $1,
                 fecha_despacho = CURRENT_TIMESTAMP,
-                errores_notificacion = $4
-            WHERE id = $5
-          `, [newWa, newSms, newEmail, JSON.stringify(updatedErrores), v.id]);
-
-          reintentados++;
+                errores_notificacion = $2
+            WHERE id = $3
+          `, [isEmailOk, JSON.stringify(updatedErrores), v.id]);
         })
       );
     }
 
     res.status(200).json({
-      message: `Reintento completado para ${reintentados} vales fallidos.`,
+      message: `Reintento de correo completado. ${reintentados} correos enviados exitosamente.`,
       reintentadosCount: reintentados,
     });
   } catch (error: any) {
