@@ -178,13 +178,13 @@ export class MultichannelNotificationService {
       return { success: false, error: 'Correo no registrado o inválido' };
     }
 
-    const host = process.env.SMTP_HOST;
+    const host = (process.env.SMTP_HOST || '').trim();
     const port = Number(process.env.SMTP_PORT) || 587;
-    const user = process.env.SMTP_USER;
-    const pass = process.env.SMTP_PASS ? process.env.SMTP_PASS.replace(/\s+/g, '') : '';
-    const from = process.env.SMTP_FROM || '"EPS Moyobamba - Agua Móvil" <notificaciones@epsmoyobamba.gob.pe>';
+    const user = (process.env.SMTP_USER || '').replace(/['"]/g, '').trim();
+    const pass = (process.env.SMTP_PASS || '').replace(/['"\s]/g, '').trim();
+    const from = process.env.SMTP_FROM?.trim() || `"EPS Moyobamba - AguaTrack" <${user}>`;
 
-    if (!host || !user || !pass || host.includes('smtp.example.com')) {
+    if (!user || !pass || host.includes('smtp.example.com')) {
       console.log(`[EMAIL SIMULADO] Enviar a ${toEmail} | Vale: ${payload.codigo_unico}`);
       return {
         success: true,
@@ -193,15 +193,21 @@ export class MultichannelNotificationService {
     }
 
     try {
-      const transporter = nodemailer.createTransport({
-        host,
-        port,
-        secure: port === 465,
-        auth: { user, pass },
-        tls: {
-          rejectUnauthorized: false,
-        },
-      });
+      const isGmail = host.includes('gmail') || user.endsWith('@gmail.com');
+      const transporter = isGmail
+        ? nodemailer.createTransport({
+            service: 'gmail',
+            auth: { user, pass },
+          })
+        : nodemailer.createTransport({
+            host,
+            port,
+            secure: port === 465,
+            auth: { user, pass },
+            tls: {
+              rejectUnauthorized: false,
+            },
+          });
 
       const htmlContent = `
         <!DOCTYPE html>
