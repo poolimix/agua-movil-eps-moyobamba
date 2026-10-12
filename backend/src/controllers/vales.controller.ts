@@ -158,8 +158,13 @@ export const despacharValesProgramacion = async (req: Request, res: Response) =>
       ALTER TABLE vales_entrega ADD COLUMN IF NOT EXISTS sms_enviado BOOLEAN DEFAULT FALSE;
       ALTER TABLE vales_entrega ADD COLUMN IF NOT EXISTS correo_enviado BOOLEAN DEFAULT FALSE;
       ALTER TABLE vales_entrega ADD COLUMN IF NOT EXISTS fecha_despacho TIMESTAMP;
+      ALTER TABLE vales_entrega ADD COLUMN IF NOT EXISTS fecha_emision DATE DEFAULT CURRENT_DATE;
+      ALTER TABLE vales_entrega ADD COLUMN IF NOT EXISTS fecha_canje TIMESTAMP;
       ALTER TABLE vales_entrega ADD COLUMN IF NOT EXISTS errores_notificacion JSONB DEFAULT '{}'::jsonb;
       ALTER TABLE vales_entrega ADD COLUMN IF NOT EXISTS estado VARCHAR(30) DEFAULT 'EMITIDO';
+      ALTER TABLE vales_entrega ALTER COLUMN fecha_emision DROP NOT NULL;
+      ALTER TABLE vales_entrega ALTER COLUMN fecha_emision SET DEFAULT CURRENT_DATE;
+      ALTER TABLE vales_entrega ALTER COLUMN fecha_canje DROP NOT NULL;
       ALTER TABLE vales_entrega ALTER COLUMN codigo_vale DROP NOT NULL;
       ALTER TABLE vales_entrega ALTER COLUMN litros_asignados DROP NOT NULL;
       ALTER TABLE vales_entrega DROP CONSTRAINT IF EXISTS vales_entrega_codigo_vale_key;
@@ -197,18 +202,21 @@ export const despacharValesProgramacion = async (req: Request, res: Response) =>
                qr_data = $4,
                codigo_unico = $5,
                codigo_vale = $5,
-               estado = 'EMITIDO'
+               estado = 'EMITIDO',
+               fecha_emision = COALESCE(fecha_emision, CURRENT_DATE)
            WHERE id = $6 
            RETURNING *`,
           [programacion.id, b.id, litros, qrData, codigoUnico, vale.id]
         );
+        vale = upd.rows[0];
       } else {
         try {
           const ins = await query(
             `INSERT INTO vales_entrega (
-              programacion_id, beneficiario_id, codigo_unico, codigo_vale, litros_sugeridos, litros_asignados, qr_data, estado
+              programacion_id, beneficiario_id, codigo_unico, codigo_vale, 
+              litros_sugeridos, litros_asignados, qr_data, estado, fecha_emision
             )
-            VALUES ($1, $2, $3, $3, $4, $4, $5, 'EMITIDO')
+            VALUES ($1, $2, $3, $3, $4, $4, $5, 'EMITIDO', CURRENT_DATE)
             RETURNING *`,
             [programacion.id, b.id, codigoUnico, litros, qrData]
           );
