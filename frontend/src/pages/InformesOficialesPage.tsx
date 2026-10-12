@@ -60,10 +60,65 @@ interface FotoItem {
   estado_entrega?: string;
 }
 
+interface MesPresupuesto {
+  mes: string;
+  programado: number;
+  comprometido: number;
+  girado: number;
+}
+
+interface PartidaPresupuesto {
+  partida: string;
+  programado: number;
+  unidad: string;
+  cantidad: number;
+  devengado: number;
+}
+
+interface EjecucionPresupuestalData {
+  total_programado: number;
+  total_comprometido: number;
+  total_girado: number;
+  saldo_por_ejecutar: number;
+  pct_comprometido: number;
+  pct_girado: number;
+  meses: MesPresupuesto[];
+  partidas: PartidaPresupuesto[];
+}
+
+const DEFAULT_PRESUPUESTO: EjecucionPresupuestalData = {
+  total_programado: 323926.82,
+  total_comprometido: 87466.64,
+  total_girado: 20200.00,
+  saldo_por_ejecutar: 236460.18,
+  pct_comprometido: 27.0,
+  pct_girado: 6.2,
+  meses: [
+    { mes: 'MARZO', programado: 0.00, comprometido: 0.00, girado: 0.00 },
+    { mes: 'ABRIL', programado: 0.00, comprometido: 0.00, girado: 0.00 },
+    { mes: 'MAYO', programado: 4000.00, comprometido: 4000.00, girado: 0.00 },
+    { mes: 'JUNIO', programado: 4000.00, comprometido: 4000.00, girado: 4000.00 },
+    { mes: 'JULIO', programado: 4000.00, comprometido: 4000.00, girado: 4000.00 },
+    { mes: 'AGOSTO', programado: 14051.78, comprometido: 9005.75, girado: 4000.00 },
+    { mes: 'SETIEMBRE', programado: 102791.68, comprometido: 66460.89, girado: 8200.00 },
+    { mes: 'OCTUBRE', programado: 65645.84, comprometido: 0.00, girado: 0.00 },
+    { mes: 'NOVIEMBRE', programado: 63791.68, comprometido: 0.00, girado: 0.00 },
+    { mes: 'DICIEMBRE', programado: 65645.84, comprometido: 0.00, girado: 0.00 },
+  ],
+  partidas: [
+    { partida: 'Alquiler de camión cisterna y equipos', programado: 219531.02, unidad: 'meses', cantidad: 4, devengado: 16000.00 },
+    { partida: 'Gastos de personal (chofer, ayudante, supervisor)', programado: 48000.00, unidad: 'meses', cantidad: 4, devengado: 0.00 },
+    { partida: 'Repuestos, accesorios e insumos químicos', programado: 4200.00, unidad: 'caja', cantidad: 3, devengado: 4200.00 },
+    { partida: 'Gastos administrativos y seguros', programado: 40495.62, unidad: 'glb', cantidad: 1, devengado: 0.00 },
+    { partida: 'Equipos de protección personal (EPP)', programado: 2743.00, unidad: 'glb', cantidad: 1, devengado: 0.00 },
+    { partida: 'Costo de producción de agua (PTAP San Mateo)', programado: 8957.19, unidad: 'm³', cantidad: 2.22, devengado: 0.00 },
+  ]
+};
+
 export default function InformesOficialesPage() {
   const [mes, setMes] = useState('08');
   const [anio, setAnio] = useState('2026');
-  const [activeTab, setActiveTab] = useState<'cuadro7' | 'cuadro1' | 'cuadro8' | 'cuadro6' | 'fotos'>('cuadro7');
+  const [activeTab, setActiveTab] = useState<'cuadro7' | 'cuadro1' | 'cuadro8' | 'cuadro6' | 'fotos' | 'presupuesto'>('cuadro7');
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [selectedPhotoModal, setSelectedPhotoModal] = useState<string | null>(null);
@@ -112,6 +167,7 @@ export default function InformesOficialesPage() {
     total_fotografias_panel: 0,
   };
 
+  const presupuestoOficial: EjecucionPresupuestalData = data?.ejecucion_presupuestal || DEFAULT_PRESUPUESTO;
   const nombreMesSeleccionado = meses.find((m) => m.valor === mes)?.nombre.toUpperCase() || 'PERIODO';
 
   return (
@@ -229,6 +285,13 @@ export default function InformesOficialesPage() {
             onClick={() => setActiveTab('cuadro7')}
           >
             📊 Agua Semanal (m³)
+          </button>
+          <button
+            type="button"
+            className={`tab-btn ${activeTab === 'presupuesto' ? 'active' : ''}`}
+            onClick={() => setActiveTab('presupuesto')}
+          >
+            💰 Ejecución Presupuestal
           </button>
           <button
             type="button"
@@ -545,6 +608,213 @@ export default function InformesOficialesPage() {
                       ))}
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* TAB 6: EJECUCIÓN PRESUPUESTAL OFICIAL (CONVENIO PNSU) */}
+              {activeTab === 'presupuesto' && (
+                <div className="table-official-wrapper">
+                  <div className="official-table-header">
+                    <div>
+                      <h3>Ejecución Presupuestal Mensual — Convenio N° 023-2026/VIVIENDA/VMCS/PNSU/DE</h3>
+                      <p style={{ margin: '4px 0 0', fontSize: 13, color: '#64748b' }}>
+                        Entidad: EPS Moyobamba S.A. • Surtidor: PTAP San Mateo (Sector Operacional 2) • Cisterna CAT-849
+                      </p>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <span className="period-tag">AÑO FISCAL 2026</span>
+                      <button
+                        type="button"
+                        className="btn-print"
+                        onClick={() => window.print()}
+                        style={{ padding: '4px 10px', fontSize: 12 }}
+                      >
+                        🖨️ Imprimir Cuadro
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 4 Mini Tarjetas de Presupuesto */}
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                    gap: 12,
+                    margin: '16px 0 24px'
+                  }}>
+                    <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '14px 16px' }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Programado Anual</span>
+                      <div style={{ fontSize: 20, fontWeight: 800, color: '#1e293b', marginTop: 4 }}>
+                        S/. {presupuestoOficial.total_programado.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                      <span style={{ fontSize: 11, color: '#2563eb', fontWeight: 600 }}>100% Asignado</span>
+                    </div>
+
+                    <div style={{ background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 10, padding: '14px 16px' }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: '#7c3aed', textTransform: 'uppercase' }}>Total Comprometido</span>
+                      <div style={{ fontSize: 20, fontWeight: 800, color: '#6d28d9', marginTop: 4 }}>
+                        S/. {presupuestoOficial.total_comprometido.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                      <span style={{ fontSize: 11, color: '#7c3aed', fontWeight: 600 }}>{presupuestoOficial.pct_comprometido}% del total</span>
+                    </div>
+
+                    <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 10, padding: '14px 16px' }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: '#c2410c', textTransform: 'uppercase' }}>Total Girado / Devengado</span>
+                      <div style={{ fontSize: 20, fontWeight: 800, color: '#ea580c', marginTop: 4 }}>
+                        S/. {presupuestoOficial.total_girado.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                      <span style={{ fontSize: 11, color: '#c2410c', fontWeight: 600 }}>{presupuestoOficial.pct_girado}% pagado a la fecha</span>
+                    </div>
+
+                    <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 10, padding: '14px 16px' }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: '#047857', textTransform: 'uppercase' }}>Saldo Pendiente Giro</span>
+                      <div style={{ fontSize: 20, fontWeight: 800, color: '#059669', marginTop: 4 }}>
+                        S/. {(presupuestoOficial.total_programado - presupuestoOficial.total_girado).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                      <span style={{ fontSize: 11, color: '#047857', fontWeight: 600 }}>
+                        {((1 - (presupuestoOficial.total_girado / presupuestoOficial.total_programado)) * 100).toFixed(1)}% por ejecutar
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Tabla 1: Ejecución Mensual */}
+                  <h4 style={{ margin: '16px 0 8px', fontSize: 14, color: '#1e293b' }}>
+                    1. Estado de Ejecución Mensual (Programado vs. Comprometido vs. Girado)
+                  </h4>
+                  <table className="official-table" style={{ marginBottom: 24 }}>
+                    <thead>
+                      <tr>
+                        <th>N°</th>
+                        <th>Mes de Operación</th>
+                        <th className="text-right">Programado (S/.)</th>
+                        <th className="text-right">Comprometido (S/.)</th>
+                        <th className="text-right">Girado (S/.)</th>
+                        <th className="text-right">Saldo por Girar (S/.)</th>
+                        <th className="text-right">% Comprometido</th>
+                        <th className="text-right">% Girado</th>
+                        <th style={{ textAlign: 'center' }}>Estado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {presupuestoOficial.meses.map((m, idx) => {
+                        const saldoMes = Math.max(0, m.programado - m.girado);
+                        const pctComp = m.programado > 0 ? (m.comprometido / m.programado) * 100 : 0;
+                        const pctGir = m.programado > 0 ? (m.girado / m.programado) * 100 : 0;
+                        const isSetiembre = m.mes === 'SETIEMBRE';
+                        return (
+                          <tr key={m.mes} style={isSetiembre ? { background: '#eff6ff', fontWeight: 600 } : undefined}>
+                            <td>{idx + 1}</td>
+                            <td>
+                              <strong>{m.mes}</strong>
+                              {isSetiembre && (
+                                <span style={{ marginLeft: 6, fontSize: 10, background: '#2563eb', color: '#fff', padding: '2px 6px', borderRadius: 4 }}>
+                                  Pico Operativo
+                                </span>
+                              )}
+                            </td>
+                            <td className="text-right font-mono">{m.programado.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td className="text-right font-mono" style={{ color: '#7c3aed' }}>{m.comprometido.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td className="text-right font-mono" style={{ color: '#ea580c' }}>{m.girado.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td className="text-right font-mono" style={{ color: '#059669' }}>{saldoMes.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td className="text-right font-mono">{pctComp.toFixed(1)}%</td>
+                            <td className="text-right font-mono">{pctGir.toFixed(1)}%</td>
+                            <td style={{ textAlign: 'center' }}>
+                              {m.girado > 0 && m.girado >= m.programado ? (
+                                <span className="status-badge status-op">Liquidado</span>
+                              ) : m.girado > 0 ? (
+                                <span className="status-badge" style={{ background: '#fef3c7', color: '#b45309' }}>En Giro</span>
+                              ) : m.comprometido > 0 ? (
+                                <span className="status-badge" style={{ background: '#ede9fe', color: '#6d28d9' }}>Comprometido</span>
+                              ) : m.programado > 0 ? (
+                                <span className="status-badge" style={{ background: '#f1f5f9', color: '#64748b' }}>Programado</span>
+                              ) : (
+                                <span className="status-badge" style={{ background: '#f8fafc', color: '#94a3b8' }}>Sin prog.</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr>
+                        <td colSpan={2} className="total-header">TOTAL CONSOLIDADO 2026</td>
+                        <td className="text-right font-mono total-header font-bold">
+                          S/. {presupuestoOficial.total_programado.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td className="text-right font-mono total-header font-bold" style={{ color: '#7c3aed' }}>
+                          S/. {presupuestoOficial.total_comprometido.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td className="text-right font-mono total-header font-bold" style={{ color: '#ea580c' }}>
+                          S/. {presupuestoOficial.total_girado.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td className="text-right font-mono total-header font-bold" style={{ color: '#059669' }}>
+                          S/. {(presupuestoOficial.total_programado - presupuestoOficial.total_girado).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td className="text-right font-mono total-header font-bold">{presupuestoOficial.pct_comprometido}%</td>
+                        <td className="text-right font-mono total-header font-bold">{presupuestoOficial.pct_girado}%</td>
+                        <td className="total-header" style={{ textAlign: 'center' }}>
+                          <span className="status-badge status-op">En Ejecución</span>
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+
+                  {/* Tabla 2: Partidas Presupuestales */}
+                  <h4 style={{ margin: '16px 0 8px', fontSize: 14, color: '#1e293b' }}>
+                    2. Desglose de Gastos por Partidas Oficiales (Plan de Trabajo EPS Moyobamba)
+                  </h4>
+                  <table className="official-table">
+                    <thead>
+                      <tr>
+                        <th>N°</th>
+                        <th>Partida de Gasto</th>
+                        <th>Unidad</th>
+                        <th className="text-right">Cantidad</th>
+                        <th className="text-right">Programado (S/.)</th>
+                        <th className="text-right">Devengado / Girado (S/.)</th>
+                        <th className="text-right">Saldo por Ejecutar (S/.)</th>
+                        <th className="text-right">% Avance</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {presupuestoOficial.partidas.map((p, idx) => {
+                        const saldoPartida = Math.max(0, p.programado - p.devengado);
+                        const pctPartida = p.programado > 0 ? (p.devengado / p.programado) * 100 : 0;
+                        return (
+                          <tr key={p.partida}>
+                            <td>{idx + 1}</td>
+                            <td><strong>{p.partida}</strong></td>
+                            <td><span className="font-mono">{p.unidad}</span></td>
+                            <td className="text-right font-mono">{p.cantidad}</td>
+                            <td className="text-right font-mono">{p.programado.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td className="text-right font-mono text-cyan font-bold">{p.devengado.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td className="text-right font-mono text-emerald">{saldoPartida.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td className="text-right font-mono">
+                              <span className={`badge-pct ${pctPartida >= 50 ? 'pct-high' : 'pct-mid'}`}>
+                                {pctPartida.toFixed(1)}%
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr>
+                        <td colSpan={4} className="total-header">TOTAL PARTIDAS OPERATIVAS</td>
+                        <td className="text-right font-mono total-header font-bold">
+                          S/. {presupuestoOficial.partidas.reduce((a, b) => a + b.programado, 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td className="text-right font-mono total-header font-bold text-cyan">
+                          S/. {presupuestoOficial.partidas.reduce((a, b) => a + b.devengado, 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td className="text-right font-mono total-header font-bold text-emerald">
+                          S/. {presupuestoOficial.partidas.reduce((a, b) => a + (b.programado - b.devengado), 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td className="text-right font-mono total-header font-bold">
+                          {((presupuestoOficial.partidas.reduce((a, b) => a + b.devengado, 0) / presupuestoOficial.partidas.reduce((a, b) => a + b.programado, 0)) * 100).toFixed(1)}%
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
                 </div>
               )}
             </>

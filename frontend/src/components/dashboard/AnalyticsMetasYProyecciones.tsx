@@ -57,12 +57,60 @@ interface ProgramacionAvance {
   es_proyeccion: boolean;
 }
 
+export interface MesPresupuesto {
+  mes: string;
+  programado: number;
+  comprometido: number;
+  girado: number;
+}
+
+export interface EjecucionPresupuestal {
+  total_programado: number;
+  total_comprometido: number;
+  total_girado: number;
+  saldo_por_ejecutar: number;
+  pct_comprometido: number;
+  pct_girado: number;
+  meses: MesPresupuesto[];
+  partidas?: any[];
+}
+
+export const DEFAULT_PRESUPUESTO: EjecucionPresupuestal = {
+  total_programado: 323926.82,
+  total_comprometido: 87466.64,
+  total_girado: 20200.00,
+  saldo_por_ejecutar: 236460.18,
+  pct_comprometido: 27.0,
+  pct_girado: 6.2,
+  meses: [
+    { mes: 'MARZO', programado: 0.00, comprometido: 0.00, girado: 0.00 },
+    { mes: 'ABRIL', programado: 0.00, comprometido: 0.00, girado: 0.00 },
+    { mes: 'MAYO', programado: 4000.00, comprometido: 4000.00, girado: 0.00 },
+    { mes: 'JUNIO', programado: 4000.00, comprometido: 4000.00, girado: 4000.00 },
+    { mes: 'JULIO', programado: 4000.00, comprometido: 4000.00, girado: 4000.00 },
+    { mes: 'AGOSTO', programado: 14051.78, comprometido: 9005.75, girado: 4000.00 },
+    { mes: 'SETIEMBRE', programado: 102791.68, comprometido: 66460.89, girado: 8200.00 },
+    { mes: 'OCTUBRE', programado: 65645.84, comprometido: 0.00, girado: 0.00 },
+    { mes: 'NOVIEMBRE', programado: 63791.68, comprometido: 0.00, girado: 0.00 },
+    { mes: 'DICIEMBRE', programado: 65645.84, comprometido: 0.00, girado: 0.00 },
+  ],
+  partidas: [
+    { partida: 'Alquiler de camión cisterna y equipos', programado: 219531.02, unidad: 'meses', cantidad: 4, devengado: 16000.00 },
+    { partida: 'Gastos de personal (chofer, ayudante, supervisor)', programado: 48000.00, unidad: 'meses', cantidad: 4, devengado: 0.00 },
+    { partida: 'Repuestos, accesorios e insumos químicos', programado: 4200.00, unidad: 'caja', cantidad: 3, devengado: 4200.00 },
+    { partida: 'Gastos administrativos y seguros', programado: 40495.62, unidad: 'glb', cantidad: 1, devengado: 0.00 },
+    { partida: 'Equipos de protección personal (EPP)', programado: 2743.00, unidad: 'glb', cantidad: 1, devengado: 0.00 },
+    { partida: 'Costo de producción de agua (PTAP San Mateo)', programado: 8957.19, unidad: 'm³', cantidad: 2.22, devengado: 0.00 },
+  ]
+};
+
 interface Props {
   sectoresSemanal?: SectorItem[];
   sectoresMensual?: SectorItem[];
   metasBeneficiarios?: MetasBeneficiarios;
   objetivoGlobal?: ObjetivoGlobal;
   programacionesAvance?: ProgramacionAvance[];
+  ejecucionPresupuestal?: EjecucionPresupuestal;
 }
 
 export default function AnalyticsMetasYProyecciones({
@@ -70,9 +118,11 @@ export default function AnalyticsMetasYProyecciones({
   sectoresMensual = [],
   metasBeneficiarios,
   objetivoGlobal,
-  programacionesAvance = []
+  programacionesAvance = [],
+  ejecucionPresupuestal
 }: Props) {
   const [sectorViewMode, setSectorViewMode] = useState<'semanal' | 'mensual'>('semanal');
+  const presupuestoActual = ejecucionPresupuestal || DEFAULT_PRESUPUESTO;
 
   const currentSectoresData = sectorViewMode === 'semanal' ? sectoresSemanal : sectoresMensual;
 
@@ -168,6 +218,183 @@ export default function AnalyticsMetasYProyecciones({
             <div style={{ fontSize: 18, fontWeight: 900, color: '#a78bfa' }}>350 L / semana / hab</div>
             <div style={{ fontSize: 11, color: '#cbd5e1' }}>50 Litros diarios × 7 días</div>
           </div>
+        </div>
+      </div>
+
+      {/* ─── EJECUCIÓN PRESUPUESTAL CONVENIO PNSU (SOLES) ──────────────────── */}
+      <div style={{ background: '#ffffff', borderRadius: 16, border: '1px solid #e2e8f0', padding: 22, marginBottom: 24, boxShadow: '0 4px 15px -2px rgba(0,0,0,0.04)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 18 }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 20 }}>💰</span>
+              <h3 style={{ margin: 0, fontSize: 17, fontWeight: 900, color: '#0f172a' }}>
+                Ejecución Presupuestal Oficial (Convenio PNSU - EPS Moyobamba)
+              </h3>
+            </div>
+            <p style={{ margin: '3px 0 0', fontSize: 12.5, color: '#64748b' }}>
+              Seguimiento financiero mensual en Soles: Programado vs. Comprometido vs. Girado / Devengado
+            </p>
+          </div>
+
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <span style={{ fontSize: 11, fontWeight: 800, background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0', padding: '4px 12px', borderRadius: 20 }}>
+              Convenio N° 023-2026/VIVIENDA/VMCS/PNSU/DE
+            </span>
+          </div>
+        </div>
+
+        {/* 4 TARJETAS PRINCIPALES */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 14, marginBottom: 20 }}>
+          {/* CARD 1: PROGRAMADO */}
+          <div style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: 12, padding: '16px 18px', textAlign: 'center' }}>
+            <div style={{ fontSize: 11.5, fontWeight: 800, color: '#64748b', letterSpacing: 0.5, textTransform: 'uppercase' }}>
+              PROGRAMADO
+            </div>
+            <div style={{ fontSize: 26, fontWeight: 900, color: '#0f172a', marginTop: 4 }}>
+              S/. {presupuestoActual.total_programado.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+            <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+              Presupuesto Total Convenio
+            </div>
+          </div>
+
+          {/* CARD 2: COMPROMETIDO */}
+          <div style={{ background: '#faf5ff', border: '1.5px solid #d8b4fe', borderRadius: 12, padding: '16px 18px', textAlign: 'center' }}>
+            <div style={{ fontSize: 11.5, fontWeight: 800, color: '#7e22ce', letterSpacing: 0.5, textTransform: 'uppercase' }}>
+              COMPROMETIDO
+            </div>
+            <div style={{ fontSize: 26, fontWeight: 900, color: '#7e22ce', marginTop: 4 }}>
+              S/. {presupuestoActual.total_comprometido.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+            <div style={{ fontSize: 11, color: '#9333ea', fontWeight: 700, marginTop: 2 }}>
+              {presupuestoActual.pct_comprometido}% del programado
+            </div>
+          </div>
+
+          {/* CARD 3: GIRADO */}
+          <div style={{ background: '#fff7ed', border: '1.5px solid #fed7aa', borderRadius: 12, padding: '16px 18px', textAlign: 'center' }}>
+            <div style={{ fontSize: 11.5, fontWeight: 800, color: '#c2410c', letterSpacing: 0.5, textTransform: 'uppercase' }}>
+              GIRADO
+            </div>
+            <div style={{ fontSize: 26, fontWeight: 900, color: '#ea580c', marginTop: 4 }}>
+              S/. {presupuestoActual.total_girado.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+            <div style={{ fontSize: 11, color: '#c2410c', fontWeight: 700, marginTop: 2 }}>
+              {presupuestoActual.pct_girado}% devengado / pagado
+            </div>
+          </div>
+
+          {/* CARD 4: SALDO */}
+          <div style={{ background: '#f0fdf4', border: '1.5px solid #bbf7d0', borderRadius: 12, padding: '16px 18px', textAlign: 'center' }}>
+            <div style={{ fontSize: 11.5, fontWeight: 800, color: '#166534', letterSpacing: 0.5, textTransform: 'uppercase' }}>
+              SALDO POR EJECUTAR
+            </div>
+            <div style={{ fontSize: 26, fontWeight: 900, color: '#16a34a', marginTop: 4 }}>
+              S/. {presupuestoActual.saldo_por_ejecutar.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+            <div style={{ fontSize: 11, color: '#166534', fontWeight: 700, marginTop: 2 }}>
+              Disponible para reprogramación
+            </div>
+          </div>
+        </div>
+
+        {/* GRÁFICO DE BARRAS AGRUPADAS: PROGRAMADO (AZUL), GIRADO (NARANJA), COMPROMETIDO (PÚRPURA) */}
+        <div style={{ height: 320, width: '100%', marginBottom: 18 }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={presupuestoActual.meses} margin={{ top: 15, right: 15, left: 10, bottom: 15 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+              <XAxis
+                dataKey="mes"
+                tick={{ fontSize: 11, fill: '#475569', fontWeight: 700 }}
+              />
+              <YAxis
+                tick={{ fontSize: 11, fill: '#64748b' }}
+                tickFormatter={(v) => `S/. ${v >= 1000 ? `${(v/1000).toFixed(0)}k` : v}`}
+              />
+              <Tooltip
+                formatter={(val: any, name: any) => [
+                  `S/. ${Number(val).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                  name
+                ]}
+                contentStyle={{ borderRadius: 10, border: '1px solid #cbd5e1', fontSize: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}
+              />
+              <Legend
+                verticalAlign="top"
+                align="center"
+                wrapperStyle={{ fontSize: 12, paddingBottom: 12 }}
+              />
+              <Bar dataKey="programado" name="PROGRAMADO" fill="#2563eb" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="girado" name="GIRADO" fill="#f97316" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="comprometido" name="COMPROMETIDO" fill="#a855f7" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* TABLA COMPARATIVA MES A MES */}
+        <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: 10 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead>
+              <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569', textAlign: 'left' }}>
+                <th style={{ padding: '9px 12px' }}>MES</th>
+                <th style={{ padding: '9px 12px', textAlign: 'right' }}>PROGRAMADO (S/.)</th>
+                <th style={{ padding: '9px 12px', textAlign: 'right' }}>COMPROMETIDO (S/.)</th>
+                <th style={{ padding: '9px 12px', textAlign: 'right' }}>GIRADO (S/.)</th>
+                <th style={{ padding: '9px 12px', textAlign: 'center' }}>% COMPR.</th>
+                <th style={{ padding: '9px 12px', textAlign: 'center' }}>% GIRADO</th>
+                <th style={{ padding: '9px 12px', textAlign: 'center' }}>ESTADO</th>
+              </tr>
+            </thead>
+            <tbody>
+              {presupuestoActual.meses.map((m) => {
+                const pctCompr = m.programado > 0 ? Math.round((m.comprometido / m.programado) * 100) : 0;
+                const pctGir = m.programado > 0 ? Math.round((m.girado / m.programado) * 100) : 0;
+                const esSetiembre = m.mes === 'SETIEMBRE';
+                return (
+                  <tr key={m.mes} style={{ borderBottom: '1px solid #f1f5f9', background: esSetiembre ? '#eff6ff' : 'transparent' }}>
+                    <td style={{ padding: '9px 12px', fontWeight: 800, color: '#0f172a' }}>
+                      {m.mes} {esSetiembre && <span style={{ fontSize: 9.5, background: '#0284c7', color: '#fff', padding: '1px 6px', borderRadius: 4, marginLeft: 4 }}>Mes Pico</span>}
+                    </td>
+                    <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 700, color: '#0f172a' }}>
+                      S/. {m.programado.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                    <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 700, color: '#7e22ce' }}>
+                      S/. {m.comprometido.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                    <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 700, color: '#ea580c' }}>
+                      S/. {m.girado.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                    <td style={{ padding: '9px 12px', textAlign: 'center' }}>
+                      <span style={{ fontWeight: 800, color: pctCompr >= 50 ? '#16a34a' : (pctCompr > 0 ? '#b45309' : '#94a3b8') }}>
+                        {pctCompr}%
+                      </span>
+                    </td>
+                    <td style={{ padding: '9px 12px', textAlign: 'center' }}>
+                      <span style={{ fontWeight: 800, color: pctGir >= 50 ? '#16a34a' : (pctGir > 0 ? '#b45309' : '#94a3b8') }}>
+                        {pctGir}%
+                      </span>
+                    </td>
+                    <td style={{ padding: '9px 12px', textAlign: 'center' }}>
+                      {m.girado > 0 ? (
+                        <span style={{ background: '#dcfce7', color: '#166534', padding: '2px 7px', borderRadius: 4, fontSize: 10.5, fontWeight: 700 }}>
+                          ✓ Con Giro
+                        </span>
+                      ) : m.comprometido > 0 ? (
+                        <span style={{ background: '#f3e8ff', color: '#7e22ce', padding: '2px 7px', borderRadius: 4, fontSize: 10.5, fontWeight: 700 }}>
+                          ⏳ Comprometido
+                        </span>
+                      ) : m.programado > 0 ? (
+                        <span style={{ background: '#f1f5f9', color: '#64748b', padding: '2px 7px', borderRadius: 4, fontSize: 10.5, fontWeight: 700 }}>
+                          ⚪ Por Ejecutar
+                        </span>
+                      ) : (
+                        <span style={{ color: '#cbd5e1', fontSize: 11 }}>-</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       </div>
 

@@ -501,6 +501,7 @@ export default function DashboardPage() {
           metasBeneficiarios={data?.metas_beneficiarios}
           objetivoGlobal={data?.objetivo_global}
           programacionesAvance={data?.programaciones_avance}
+          ejecucionPresupuestal={data?.ejecucion_presupuestal}
         />
 
         {/* ROW OF MAIN CHARTS */}
