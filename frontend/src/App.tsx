@@ -17,6 +17,7 @@ import InformesOficialesPage from './pages/InformesOficialesPage';
 import BalanceHidricoPage from './pages/BalanceHidricoPage';
 import ConfiguracionPage from './pages/ConfiguracionPage';
 import UsuariosPage from './pages/UsuariosPage';
+import PublicDashboardPage from './pages/PublicDashboardPage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
@@ -27,6 +28,12 @@ function AppRoutes() {
   const { user } = useAuth();
   return (
     <Routes>
+      {/* Rutas Públicas de Libre Acceso (Solo Visualización en Vivo - Sin Login) */}
+      <Route path="/publico" element={<PublicDashboardPage />} />
+      <Route path="/portal-publico" element={<PublicDashboardPage />} />
+      <Route path="/monitoreo" element={<PublicDashboardPage />} />
+      <Route path="/public/dashboard" element={<PublicDashboardPage />} />
+
       <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <LoginPage />} />
       <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
       <Route path="/metas" element={<ProtectedRoute><MetasPage /></ProtectedRoute>} />

@@ -321,6 +321,32 @@ export default function DashboardPage() {
                 <span>Actualizar</span>
               </button>
 
+              <button 
+                type="button"
+                className="refresh-action-btn"
+                onClick={() => {
+                  const url = `${window.location.origin}/publico`;
+                  navigator.clipboard.writeText(url).then(() => {
+                    alert('¡Enlace del Dashboard Público copiado al portapapeles!\n\nPuede compartirlo libremente para que cualquier persona revise avances de entrega y presupuesto en vivo:\n' + url);
+                  });
+                }}
+                title="Copiar link público para compartir con supervisores o el ministerio (no requiere usuario ni contraseña)"
+                style={{ background: '#0284c7', color: '#ffffff', borderColor: '#38bdf8', fontWeight: 700 }}
+              >
+                <span>📋 Copiar Link Público</span>
+              </button>
+
+              <a
+                href="/publico"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="refresh-action-btn"
+                title="Abrir vista pública en nueva pestaña"
+                style={{ textDecoration: 'none', background: '#f8fafc', color: '#0369a1', borderColor: '#bae6fd', fontWeight: 600 }}
+              >
+                <span>🌐 Ver como Público</span>
+              </a>
+
               <span className="last-sync-time-inline">
                 Última sincronización: <strong>{lastUpdated.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</strong>
               </span>
