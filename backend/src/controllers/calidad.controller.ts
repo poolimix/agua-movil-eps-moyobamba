@@ -121,13 +121,32 @@ export const createControlCalidad = async (req: Request, res: Response) => {
       }
     }
 
-    // Auto-curación de columnas en control_calidad si faltasen en producción
+    // Auto-curación de tabla y columnas en control_calidad si faltasen en producción
     await query(`
+      CREATE TABLE IF NOT EXISTS control_calidad (
+        id SERIAL PRIMARY KEY,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+      ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS cloro_residual_ppm NUMERIC(5,2) DEFAULT 1.20;
+      ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS turbiedad_ntu NUMERIC(5,2) DEFAULT 1.50;
+      ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS ph NUMERIC(4,2) DEFAULT 7.20;
+      ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS programacion_id INT REFERENCES programaciones(id) ON DELETE SET NULL;
+      ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS cisterna_id INT REFERENCES cisternas(id) ON DELETE SET NULL;
+      ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS conductor_id INT REFERENCES personal_operativo(id) ON DELETE SET NULL;
+      ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS etapa_control TEXT DEFAULT 'CARGA';
+      ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS conductor_nombre TEXT;
+      ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS punto_muestreo TEXT DEFAULT 'CISTERNA_SALIDA';
+      ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS aspecto_organoleptico TEXT DEFAULT 'LIMPIDO_INCOLORO';
+      ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS conforme_sanitario BOOLEAN DEFAULT TRUE;
+      ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS observaciones TEXT;
       ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS foto_muestra_url TEXT;
       ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS latitud NUMERIC(10, 8);
       ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS longitud NUMERIC(11, 8);
       ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS registrado_por VARCHAR(150) DEFAULT 'Operador / Supervisor';
-    `).catch(() => {});
+      ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS fecha_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+    `).catch((e) => {
+      console.warn('Auto-curación control_calidad:', e.message);
+    });
 
     const result = await query(`
       INSERT INTO control_calidad (

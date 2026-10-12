@@ -257,7 +257,12 @@ export const bootstrapSchema = async () => {
       ALTER TABLE programaciones ALTER COLUMN dias_semana TYPE TEXT;
       ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS sectores_seleccionados TEXT;
 
-      -- Asegurar columnas en control_calidad
+      -- Asegurar todas las columnas en control_calidad
+      ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS cloro_residual_ppm NUMERIC(5,2) DEFAULT 1.20;
+      ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS turbiedad_ntu NUMERIC(5,2) DEFAULT 1.50;
+      ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS ph NUMERIC(4,2) DEFAULT 7.20;
+      ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS cisterna_id INT REFERENCES cisternas(id) ON DELETE SET NULL;
+      ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS conductor_id INT REFERENCES personal_operativo(id) ON DELETE SET NULL;
       ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS programacion_id INT REFERENCES programaciones(id) ON DELETE SET NULL;
       ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS etapa_control VARCHAR(50) DEFAULT 'CARGA';
       ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS conductor_nombre VARCHAR(150);
