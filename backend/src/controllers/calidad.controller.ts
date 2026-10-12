@@ -85,9 +85,25 @@ export const createControlCalidad = async (req: Request, res: Response) => {
     const finalCisternaId = cisterna_id && !isNaN(parseInt(String(cisterna_id), 10)) 
       ? parseInt(String(cisterna_id), 10) 
       : null;
-    const finalProgId = programacion_id && !isNaN(parseInt(String(programacion_id), 10)) 
+    let finalProgId = programacion_id && !isNaN(parseInt(String(programacion_id), 10)) 
       ? parseInt(String(programacion_id), 10) 
       : null;
+
+    // Si no se envió programacion_id pero sí cisterna, auto-vincular a la programación activa de la cisterna
+    if (!finalProgId && finalCisternaId) {
+      try {
+        const progRes = await query(`
+          SELECT id FROM programaciones 
+          WHERE cisterna_id = $1 AND fecha >= CURRENT_DATE - INTERVAL '2 days'
+          ORDER BY fecha DESC, id DESC LIMIT 1
+        `, [finalCisternaId]);
+        if (progRes.rows.length > 0) {
+          finalProgId = progRes.rows[0].id;
+        }
+      } catch (err) {
+        console.warn('No se pudo auto-vincular programación:', err);
+      }
+    }
 
     let finalConductor = conductor_nombre && String(conductor_nombre).trim() 
       ? String(conductor_nombre).trim() 
@@ -104,6 +120,14 @@ export const createControlCalidad = async (req: Request, res: Response) => {
         finalConductor = cRes.rows[0].chofer.trim();
       }
     }
+
+    // Auto-curación de columnas en control_calidad si faltasen en producción
+    await query(`
+      ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS foto_muestra_url TEXT;
+      ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS latitud NUMERIC(10, 8);
+      ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS longitud NUMERIC(11, 8);
+      ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS registrado_por VARCHAR(150) DEFAULT 'Operador / Supervisor';
+    `).catch(() => {});
 
     const result = await query(`
       INSERT INTO control_calidad (
@@ -139,7 +163,10 @@ export const createControlCalidad = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Error al registrar control de calidad:', error);
-    res.status(500).json({ message: 'Error interno al registrar control de calidad', error: error.message });
+    res.status(500).json({ 
+      message: error.message || 'Error interno al registrar control de calidad', 
+      error: error.message 
+    });
   }
 };
 

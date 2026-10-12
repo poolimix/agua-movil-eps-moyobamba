@@ -37,6 +37,7 @@ export default function CalidadPage() {
   const [controles, setControles] = useState<ControlCalidad[]>([]);
   const [stats, setStats] = useState<StatsCalidad | null>(null);
   const [cisternas, setCisternas] = useState<any[]>([]);
+  const [programaciones, setProgramaciones] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -47,6 +48,7 @@ export default function CalidadPage() {
 
   // Form State
   const [formData, setFormData] = useState({
+    programacion_id: '',
     cisterna_id: '',
     conductor_nombre: '',
     cloro_residual_ppm: '1.20',
@@ -81,7 +83,7 @@ export default function CalidadPage() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [calidadRes, statsRes, cisternasRes, configRes] = await Promise.all([
+      const [calidadRes, statsRes, cisternasRes, programacionesRes, configRes] = await Promise.all([
         api.get('/calidad/calidad' + (filtroCisterna ? `?cisterna_id=${filtroCisterna}` : '')).catch(err => {
           console.warn('Advertencia cargando controles de calidad:', err);
           return { data: [] };
@@ -94,12 +96,17 @@ export default function CalidadPage() {
           console.warn('Advertencia cargando cisternas:', err);
           return { data: [] };
         }),
+        api.get('/programaciones').catch(err => {
+          console.warn('Advertencia cargando programaciones:', err);
+          return { data: [] };
+        }),
         api.get('/configuracion').catch(() => null)
       ]);
 
       setControles(Array.isArray(calidadRes?.data) ? calidadRes.data : []);
       if (statsRes?.data) setStats(statsRes.data);
       setCisternas(Array.isArray(cisternasRes?.data) ? cisternasRes.data : []);
+      setProgramaciones(Array.isArray(programacionesRes?.data) ? programacionesRes.data : []);
 
       if (configRes?.data?.config) {
         const c = configRes.data.config;
@@ -154,8 +161,20 @@ export default function CalidadPage() {
     fetchData();
   }, [filtroCisterna]);
 
-  const handleOpenModal = async () => {
+  // Si se pasa ?programacion_id=X por la URL, abrir el modal vinculado a esa programación
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const pId = params.get('programacion_id');
+    if (pId && programaciones.length > 0) {
+      handleOpenModal(pId);
+    }
+  }, [programaciones]);
+
+  const handleOpenModal = async (targetProgId?: string | number | any) => {
+    const cleanProgId = (typeof targetProgId === 'string' || typeof targetProgId === 'number') ? targetProgId : undefined;
     let currentCisternas = cisternas;
+    let currentProgs = programaciones;
+
     if (!currentCisternas || currentCisternas.length === 0) {
       try {
         const cRes = await api.get('/cisternas');
@@ -168,19 +187,62 @@ export default function CalidadPage() {
       }
     }
 
-    const defaultCisterna = currentCisternas && currentCisternas.length > 0 ? currentCisternas[0] : null;
+    if (!currentProgs || currentProgs.length === 0) {
+      try {
+        const pRes = await api.get('/programaciones');
+        if (Array.isArray(pRes.data)) {
+          currentProgs = pRes.data;
+          setProgramaciones(currentProgs);
+        }
+      } catch (err) {
+        console.warn('No se pudieron recargar programaciones al abrir modal:', err);
+      }
+    }
+
+    const defaultProg = cleanProgId 
+      ? currentProgs.find(p => String(p.id) === String(cleanProgId))
+      : (currentProgs.length > 0 ? currentProgs[0] : null);
+
+    const defaultCisterna = defaultProg?.cisterna_id
+      ? currentCisternas.find(c => String(c.id) === String(defaultProg.cisterna_id))
+      : (currentCisternas && currentCisternas.length > 0 ? currentCisternas[0] : null);
+
     setFormData({
-      cisterna_id: defaultCisterna ? String(defaultCisterna.id) : '',
-      conductor_nombre: defaultCisterna?.conductor_habitual_nombre || '',
+      programacion_id: defaultProg ? String(defaultProg.id) : '',
+      cisterna_id: defaultCisterna ? String(defaultCisterna.id) : (defaultProg?.cisterna_id ? String(defaultProg.cisterna_id) : ''),
+      conductor_nombre: defaultProg?.conductor_nombre || defaultCisterna?.conductor_habitual_nombre || '',
       cloro_residual_ppm: '1.20',
       turbiedad_ntu: '1.50',
       aspecto_organoleptico: 'Límpido / Incoloro',
       etapa_control: 'CARGA',
-      punto_muestreo: 'Surtidor / Planta de Carga EPS Moyobamba',
+      punto_muestreo: defaultProg 
+        ? `Surtidor / Planta de Carga EPS Moyobamba (Prog #${defaultProg.id} - ${defaultProg.zona})`
+        : 'Surtidor / Planta de Carga EPS Moyobamba',
       observaciones: '',
       registrado_por: 'Ing. Supervisor de Calidad'
     });
     setModalOpen(true);
+  };
+
+  const handleProgramacionChange = (progId: string) => {
+    const selectedProg = programaciones.find(p => String(p.id) === String(progId));
+    if (selectedProg) {
+      const cisternaEncontrada = cisternas.find(c => String(c.id) === String(selectedProg.cisterna_id));
+      setFormData(prev => ({
+        ...prev,
+        programacion_id: progId,
+        cisterna_id: selectedProg.cisterna_id ? String(selectedProg.cisterna_id) : prev.cisterna_id,
+        conductor_nombre: selectedProg.conductor_nombre || cisternaEncontrada?.conductor_habitual_nombre || prev.conductor_nombre,
+        punto_muestreo: prev.etapa_control === 'CARGA'
+          ? `Surtidor / Planta de Carga EPS Moyobamba (Prog #${selectedProg.id} - ${selectedProg.zona})`
+          : `En Ruta - Sector ${selectedProg.zona || 'Asignado'}`
+      }));
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        programacion_id: '',
+      }));
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -189,6 +251,7 @@ export default function CalidadPage() {
       setSubmitting(true);
       const res = await api.post('/calidad/calidad', {
         ...formData,
+        programacion_id: formData.programacion_id ? parseInt(formData.programacion_id, 10) : null,
         cisterna_id: formData.cisterna_id ? parseInt(formData.cisterna_id, 10) : null,
       });
 
@@ -333,7 +396,7 @@ export default function CalidadPage() {
             <button 
               type="button" 
               className="btn-primary"
-              onClick={handleOpenModal}
+              onClick={() => handleOpenModal()}
               style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 18px', borderRadius: 10, fontSize: 13, fontWeight: 700 }}
             >
               <span style={{ fontSize: 16 }}>➕</span>
@@ -766,6 +829,36 @@ export default function CalidadPage() {
                     <div>
                       <div style={{ fontSize: 12, fontWeight: 800, color: '#0284c7', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>
                         📍 1. Datos Operativos y Muestreo
+                      </div>
+
+                      <div style={{ marginBottom: 14 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                          <label style={{ fontSize: 12, fontWeight: 700, color: '#0f172a' }}>
+                            PROGRAMACIÓN / RUTA EVALUADA (TDR PNSU):
+                          </label>
+                          {formData.programacion_id && (
+                            <span style={{ fontSize: 11, background: '#e0f2fe', color: '#0369a1', padding: '2px 6px', borderRadius: 4, fontWeight: 700 }}>
+                              Ruta #{formData.programacion_id}
+                            </span>
+                          )}
+                        </div>
+                        <select
+                          value={formData.programacion_id}
+                          onChange={(e) => handleProgramacionChange(e.target.value)}
+                          style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1.5px solid #0284c7', fontWeight: 700, fontSize: 13, background: '#f0f9ff', color: '#0369a1' }}
+                        >
+                          <option value="">-- Control Libre / Sin Programación Específica --</option>
+                          {programaciones.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              📅 Prog #{p.id} ({p.fecha ? String(p.fecha).slice(0, 10) : ''}) • {p.zona} [Cisterna: {p.cisterna_placa || 'Asignada'} - Chofer: {p.conductor_nombre || 'Asignado'}]
+                            </option>
+                          ))}
+                        </select>
+                        <div style={{ fontSize: 11, color: '#64748b', marginTop: 3 }}>
+                          {formData.programacion_id 
+                            ? '✅ Vinculado a la Ruta. Este ensayo sumará al cumplimiento 2/2 (Carga y Ruta).'
+                            : 'ℹ️ Seleccione la ruta programada para que el control se compute en la programación.'}
+                        </div>
                       </div>
 
                       <div style={{ marginBottom: 14 }}>

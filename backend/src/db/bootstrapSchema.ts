@@ -265,6 +265,10 @@ export const bootstrapSchema = async () => {
       ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS aspecto_organoleptico VARCHAR(50) DEFAULT 'LIMPIDO_INCOLORO';
       ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS conforme_sanitario BOOLEAN DEFAULT TRUE;
       ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS observaciones TEXT;
+      ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS foto_muestra_url TEXT;
+      ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS latitud NUMERIC(10, 8);
+      ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS longitud NUMERIC(11, 8);
+      ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS registrado_por VARCHAR(150) DEFAULT 'Operador / Supervisor';
       ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS fecha_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
       ALTER TABLE control_calidad ALTER COLUMN punto_muestreo TYPE TEXT;
       ALTER TABLE control_calidad ALTER COLUMN aspecto_organoleptico TYPE TEXT;

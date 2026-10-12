@@ -618,32 +618,41 @@ export default function ProgramacionesPage() {
                     </div>
                   </td>
                   <td>
-                    {Number(p.calidad_carga || 0) >= 1 && Number(p.calidad_ruta || 0) >= 1 ? (
-                      <div>
-                        <span className="badge-count" style={{ background: '#dcfce7', color: '#15803d', fontWeight: 800, fontSize: 11 }}>
-                          ✅ 2/2 Conforme
-                        </span>
-                        <div style={{ fontSize: 10.5, color: '#166534', marginTop: 2 }}>
-                          💧 Carga + 🚚 Ruta
-                          {Number(p.calidad_adicional || 0) > 0 ? ` (+${p.calidad_adicional})` : ''}
+                    <a 
+                      href={`/calidad?programacion_id=${p.id}`} 
+                      style={{ textDecoration: 'none', display: 'block', cursor: 'pointer' }}
+                      title="Haga clic para registrar o auditar el control de calidad de esta programación"
+                    >
+                      {Number(p.calidad_carga || 0) >= 1 && Number(p.calidad_ruta || 0) >= 1 ? (
+                        <div>
+                          <span className="badge-count" style={{ background: '#dcfce7', color: '#15803d', fontWeight: 800, fontSize: 11 }}>
+                            ✅ 2/2 Conforme
+                          </span>
+                          <div style={{ fontSize: 10.5, color: '#166534', marginTop: 2 }}>
+                            💧 Carga + 🚚 Ruta
+                            {Number(p.calidad_adicional || 0) > 0 ? ` (+${p.calidad_adicional})` : ''}
+                          </div>
                         </div>
-                      </div>
-                    ) : Number(p.calidad_carga || 0) >= 1 ? (
-                      <div>
-                        <span className="badge-count" style={{ background: '#fef3c7', color: '#b45309', fontWeight: 800, fontSize: 11 }}>
-                          ⏳ 1/2 Falta en Ruta
-                        </span>
-                        <div style={{ fontSize: 10.5, color: '#92400e', marginTop: 2 }}>
-                          💧 Carga Ok • Pendiente sector
+                      ) : Number(p.calidad_carga || 0) >= 1 ? (
+                        <div>
+                          <span className="badge-count" style={{ background: '#fef3c7', color: '#b45309', fontWeight: 800, fontSize: 11 }}>
+                            ⏳ 1/2 Falta en Ruta
+                          </span>
+                          <div style={{ fontSize: 10.5, color: '#92400e', marginTop: 2 }}>
+                            💧 Carga Ok • Pendiente sector
+                          </div>
                         </div>
-                      </div>
-                    ) : (
-                      <div>
-                        <span className="badge-count" style={{ background: '#fee2e2', color: '#b91c1c', fontWeight: 800, fontSize: 11 }}>
-                          🔴 0/2 Sin Control
-                        </span>
-                      </div>
-                    )}
+                      ) : (
+                        <div>
+                          <span className="badge-count" style={{ background: '#fee2e2', color: '#b91c1c', fontWeight: 800, fontSize: 11 }}>
+                            🔴 0/2 Sin Control
+                          </span>
+                          <div style={{ fontSize: 10.5, color: '#991b1b', marginTop: 2 }}>
+                            🧪 Clic para evaluar
+                          </div>
+                        </div>
+                      )}
+                    </a>
                   </td>
                   <td>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, justifyContent: 'center', alignItems: 'center' }}>
@@ -686,6 +695,27 @@ export default function ProgramacionesPage() {
                       >
                         🗑️ Eliminar
                       </button>
+
+                      <a
+                        href={`/calidad?programacion_id=${p.id}`}
+                        style={{
+                          background: '#f0fdf4',
+                          color: '#166534',
+                          border: '1.5px solid #bbf7d0',
+                          padding: '6px 10px',
+                          borderRadius: 6,
+                          fontSize: 12,
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          textDecoration: 'none'
+                        }}
+                        title={`Evaluar Control Sanitario (Cloro y Turbiedad) para la Programación #${p.id}`}
+                      >
+                        🧪 Calidad
+                      </a>
 
                       <button
                         className="btn-secondary"
