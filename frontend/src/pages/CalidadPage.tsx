@@ -82,15 +82,24 @@ export default function CalidadPage() {
     try {
       setLoading(true);
       const [calidadRes, statsRes, cisternasRes, configRes] = await Promise.all([
-        api.get('/calidad/calidad' + (filtroCisterna ? `?cisterna_id=${filtroCisterna}` : '')),
-        api.get('/calidad/calidad/stats'),
-        api.get('/cisternas'),
+        api.get('/calidad/calidad' + (filtroCisterna ? `?cisterna_id=${filtroCisterna}` : '')).catch(err => {
+          console.warn('Advertencia cargando controles de calidad:', err);
+          return { data: [] };
+        }),
+        api.get('/calidad/calidad/stats').catch(err => {
+          console.warn('Advertencia cargando estadísticas de calidad:', err);
+          return { data: null };
+        }),
+        api.get('/cisternas').catch(err => {
+          console.warn('Advertencia cargando cisternas:', err);
+          return { data: [] };
+        }),
         api.get('/configuracion').catch(() => null)
       ]);
 
-      setControles(calidadRes.data);
-      setStats(statsRes.data);
-      setCisternas(cisternasRes.data);
+      setControles(Array.isArray(calidadRes?.data) ? calidadRes.data : []);
+      if (statsRes?.data) setStats(statsRes.data);
+      setCisternas(Array.isArray(cisternasRes?.data) ? cisternasRes.data : []);
 
       if (configRes?.data?.config) {
         const c = configRes.data.config;
@@ -105,7 +114,7 @@ export default function CalidadPage() {
         setNormasForm(loadedCfg);
       }
     } catch (error) {
-      console.error('Error cargando controles de calidad:', error);
+      console.error('Error cargando datos de calidad:', error);
     } finally {
       setLoading(false);
     }
@@ -145,8 +154,21 @@ export default function CalidadPage() {
     fetchData();
   }, [filtroCisterna]);
 
-  const handleOpenModal = () => {
-    const defaultCisterna = cisternas.length > 0 ? cisternas[0] : null;
+  const handleOpenModal = async () => {
+    let currentCisternas = cisternas;
+    if (!currentCisternas || currentCisternas.length === 0) {
+      try {
+        const cRes = await api.get('/cisternas');
+        if (Array.isArray(cRes.data) && cRes.data.length > 0) {
+          currentCisternas = cRes.data;
+          setCisternas(currentCisternas);
+        }
+      } catch (err) {
+        console.warn('No se pudieron recargar cisternas al abrir modal:', err);
+      }
+    }
+
+    const defaultCisterna = currentCisternas && currentCisternas.length > 0 ? currentCisternas[0] : null;
     setFormData({
       cisterna_id: defaultCisterna ? String(defaultCisterna.id) : '',
       conductor_nombre: defaultCisterna?.conductor_habitual_nombre || '',
@@ -710,9 +732,34 @@ export default function CalidadPage() {
                 </div>
 
                 <div style={{ marginBottom: 14 }}>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>
-                    CISTERNA EVALUADA:
-                  </label>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                    <label style={{ fontSize: 12, fontWeight: 700, color: '#0f172a' }}>
+                      CISTERNA EVALUADA:
+                    </label>
+                    {cisternas.length === 0 && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const res = await api.get('/cisternas');
+                            if (Array.isArray(res.data) && res.data.length > 0) {
+                              setCisternas(res.data);
+                              setFormData(prev => ({
+                                ...prev,
+                                cisterna_id: String(res.data[0].id),
+                                conductor_nombre: res.data[0].conductor_habitual_nombre || prev.conductor_nombre
+                              }));
+                            }
+                          } catch (e) {
+                            console.error(e);
+                          }
+                        }}
+                        style={{ fontSize: 11, color: '#0284c7', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}
+                      >
+                        🔄 Reintentar Cargar
+                      </button>
+                    )}
+                  </div>
                   <select 
                     value={formData.cisterna_id} 
                     onChange={(e) => {
@@ -727,13 +774,18 @@ export default function CalidadPage() {
                     style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1.5px solid #0284c7', fontSize: 13, fontWeight: 700, background: '#f8fafc' }}
                     required
                   >
-                    <option value="">-- Seleccionar Cisterna --</option>
+                    <option value="">{cisternas.length === 0 ? '⚠️ No hay cisternas disponibles' : '-- Seleccionar Cisterna --'}</option>
                     {cisternas.map((c) => (
                       <option key={c.id} value={c.id}>
                         🚛 Placa {c.placa} — {c.marca_modelo} ({c.capacidad_m3} m³ / {Number(c.capacidad_m3) * 1000} Lts)
                       </option>
                     ))}
                   </select>
+                  {cisternas.length === 0 && (
+                    <div style={{ marginTop: 6, padding: '8px 10px', background: '#fffbeb', border: '1px solid #fef3c7', borderRadius: 6, fontSize: 12, color: '#92400e' }}>
+                      ⚠️ No se detectaron cisternas registradas en la base de datos.
+                    </div>
+                  )}
                 </div>
 
                 <div style={{ marginBottom: 14 }}>

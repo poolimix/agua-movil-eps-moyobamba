@@ -168,12 +168,54 @@ export const bootstrapSchema = async () => {
       -- Asegurar indice unico en dni para que ON CONFLICT (dni) opere sin fallos
       CREATE UNIQUE INDEX IF NOT EXISTS idx_beneficiarios_dni_unique ON beneficiarios (dni);
 
+      -- Asegurar existencia de tablas base de personal operativo y cisternas
+      CREATE TABLE IF NOT EXISTS personal_operativo (
+        id SERIAL PRIMARY KEY,
+        dni VARCHAR(15) UNIQUE NOT NULL,
+        nombres VARCHAR(150) NOT NULL,
+        apellidos VARCHAR(150) NOT NULL,
+        tipo_personal VARCHAR(50) NOT NULL,
+        licencia_conducir VARCHAR(50),
+        categoria_licencia VARCHAR(30),
+        telefono VARCHAR(50),
+        email VARCHAR(255),
+        estado VARCHAR(50) DEFAULT 'ACTIVO',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      INSERT INTO personal_operativo (dni, nombres, apellidos, tipo_personal, licencia_conducir, categoria_licencia, telefono, email, estado)
+      VALUES 
+        ('45892134', 'Carlos', 'Mendoza Ríos', 'CONDUCTOR', 'Q45892134', 'A-IIIc', '942123456', 'carlos.mendoza@gmail.com', 'ACTIVO'),
+        ('72109845', 'Manuel', 'Rojas Tapia', 'CONDUCTOR', 'Q72109845', 'A-IIIb', '942789123', 'manuel.rojas@gmail.com', 'ACTIVO'),
+        ('41238976', 'Segundo', 'Vásquez Gómez', 'AYUDANTE', NULL, NULL, '942456789', 'segundo.vasquez@gmail.com', 'ACTIVO')
+      ON CONFLICT (dni) DO NOTHING;
+
+      CREATE TABLE IF NOT EXISTS cisternas (
+        id SERIAL PRIMARY KEY,
+        placa VARCHAR(20) UNIQUE NOT NULL,
+        marca_modelo VARCHAR(150) NOT NULL,
+        capacidad_m3 DECIMAL(10,2) NOT NULL,
+        capacidad_litros DECIMAL(12,2) NOT NULL,
+        soat_vencimiento DATE,
+        revision_tecnica_vencimiento DATE,
+        estado VARCHAR(50) DEFAULT 'OPERATIVO',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
       ALTER TABLE cisternas ADD COLUMN IF NOT EXISTS codigo_gps VARCHAR(100);
       ALTER TABLE cisternas ADD COLUMN IF NOT EXISTS latitud_actual NUMERIC(10, 8);
       ALTER TABLE cisternas ADD COLUMN IF NOT EXISTS longitud_actual NUMERIC(11, 8);
       ALTER TABLE cisternas ADD COLUMN IF NOT EXISTS enlace_gps_tracking TEXT;
       ALTER TABLE cisternas ADD COLUMN IF NOT EXISTS ultima_actualizacion_gps TIMESTAMP;
       ALTER TABLE cisternas ADD COLUMN IF NOT EXISTS conductor_habitual_id INT REFERENCES personal_operativo(id) ON DELETE SET NULL;
+
+      -- Semillar cisternas operativas oficiales si la tabla está vacía
+      INSERT INTO cisternas (placa, marca_modelo, capacidad_m3, capacidad_litros, soat_vencimiento, revision_tecnica_vencimiento, estado)
+      VALUES 
+        ('CAT-849', 'VOLVO VM (EURO_V)', 19.00, 19000.00, '2027-01-15', '2026-12-20', 'OPERATIVO'),
+        ('EGA-401', 'Mercedes-Benz Actros 3331', 15.00, 15000.00, '2027-01-15', '2026-12-20', 'OPERATIVO'),
+        ('EGB-502', 'Volvo FMX 440 6x4', 20.00, 20000.00, '2026-11-30', '2026-10-15', 'OPERATIVO')
+      ON CONFLICT (placa) DO NOTHING;
 
       ALTER TABLE entregas_agua ADD COLUMN IF NOT EXISTS local_id VARCHAR(100);
       ALTER TABLE entregas_agua ADD COLUMN IF NOT EXISTS cisterna_id INT REFERENCES cisternas(id) ON DELETE SET NULL;
