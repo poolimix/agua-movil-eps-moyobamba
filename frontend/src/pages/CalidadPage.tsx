@@ -215,9 +215,7 @@ export default function CalidadPage() {
       turbiedad_ntu: '1.50',
       aspecto_organoleptico: 'Límpido / Incoloro',
       etapa_control: 'CARGA',
-      punto_muestreo: defaultProg 
-        ? `Surtidor / Planta de Carga EPS Moyobamba (Prog #${defaultProg.id} - ${defaultProg.zona})`
-        : 'Surtidor / Planta de Carga EPS Moyobamba',
+      punto_muestreo: 'Surtidor / Planta de Carga EPS Moyobamba',
       observaciones: '',
       registrado_por: 'Ing. Supervisor de Calidad'
     });
@@ -234,8 +232,8 @@ export default function CalidadPage() {
         cisterna_id: selectedProg.cisterna_id ? String(selectedProg.cisterna_id) : prev.cisterna_id,
         conductor_nombre: selectedProg.conductor_nombre || cisternaEncontrada?.conductor_habitual_nombre || prev.conductor_nombre,
         punto_muestreo: prev.etapa_control === 'CARGA'
-          ? `Surtidor / Planta de Carga EPS Moyobamba (Prog #${selectedProg.id} - ${selectedProg.zona})`
-          : `En Ruta - Sector ${selectedProg.zona || 'Asignado'}`
+          ? 'Surtidor / Planta de Carga EPS Moyobamba'
+          : `En Ruta - Sector ${selectedProg.zona ? String(selectedProg.zona).split(',')[0].trim() : 'Asignado'}`
       }));
     } else {
       setFormData(prev => ({
@@ -845,14 +843,30 @@ export default function CalidadPage() {
                         <select
                           value={formData.programacion_id}
                           onChange={(e) => handleProgramacionChange(e.target.value)}
-                          style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1.5px solid #0284c7', fontWeight: 700, fontSize: 13, background: '#f0f9ff', color: '#0369a1' }}
+                          style={{ 
+                            width: '100%', 
+                            padding: '9px 12px', 
+                            borderRadius: 8, 
+                            border: '1.5px solid #0284c7', 
+                            fontWeight: 700, 
+                            fontSize: 13, 
+                            background: '#f0f9ff', 
+                            color: '#0369a1',
+                            textOverflow: 'ellipsis',
+                            overflow: 'hidden',
+                            whiteSpace: 'nowrap'
+                          }}
                         >
                           <option value="">-- Control Libre / Sin Programación Específica --</option>
-                          {programaciones.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              📅 Prog #{p.id} ({p.fecha ? String(p.fecha).slice(0, 10) : ''}) • {p.zona} [Cisterna: {p.cisterna_placa || 'Asignada'} - Chofer: {p.conductor_nombre || 'Asignado'}]
-                            </option>
-                          ))}
+                          {programaciones.map((p) => {
+                            const fechaCorta = p.fecha ? String(p.fecha).slice(0, 10) : '';
+                            const cisternaTxt = p.cisterna_placa ? `Cisterna ${p.cisterna_placa}` : 'Cisterna Asignada';
+                            return (
+                              <option key={p.id} value={p.id}>
+                                📅 Prog #{p.id} ({fechaCorta}) — {cisternaTxt}
+                              </option>
+                            );
+                          })}
                         </select>
                         <div style={{ fontSize: 11, color: '#64748b', marginTop: 3 }}>
                           {formData.programacion_id 
