@@ -196,13 +196,20 @@ export default function CisternasPage() {
     if (!ok) return;
 
     try {
-      await api.delete(`/cisternas/${id}`);
+      const res = await api.delete(`/cisternas/${id}`);
+      await dialogAlert({
+        title: 'Cisterna eliminada',
+        message: res.data?.message || '🗑️ Cisterna eliminada correctamente del catálogo.',
+        type: 'success',
+      });
       fetchCisternas();
     } catch (error: any) {
+      const msg = error.response?.data?.message || 'No se pudo eliminar la cisterna.';
+      const detail = error.response?.data?.detail;
       await dialogAlert({
-        title: 'Error al eliminar',
-        message: 'No se pudo eliminar la cisterna. Verifique que no esté vinculada a programaciones.',
-        type: 'danger',
+        title: 'No se puede eliminar la cisterna',
+        message: detail ? `⚠️ ${msg}\n\n💡 ${detail}` : `❌ ${msg}`,
+        type: 'warning',
       });
     }
   };

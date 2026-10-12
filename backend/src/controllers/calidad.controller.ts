@@ -82,6 +82,29 @@ export const createControlCalidad = async (req: Request, res: Response) => {
     const turbiedadValida = turbiedad <= config.turbiedad_max_ntu;
     const conforme = cloroValido && turbiedadValida;
 
+    const finalCisternaId = cisterna_id && !isNaN(parseInt(String(cisterna_id), 10)) 
+      ? parseInt(String(cisterna_id), 10) 
+      : null;
+    const finalProgId = programacion_id && !isNaN(parseInt(String(programacion_id), 10)) 
+      ? parseInt(String(programacion_id), 10) 
+      : null;
+
+    let finalConductor = conductor_nombre && String(conductor_nombre).trim() 
+      ? String(conductor_nombre).trim() 
+      : null;
+
+    if (finalCisternaId && !finalConductor) {
+      const cRes = await query(`
+        SELECT CONCAT(p.nombres, ' ', p.apellidos) as chofer 
+        FROM cisternas c 
+        LEFT JOIN personal_operativo p ON c.conductor_habitual_id = p.id 
+        WHERE c.id = $1
+      `, [finalCisternaId]);
+      if (cRes.rows[0]?.chofer && cRes.rows[0].chofer.trim()) {
+        finalConductor = cRes.rows[0].chofer.trim();
+      }
+    }
+
     const result = await query(`
       INSERT INTO control_calidad (
         programacion_id, cisterna_id, conductor_nombre, cloro_residual_ppm, 
@@ -91,20 +114,20 @@ export const createControlCalidad = async (req: Request, res: Response) => {
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       RETURNING *
     `, [
-      programacion_id || null,
-      cisterna_id || null,
-      conductor_nombre || null,
+      finalProgId,
+      finalCisternaId,
+      finalConductor,
       cloro,
       turbiedad,
-      aspecto_organoleptico,
+      aspecto_organoleptico || 'Aceptable',
       conforme,
-      observaciones,
-      foto_muestra_url,
-      latitud,
-      longitud,
-      registrado_por,
-      etapa_control,
-      punto_muestreo
+      observaciones || '',
+      foto_muestra_url || null,
+      latitud || null,
+      longitud || null,
+      registrado_por || 'Operador / Supervisor',
+      etapa_control || 'CARGA',
+      punto_muestreo || 'Surtidor / Planta de Carga'
     ]);
 
     res.status(201).json({

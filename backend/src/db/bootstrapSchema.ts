@@ -141,10 +141,24 @@ export const bootstrapSchema = async () => {
       ALTER TABLE cisternas ADD COLUMN IF NOT EXISTS ultima_actualizacion_gps TIMESTAMP;
       ALTER TABLE cisternas ADD COLUMN IF NOT EXISTS conductor_habitual_id INT REFERENCES personal_operativo(id) ON DELETE SET NULL;
 
+      ALTER TABLE entregas_agua ADD COLUMN IF NOT EXISTS local_id VARCHAR(100);
+      ALTER TABLE entregas_agua ADD COLUMN IF NOT EXISTS cisterna_id INT REFERENCES cisternas(id) ON DELETE SET NULL;
+      ALTER TABLE entregas_agua ADD COLUMN IF NOT EXISTS conductor_id INT REFERENCES personal_operativo(id) ON DELETE SET NULL;
+      ALTER TABLE entregas_agua ADD COLUMN IF NOT EXISTS cuota_programada NUMERIC(10,2);
+      ALTER TABLE entregas_agua ADD COLUMN IF NOT EXISTS saldo_pendiente NUMERIC(10,2);
+      ALTER TABLE entregas_agua ADD COLUMN IF NOT EXISTS estado_entrega VARCHAR(50) DEFAULT 'COMPLETA';
+      ALTER TABLE entregas_agua ADD COLUMN IF NOT EXISTS observaciones_entrega TEXT;
+      ALTER TABLE entregas_agua ADD COLUMN IF NOT EXISTS firma_base64 TEXT;
+      ALTER TABLE entregas_agua ADD COLUMN IF NOT EXISTS precision_gps NUMERIC(10,2);
+      ALTER TABLE entregas_agua ADD COLUMN IF NOT EXISTS altitud NUMERIC(10,2);
+      ALTER TABLE entregas_agua ADD COLUMN IF NOT EXISTS fecha_ubicacion TIMESTAMP;
+      ALTER TABLE entregas_agua ADD COLUMN IF NOT EXISTS fecha_captura TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
       ALTER TABLE entregas_agua ADD COLUMN IF NOT EXISTS fecha_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
       ALTER TABLE entregas_agua ADD COLUMN IF NOT EXISTS foto_url TEXT;
       ALTER TABLE entregas_agua ADD COLUMN IF NOT EXISTS firma_url TEXT;
       ALTER TABLE entregas_agua ADD COLUMN IF NOT EXISTS observaciones TEXT;
+      ALTER TABLE entregas_agua ADD COLUMN IF NOT EXISTS sincronizado INT DEFAULT 1;
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_entregas_agua_local_id ON entregas_agua (local_id) WHERE local_id IS NOT NULL;
 
       -- Asegurar tabla y columnas en programaciones
       CREATE TABLE IF NOT EXISTS programaciones (
@@ -176,6 +190,10 @@ export const bootstrapSchema = async () => {
       ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS conforme_sanitario BOOLEAN DEFAULT TRUE;
       ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS observaciones TEXT;
       ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS fecha_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+      ALTER TABLE control_calidad ALTER COLUMN punto_muestreo TYPE TEXT;
+      ALTER TABLE control_calidad ALTER COLUMN aspecto_organoleptico TYPE TEXT;
+      ALTER TABLE control_calidad ALTER COLUMN etapa_control TYPE TEXT;
+      ALTER TABLE control_calidad ALTER COLUMN conductor_nombre TYPE TEXT;
     `);
 
     console.log('✅ [DB Bootstrap] Todas las tablas y parámetros operativos verificados con éxito.');

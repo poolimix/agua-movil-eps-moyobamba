@@ -198,11 +198,50 @@ export const updateUbicacionGps = async (req: Request, res: Response) => {
 export const deleteCisterna = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+
+    // 1. Verificar si la cisterna existe
+    const cisternaRes = await query('SELECT id, placa, marca_modelo FROM cisternas WHERE id = $1', [id]);
+    if (cisternaRes.rows.length === 0) {
+      return res.status(404).json({ message: 'La cisterna especificada no existe o ya fue eliminada.' });
+    }
+    const c = cisternaRes.rows[0];
+
+    // 2. Verificar dependencias operativas asociadas
+    const [entregasCount, progCount, calidadCount] = await Promise.all([
+      query('SELECT COUNT(*) FROM entregas_agua WHERE cisterna_id = $1', [id]).catch(() => ({ rows: [{ count: 0 }] })),
+      query('SELECT COUNT(*) FROM programaciones WHERE cisterna_id = $1', [id]).catch(() => ({ rows: [{ count: 0 }] })),
+      query('SELECT COUNT(*) FROM control_calidad WHERE cisterna_id = $1', [id]).catch(() => ({ rows: [{ count: 0 }] })),
+    ]);
+
+    const numEntregas = parseInt(entregasCount.rows[0]?.count || 0, 10);
+    const numProg = parseInt(progCount.rows[0]?.count || 0, 10);
+    const numCalidad = parseInt(calidadCount.rows[0]?.count || 0, 10);
+
+    if (numEntregas > 0 || numProg > 0 || numCalidad > 0) {
+      const razones: string[] = [];
+      if (numEntregas > 0) razones.push(`${numEntregas} entrega(s) de agua`);
+      if (numProg > 0) razones.push(`${numProg} programación(es) de ruta`);
+      if (numCalidad > 0) razones.push(`${numCalidad} ensayo(s) de control de calidad`);
+
+      return res.status(400).json({
+        message: `No se puede eliminar la cisterna ${c.placa} (${c.marca_modelo}) porque está asociada a: ${razones.join(', ')}.`,
+        detail: 'Para preservar la trazabilidad del Convenio PNSU y la auditoría SUNASS, no se pueden eliminar unidades con historial. Puede editar sus datos (placa, capacidad, chofer) o cambiar su estado a "MANTENIMIENTO" o "INACTIVO".',
+        asociaciones: {
+          entregas: numEntregas,
+          programaciones: numProg,
+          control_calidad: numCalidad,
+        }
+      });
+    }
+
     await query('DELETE FROM cisternas WHERE id = $1', [id]);
-    res.json({ message: 'Cisterna eliminada correctamente' });
+    res.json({ message: `Cisterna ${c.placa} eliminada correctamente.` });
   } catch (error: any) {
     console.error('Error deleting cisterna:', error);
-    res.status(500).json({ message: 'Error al eliminar cisterna', error: error.message });
+    res.status(500).json({ 
+      message: 'No se pudo eliminar la cisterna debido a restricciones de integridad de datos.',
+      detail: error.message 
+    });
   }
 };
 

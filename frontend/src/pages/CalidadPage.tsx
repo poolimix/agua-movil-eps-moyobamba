@@ -145,34 +145,43 @@ export default function CalidadPage() {
     fetchData();
   }, [filtroCisterna]);
 
+  const handleOpenModal = () => {
+    const defaultCisterna = cisternas.length > 0 ? cisternas[0] : null;
+    setFormData({
+      cisterna_id: defaultCisterna ? String(defaultCisterna.id) : '',
+      conductor_nombre: defaultCisterna?.conductor_habitual_nombre || '',
+      cloro_residual_ppm: '1.20',
+      turbiedad_ntu: '1.50',
+      aspecto_organoleptico: 'Límpido / Incoloro',
+      etapa_control: 'CARGA',
+      punto_muestreo: 'Surtidor / Planta de Carga EPS Moyobamba',
+      observaciones: '',
+      registrado_por: 'Ing. Supervisor de Calidad'
+    });
+    setModalOpen(true);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       setSubmitting(true);
-      const res = await api.post('/calidad/calidad', formData);
+      const res = await api.post('/calidad/calidad', {
+        ...formData,
+        cisterna_id: formData.cisterna_id ? parseInt(formData.cisterna_id, 10) : null,
+      });
 
       await dialogAlert({
-        title: 'Control de Calidad',
-        message: res.data.message || '✅ Control registrado exitosamente',
+        title: 'Control de Calidad Registrado',
+        message: res.data.message || '✅ Control sanitario registrado exitosamente',
         type: 'success',
       });
       setModalOpen(false);
-      setFormData({
-        cisterna_id: '',
-        conductor_nombre: '',
-        cloro_residual_ppm: '1.20',
-        turbiedad_ntu: '1.50',
-        aspecto_organoleptico: 'Límpido / Incoloro',
-        etapa_control: 'CARGA',
-        punto_muestreo: 'Surtidor / Planta de Carga EPS Moyobamba',
-        observaciones: '',
-        registrado_por: 'Ing. Supervisor de Calidad'
-      });
       fetchData();
     } catch (err: any) {
+      const serverMsg = err.response?.data?.message || err.response?.data?.error || err.message;
       await dialogAlert({
         title: 'Error en control de calidad',
-        message: err.message || 'Error registrando control',
+        message: serverMsg || 'Error registrando control sanitario',
         type: 'danger',
       });
     } finally {
@@ -302,7 +311,7 @@ export default function CalidadPage() {
             <button 
               type="button" 
               className="btn-primary"
-              onClick={() => setModalOpen(true)}
+              onClick={handleOpenModal}
               style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 18px', borderRadius: 10, fontSize: 13, fontWeight: 700 }}
             >
               <span style={{ fontSize: 16 }}>➕</span>
@@ -701,17 +710,43 @@ export default function CalidadPage() {
                 </div>
 
                 <div style={{ marginBottom: 14 }}>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 }}>CISTERNA EVALUADA:</label>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>
+                    CISTERNA EVALUADA:
+                  </label>
                   <select 
                     value={formData.cisterna_id} 
-                    onChange={(e) => setFormData({ ...formData, cisterna_id: e.target.value })}
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid #cbd5e1' }}
+                    onChange={(e) => {
+                      const selectedId = e.target.value;
+                      const found = cisternas.find(c => String(c.id) === String(selectedId));
+                      setFormData(prev => ({ 
+                        ...prev, 
+                        cisterna_id: selectedId,
+                        conductor_nombre: found?.conductor_habitual_nombre || prev.conductor_nombre
+                      }));
+                    }}
+                    style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1.5px solid #0284c7', fontSize: 13, fontWeight: 700, background: '#f8fafc' }}
+                    required
                   >
-                    <option value="">Seleccionar Cisterna</option>
+                    <option value="">-- Seleccionar Cisterna --</option>
                     {cisternas.map((c) => (
-                      <option key={c.id} value={c.id}>{c.placa} ({c.capacidad_m3} m³)</option>
+                      <option key={c.id} value={c.id}>
+                        🚛 Placa {c.placa} — {c.marca_modelo} ({c.capacidad_m3} m³ / {Number(c.capacidad_m3) * 1000} Lts)
+                      </option>
                     ))}
                   </select>
+                </div>
+
+                <div style={{ marginBottom: 14 }}>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
+                    CONDUCTOR / CHOFER DE LA CISTERNA:
+                  </label>
+                  <input 
+                    type="text" 
+                    value={formData.conductor_nombre} 
+                    onChange={(e) => setFormData({ ...formData, conductor_nombre: e.target.value })}
+                    placeholder="Ej: Conductor Operativo EPS Moyobamba"
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid #cbd5e1' }}
+                  />
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
