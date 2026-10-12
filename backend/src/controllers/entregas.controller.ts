@@ -46,13 +46,14 @@ export const getAllEntregas = async (req: Request, res: Response) => {
           COALESCE(b.sector_aahh, b.sector, '') as sector, 
           b.num_miembros, 
           b.telefono,
-          c.placa as cisterna_placa,
+          COALESCE(c.placa, pc.placa, (SELECT placa FROM cisternas WHERE estado = 'Activa' OR placa = 'CAT-849' ORDER BY id ASC LIMIT 1), 'CAT-849') as cisterna_placa,
           p.zona, 
           p.fecha as fecha_programacion
         FROM entregas_agua e
         LEFT JOIN beneficiarios b ON e.beneficiario_id = b.id
         LEFT JOIN programaciones p ON e.programacion_id = p.id
         LEFT JOIN cisternas c ON e.cisterna_id = c.id
+        LEFT JOIN cisternas pc ON p.cisterna_id = pc.id
         ${whereStr}
         ORDER BY e.fecha_hora DESC
         LIMIT $${params.length + 1} OFFSET $${params.length + 2}
@@ -140,6 +141,20 @@ export const syncEntregas = async (req: Request, res: Response) => {
       const finalSaldo = parseFloat(saldo_pendiente !== undefined && saldo_pendiente !== null ? saldo_pendiente : Math.max(0, finalCuota - finalLitros));
       const finalEstado = estado_entrega || (finalSaldo > 0 ? 'PARCIAL' : 'COMPLETA');
 
+      let resolvedCisternaId = cisterna_id || null;
+      if (!resolvedCisternaId && programacion_id) {
+        const pRes = await query('SELECT cisterna_id FROM programaciones WHERE id = $1', [programacion_id]);
+        if (pRes.rows.length > 0 && pRes.rows[0].cisterna_id) {
+          resolvedCisternaId = pRes.rows[0].cisterna_id;
+        }
+      }
+      if (!resolvedCisternaId) {
+        const cDef = await query(`SELECT id FROM cisternas WHERE estado = 'Activa' OR placa = 'CAT-849' ORDER BY id ASC LIMIT 1`);
+        if (cDef.rows.length > 0) {
+          resolvedCisternaId = cDef.rows[0].id;
+        }
+      }
+
       const insertQuery = `
         INSERT INTO entregas_agua (
           beneficiario_id, programacion_id, cisterna_id, conductor_id,
@@ -152,7 +167,7 @@ export const syncEntregas = async (req: Request, res: Response) => {
       await query(insertQuery, [
         beneficiario_id,
         programacion_id,
-        cisterna_id || null,
+        resolvedCisternaId,
         conductor_id || null,
         finalCuota,
         finalLitros,

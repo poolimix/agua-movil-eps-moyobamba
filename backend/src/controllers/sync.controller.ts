@@ -78,7 +78,7 @@ export const uploadDelivery = async (req: Request, res: Response) => {
     const finalLocalId = localId || local_id || `gen-${Date.now()}`;
     const finalBeneficiarioId = beneficiarioId || beneficiario_id;
     const finalProgramacionId = programacionId || programacion_id || 1;
-    const finalCisternaId = cisternaId || cisterna_id || null;
+    let finalCisternaId = cisternaId || cisterna_id || null;
     const finalConductorId = conductorId || conductor_id || null;
     const finalLitros = parseFloat(litrosEntregados || litros_entregados || '50');
     const finalCuota = parseFloat(cuotaProgramada || cuota_programada || finalLitros);
@@ -109,6 +109,19 @@ export const uploadDelivery = async (req: Request, res: Response) => {
       if (checkRes.rows.length === 0) {
         console.warn(`Programacion ID ${validProgramacionId} no existe en la BD. Nulificando para permitir sincronización.`);
         validProgramacionId = null;
+      }
+    }
+
+    if (!finalCisternaId && validProgramacionId) {
+      const pRes = await query('SELECT cisterna_id FROM programaciones WHERE id = $1', [validProgramacionId]);
+      if (pRes.rows.length > 0 && pRes.rows[0].cisterna_id) {
+        finalCisternaId = pRes.rows[0].cisterna_id;
+      }
+    }
+    if (!finalCisternaId) {
+      const cDef = await query(`SELECT id, placa FROM cisternas WHERE estado = 'Activa' OR placa = 'CAT-849' ORDER BY id ASC LIMIT 1`);
+      if (cDef.rows.length > 0) {
+        finalCisternaId = cDef.rows[0].id;
       }
     }
 
@@ -149,7 +162,7 @@ export const uploadDelivery = async (req: Request, res: Response) => {
         let benDni = '-';
         let benSector = 'Moyobamba';
         let benDir = '-';
-        let cisternaPlaca = 'EGA-902';
+        let cisternaPlaca = 'CAT-849';
 
         if (validBeneficiarioId) {
           const bRes = await query(

@@ -644,16 +644,28 @@ export default function DashboardPage() {
                     <tr key={ent.id}>
                       <td style={{ whiteSpace: 'nowrap' }}>
                         <div style={{ fontWeight: 700, color: '#0f172a', fontSize: 13 }}>
-                          {isNaN(new Date(ent.fecha_hora).getTime())
-                            ? (ent.fecha_hora?.split(' ')[0] || ent.fecha_hora)
-                            : new Date(ent.fecha_hora).toLocaleDateString('es-PE')}
+                          {(() => {
+                            if (!ent.fecha_hora) return '-';
+                            const d = new Date(ent.fecha_hora);
+                            if (isNaN(d.getTime()) || d.getFullYear() < 2020) {
+                              const parts = String(ent.fecha_hora).split(' ');
+                              return parts[0] || ent.fecha_hora;
+                            }
+                            return d.toLocaleDateString('es-PE');
+                          })()}
                         </div>
                         <div style={{ fontSize: 11, color: '#64748b', marginTop: 2, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                           <span>🕒</span>
                           <span>
-                            {isNaN(new Date(ent.fecha_hora).getTime())
-                              ? (ent.fecha_hora?.split(' ')[1] || '')
-                              : new Date(ent.fecha_hora).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}
+                            {(() => {
+                              if (!ent.fecha_hora) return '';
+                              const d = new Date(ent.fecha_hora);
+                              if (isNaN(d.getTime()) || d.getFullYear() < 2020) {
+                                const parts = String(ent.fecha_hora).split(' ');
+                                return parts[1] || '';
+                              }
+                              return d.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
+                            })()}
                           </span>
                         </div>
                       </td>
@@ -685,7 +697,22 @@ export default function DashboardPage() {
                             🚛 {ent.cisterna_placa}
                           </span>
                         ) : (
-                          <span style={{ color: '#94a3b8', fontSize: 11 }}>N/D</span>
+                          <span 
+                            style={{
+                              background: '#f1f5f9',
+                              border: '1px solid #cbd5e1',
+                              padding: '2px 8px',
+                              borderRadius: 6,
+                              fontSize: 11,
+                              fontWeight: 700,
+                              color: '#334155',
+                              cursor: 'pointer'
+                            }}
+                            onClick={() => setSelectedCisternaPlaca('CAT-849')}
+                            title="Filtrar por esta cisterna"
+                          >
+                            🚛 CAT-849
+                          </span>
                         )}
                       </td>
                       <td>

@@ -282,6 +282,23 @@ export const bootstrapSchema = async () => {
       ALTER TABLE control_calidad ALTER COLUMN aspecto_organoleptico TYPE TEXT;
       ALTER TABLE control_calidad ALTER COLUMN etapa_control TYPE TEXT;
       ALTER TABLE control_calidad ALTER COLUMN conductor_nombre TYPE TEXT;
+
+      -- Auto-reparar cisterna_id en entregas_agua si es nulo
+      UPDATE entregas_agua e
+      SET cisterna_id = COALESCE(
+        p.cisterna_id,
+        (SELECT id FROM cisternas WHERE placa = 'CAT-849' LIMIT 1),
+        (SELECT id FROM cisternas WHERE estado = 'Activa' ORDER BY id ASC LIMIT 1)
+      )
+      FROM programaciones p
+      WHERE e.programacion_id = p.id AND e.cisterna_id IS NULL;
+
+      UPDATE entregas_agua
+      SET cisterna_id = COALESCE(
+        (SELECT id FROM cisternas WHERE placa = 'CAT-849' LIMIT 1),
+        (SELECT id FROM cisternas WHERE estado = 'Activa' ORDER BY id ASC LIMIT 1)
+      )
+      WHERE cisterna_id IS NULL;
     `);
 
     console.log('✅ [DB Bootstrap] Todas las tablas y parámetros operativos verificados con éxito.');

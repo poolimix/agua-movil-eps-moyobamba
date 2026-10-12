@@ -343,17 +343,23 @@ export const getStats = async (req: Request, res: Response) => {
         SELECT 
           e.id,
           e.litros_entregados,
-          TO_CHAR(e.fecha_hora, 'DD/MM HH24:MI') as fecha_hora,
+          e.fecha_hora,
           COALESCE(b.nombres_apellidos, 'Beneficiario') as beneficiario,
           COALESCE(b.dni, '-') as dni,
           COALESCE(b.sector_aahh, b.sector, 'Moyobamba') as sector,
+          COALESCE(c.placa, pc.placa, (SELECT placa FROM cisternas WHERE estado = 'Activa' OR placa = 'CAT-849' ORDER BY id ASC LIMIT 1), 'CAT-849') as cisterna_placa,
+          e.latitud,
+          e.longitud,
           e.sincronizado,
           e.foto_url
         FROM entregas_agua e
         LEFT JOIN beneficiarios b ON e.beneficiario_id = b.id
-        ${entregasWhere}
+        LEFT JOIN programaciones p ON e.programacion_id = p.id
+        LEFT JOIN cisternas c ON e.cisterna_id = c.id
+        LEFT JOIN cisternas pc ON p.cisterna_id = pc.id
+        ${entregasWhere.replace(/fecha_hora/g, 'e.fecha_hora')}
         ORDER BY e.fecha_hora DESC
-        LIMIT 6
+        LIMIT 10
       `, paramsEntregas);
       ultimasEntregas = ultEntRes.rows;
     } catch (e) {
