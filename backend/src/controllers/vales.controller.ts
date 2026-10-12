@@ -421,6 +421,7 @@ export const reintentarValesFallidos = async (req: Request, res: Response) => {
       : new Date().toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
     let reintentados = 0;
+    let ultimoError = '';
 
     for (let i = 0; i < valesFallidos.rows.length; i += BATCH_SIZE) {
       const chunk = valesFallidos.rows.slice(i, i + BATCH_SIZE);
@@ -458,9 +459,11 @@ export const reintentarValesFallidos = async (req: Request, res: Response) => {
               reintentados++;
             } else {
               emailError = dispatchResult.email.error || 'Error al reintentar correo';
+              ultimoError = emailError;
             }
           } catch (err: any) {
             emailError = err.message || 'Excepción al reintentar correo';
+            ultimoError = emailError;
           }
 
           const updatedErrores = {
@@ -480,13 +483,106 @@ export const reintentarValesFallidos = async (req: Request, res: Response) => {
       );
     }
 
+    if (valesFallidos.rows.length > 0 && reintentados === 0) {
+      return res.status(400).json({
+        message: `No se pudo enviar el correo a los ${valesFallidos.rows.length} beneficiarios. Detalle SMTP: ${ultimoError || 'Fallo de autenticación o conexión SMTP'}. Verifique la configuración en .env.`,
+        error: ultimoError,
+        reintentadosCount: 0,
+      });
+    }
+
     res.status(200).json({
-      message: `Reintento de correo completado. ${reintentados} correos enviados exitosamente.`,
+      message: `Reintento de correo completado. ${reintentados} de ${valesFallidos.rows.length} correos enviados exitosamente.`,
       reintentadosCount: reintentados,
     });
   } catch (error: any) {
     console.error('Error reintentando vales:', error);
     res.status(500).json({ message: 'Error al reintentar envío de vales', error: error.message });
+  }
+};
+
+export const despacharCorreoIndividual = async (req: Request, res: Response) => {
+  try {
+    const { valeId } = req.params;
+
+    const valeRes = await query(`
+      SELECT 
+        v.*,
+        b.dni,
+        b.nombres_apellidos,
+        COALESCE(b.sector_aahh, b.sector, '') as sector_aahh,
+        b.telefono,
+        b.email,
+        p.fecha as programacion_fecha
+      FROM vales_entrega v
+      INNER JOIN beneficiarios b ON v.beneficiario_id = b.id
+      LEFT JOIN programaciones p ON v.programacion_id = p.id
+      WHERE v.id = $1
+    `, [valeId]);
+
+    if (valeRes.rows.length === 0) {
+      return res.status(404).json({ message: 'Vale no encontrado' });
+    }
+
+    const v = valeRes.rows[0];
+    if (!v.email || !v.email.includes('@')) {
+      return res.status(400).json({ message: `El beneficiario ${v.nombres_apellidos} no cuenta con un correo electrónico válido registrado en el padrón.` });
+    }
+
+    const fechaObj = v.programacion_fecha ? new Date(v.programacion_fecha) : new Date();
+    const fechaFormateada = !isNaN(fechaObj.getTime())
+      ? fechaObj.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+      : new Date().toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+    const payload = {
+      beneficiario: {
+        nombres_apellidos: v.nombres_apellidos,
+        dni: v.dni,
+        telefono: v.telefono,
+        email: v.email,
+        sector: v.sector_aahh,
+      },
+      codigo_unico: v.codigo_unico,
+      fecha_programada: fechaFormateada,
+      litros: v.litros_sugeridos,
+      qr_data: v.qr_data,
+    };
+
+    const qrBuffer = await MultichannelNotificationService.generateQrBuffer(
+      v.qr_data || `${v.codigo_unico}|${v.dni}|${v.litros_sugeridos}L`
+    );
+
+    const emailResult = await MultichannelNotificationService.sendEmail(payload, qrBuffer);
+
+    if (!emailResult.success) {
+      const errDetail = emailResult.error || 'Fallo de entrega SMTP';
+      await query(`
+        UPDATE vales_entrega 
+        SET errores_notificacion = jsonb_set(COALESCE(errores_notificacion, '{}'::jsonb), '{email}', $1::jsonb)
+        WHERE id = $2
+      `, [JSON.stringify(errDetail), v.id]);
+
+      return res.status(400).json({ 
+        message: `Fallo al enviar correo a ${v.email}: ${errDetail}`,
+        error: errDetail
+      });
+    }
+
+    await query(`
+      UPDATE vales_entrega 
+      SET correo_enviado = TRUE,
+          fecha_despacho = CURRENT_TIMESTAMP,
+          errores_notificacion = jsonb_set(COALESCE(errores_notificacion, '{}'::jsonb), '{email}', 'null'::jsonb)
+      WHERE id = $1
+    `, [v.id]);
+
+    res.json({ 
+      message: `¡Correo enviado exitosamente a ${v.email}! (Vale: ${v.codigo_unico})`,
+      messageId: emailResult.messageId 
+    });
+  } catch (err: any) {
+    console.error('Error enviando correo individual:', err);
+    res.status(500).json({ message: `Error en envío de correo: ${err.message}`, error: err.message });
   }
 };
 

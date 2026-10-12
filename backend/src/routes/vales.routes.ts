@@ -12,5 +12,6 @@ router.patch('/vales/:id/estado', verifyToken, valesController.cambiarEstadoVale
 router.post('/programaciones/:id/despachar-vales', verifyToken, requireRole(['ADMIN', 'SUPERVISOR']), valesController.despacharValesProgramacion);
 router.get('/programaciones/:id/vales', valesController.getValesProgramacion);
 router.post('/programaciones/:id/reintentar-vales-fallidos', verifyToken, requireRole(['ADMIN', 'SUPERVISOR']), valesController.reintentarValesFallidos);
+router.post('/vales/:valeId/enviar-correo', verifyToken, requireRole(['ADMIN', 'SUPERVISOR']), valesController.despacharCorreoIndividual);
 
 export default router;

@@ -122,6 +122,9 @@ export default function ProgramacionesPage() {
   const [retrying, setRetrying] = useState(false);
   const [valesSearchTerm, setValesSearchTerm] = useState('');
   const [selectedValeQr, setSelectedValeQr] = useState<Vale | null>(null);
+  const [valesPage, setValesPage] = useState(1);
+  const [valesPageSize, setValesPageSize] = useState(15);
+  const [sendingEmailValeId, setSendingEmailValeId] = useState<number | null>(null);
 
   useEffect(() => {
     fetchProgramaciones();
@@ -332,6 +335,38 @@ export default function ProgramacionesPage() {
     }
   };
 
+  const handleEnviarCorreoIndividual = async (v: Vale) => {
+    if (!v.email || !v.email.includes('@')) {
+      await dialogAlert({
+        title: 'Sin correo registrado',
+        message: `El beneficiario ${v.nombres_apellidos} no cuenta con un correo electrónico en el padrón.`,
+        type: 'warning',
+      });
+      return;
+    }
+
+    try {
+      setSendingEmailValeId(v.id);
+      const res = await api.post(`/vales/${v.id}/enviar-correo`);
+      await dialogAlert({
+        title: 'Correo Enviado con Éxito',
+        message: `✅ ${res.data.message}`,
+        type: 'success',
+      });
+      if (selectedProgForVales) {
+        fetchVales(selectedProgForVales.id);
+      }
+    } catch (error: any) {
+      await dialogAlert({
+        title: 'Error al enviar correo',
+        message: `❌ ${error.response?.data?.message || error.message}`,
+        type: 'danger',
+      });
+    } finally {
+      setSendingEmailValeId(null);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (formData.selectedSectores.length === 0) {
@@ -417,8 +452,12 @@ export default function ProgramacionesPage() {
     (v) =>
       v.nombres_apellidos?.toLowerCase().includes(valesSearchTerm.toLowerCase()) ||
       v.dni?.includes(valesSearchTerm) ||
-      v.codigo_unico?.toLowerCase().includes(valesSearchTerm.toLowerCase())
+      v.codigo_unico?.toLowerCase().includes(valesSearchTerm.toLowerCase()) ||
+      (v.email && v.email.toLowerCase().includes(valesSearchTerm.toLowerCase()))
   );
+
+  const totalValesPages = Math.ceil(filteredVales.length / valesPageSize) || 1;
+  const paginatedVales = filteredVales.slice((valesPage - 1) * valesPageSize, valesPage * valesPageSize);
 
   const totalWaOk = valesList.filter((v) => v.whatsapp_enviado).length;
   const totalSmsOk = valesList.filter((v) => v.sms_enviado).length;
@@ -727,7 +766,7 @@ export default function ProgramacionesPage() {
         <div className="modal-overlay" onClick={() => setSelectedProgForVales(null)}>
           <div
             className="modal-content"
-            style={{ maxWidth: 960, width: '95%', maxHeight: '90vh', overflowY: 'auto' }}
+            style={{ maxWidth: 1240, width: '96%', maxHeight: '92vh', overflowY: 'auto' }}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="modal-header">
@@ -770,11 +809,14 @@ export default function ProgramacionesPage() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
               <input
                 type="text"
-                placeholder="🔍 Filtrar beneficiario o código..."
+                placeholder="🔍 Filtrar beneficiario, correo o código..."
                 className="search-input"
-                style={{ width: 260 }}
+                style={{ width: 280 }}
                 value={valesSearchTerm}
-                onChange={(e) => setValesSearchTerm(e.target.value)}
+                onChange={(e) => {
+                  setValesSearchTerm(e.target.value);
+                  setValesPage(1);
+                }}
               />
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button
@@ -814,20 +856,20 @@ export default function ProgramacionesPage() {
               </div>
             </div>
 
-            {/* VALES AUDIT TABLE */}
-            <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden' }}>
-              <table className="custom-table" style={{ fontSize: 12.5 }}>
+            {/* VALES AUDIT TABLE CON SCROLL HORIZONTAL COMPLETO */}
+            <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, overflowX: 'auto', background: '#fff' }}>
+              <table className="custom-table" style={{ fontSize: 12.5, minWidth: 1020, width: '100%' }}>
                 <thead>
-                  <tr>
-                    <th>Código Vale</th>
-                    <th>Beneficiario</th>
-                    <th>Teléfono</th>
-                    <th>Correo</th>
-                    <th>Dotación</th>
-                    <th>WhatsApp</th>
-                    <th>SMS</th>
-                    <th>Correo</th>
-                    <th>Acciones</th>
+                  <tr style={{ background: '#f8fafc' }}>
+                    <th style={{ minWidth: 145 }}>Código Vale</th>
+                    <th style={{ minWidth: 185 }}>Beneficiario</th>
+                    <th style={{ minWidth: 100 }}>Teléfono</th>
+                    <th style={{ minWidth: 175 }}>Correo Destino</th>
+                    <th style={{ minWidth: 95 }}>Dotación</th>
+                    <th style={{ textAlign: 'center', minWidth: 80 }}>WhatsApp</th>
+                    <th style={{ textAlign: 'center', minWidth: 70 }}>SMS</th>
+                    <th style={{ textAlign: 'center', minWidth: 110 }}>Estado Correo</th>
+                    <th style={{ textAlign: 'center', minWidth: 160 }}>Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -844,10 +886,10 @@ export default function ProgramacionesPage() {
                       </td>
                     </tr>
                   ) : (
-                    filteredVales.map((v) => (
+                    paginatedVales.map((v) => (
                       <tr key={v.id}>
                         <td>
-                          <span className="badge-count" style={{ background: '#f0fdf4', color: '#166534', fontWeight: 800, fontSize: 11.5 }}>
+                          <span className="badge-count" style={{ background: '#f0fdf4', color: '#166534', fontWeight: 800, fontSize: 11.5, whiteSpace: 'nowrap' }}>
                             {v.codigo_unico}
                           </span>
                         </td>
@@ -856,7 +898,13 @@ export default function ProgramacionesPage() {
                           <div style={{ fontSize: 11, color: '#64748b' }}>DNI: {v.dni}</div>
                         </td>
                         <td>{v.telefono || '-'}</td>
-                        <td style={{ fontSize: 11.5 }}>{v.email || '-'}</td>
+                        <td style={{ fontSize: 11.5 }}>
+                          {v.email ? (
+                            <strong style={{ color: '#0369a1' }}>{v.email}</strong>
+                          ) : (
+                            <span style={{ color: '#94a3b8' }}>-</span>
+                          )}
+                        </td>
                         <td>
                           <strong style={{ color: '#0369a1' }}>{v.litros_sugeridos} Lts</strong>
                           <span style={{ fontSize: 10, color: '#64748b', display: 'block' }}>Semanal (7d)</span>
@@ -877,7 +925,7 @@ export default function ProgramacionesPage() {
                         </td>
                         <td style={{ textAlign: 'center' }}>
                           {v.correo_enviado ? (
-                            <span title="Correo enviado con éxito" style={{ fontSize: 14 }}>🟢</span>
+                            <span title="Correo enviado con éxito al beneficiario" style={{ fontSize: 14 }}>🟢</span>
                           ) : !v.email ? (
                             <span title="Sin correo registrado en padrón" style={{ fontSize: 14, opacity: 0.6 }}>⚪</span>
                           ) : (
@@ -885,10 +933,10 @@ export default function ProgramacionesPage() {
                           )}
                         </td>
                         <td>
-                          <div style={{ display: 'flex', gap: 4 }}>
+                          <div style={{ display: 'flex', gap: 4, justifyContent: 'center', alignItems: 'center' }}>
                             <button
                               className="btn-secondary"
-                              style={{ padding: '3px 8px', fontSize: 11 }}
+                              style={{ padding: '3px 7px', fontSize: 11 }}
                               onClick={() => setSelectedValeQr(v)}
                               title="Ver código QR digital"
                             >
@@ -896,7 +944,7 @@ export default function ProgramacionesPage() {
                             </button>
                             <button
                               className="btn-secondary"
-                              style={{ padding: '3px 8px', fontSize: 11, background: '#f8fafc' }}
+                              style={{ padding: '3px 7px', fontSize: 11, background: '#f8fafc' }}
                               onClick={() => imprimirValeIndividual({
                                 codigo_unico: v.codigo_unico,
                                 beneficiario_dni: v.dni,
@@ -910,6 +958,24 @@ export default function ProgramacionesPage() {
                             >
                               🖨️
                             </button>
+                            {v.email && v.email.includes('@') && (
+                              <button
+                                className="btn-secondary"
+                                style={{
+                                  padding: '3px 7px',
+                                  fontSize: 11,
+                                  background: v.correo_enviado ? '#f0fdf4' : '#eff6ff',
+                                  color: v.correo_enviado ? '#166534' : '#1d4ed8',
+                                  borderColor: v.correo_enviado ? '#86efac' : '#93c5fd',
+                                  fontWeight: 700
+                                }}
+                                disabled={sendingEmailValeId === v.id}
+                                onClick={() => handleEnviarCorreoIndividual(v)}
+                                title={v.correo_enviado ? "Reenviar correo oficial" : "Enviar correo al beneficiario"}
+                              >
+                                {sendingEmailValeId === v.id ? '⏳' : '✉️ Correo'}
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -917,6 +983,60 @@ export default function ProgramacionesPage() {
                   )}
                 </tbody>
               </table>
+            </div>
+
+            {/* PAGINACIÓN DE VALES */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginTop: 12,
+              padding: '8px 12px',
+              background: '#f8fafc',
+              borderRadius: 8,
+              border: '1px solid #e2e8f0',
+              flexWrap: 'wrap',
+              gap: 8
+            }}>
+              <div style={{ fontSize: 12.5, color: '#475569', fontWeight: 600 }}>
+                Mostrando {filteredVales.length === 0 ? 0 : (valesPage - 1) * valesPageSize + 1} a {Math.min(valesPage * valesPageSize, filteredVales.length)} de {filteredVales.length} vales
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 12, color: '#64748b' }}>Por página:</span>
+                <select
+                  value={valesPageSize}
+                  onChange={(e) => {
+                    setValesPageSize(Number(e.target.value));
+                    setValesPage(1);
+                  }}
+                  className="search-input"
+                  style={{ width: 75, padding: '3px 8px', fontSize: 12, height: 30 }}
+                >
+                  <option value={15}>15</option>
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+                <button
+                  className="btn-secondary"
+                  style={{ padding: '3px 10px', fontSize: 12, height: 30 }}
+                  onClick={() => setValesPage((p) => Math.max(p - 1, 1))}
+                  disabled={valesPage === 1}
+                >
+                  ◀ Anterior
+                </button>
+                <span style={{ fontSize: 12, fontWeight: 800, color: '#0f172a' }}>
+                  Pág {valesPage} de {totalValesPages}
+                </span>
+                <button
+                  className="btn-secondary"
+                  style={{ padding: '3px 10px', fontSize: 12, height: 30 }}
+                  onClick={() => setValesPage((p) => Math.min(p + 1, totalValesPages))}
+                  disabled={valesPage >= totalValesPages}
+                >
+                  Siguiente ▶
+                </button>
+              </div>
             </div>
 
             <div className="modal-footer" style={{ marginTop: 16 }}>
