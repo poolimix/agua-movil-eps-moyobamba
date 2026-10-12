@@ -94,6 +94,9 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
   const [loadingBeneficiarios, setLoadingBeneficiarios] = useState(false);
   const [filtroBeneficiario, setFiltroBeneficiario] = useState('');
   const [filtroEstadoBenef, setFiltroEstadoBenef] = useState<'TODOS' | 'PENDIENTES' | 'ATENDIDOS'>('TODOS');
+  const [sectorSeleccionado, setSectorSeleccionado] = useState<string>('TODOS');
+  const [coincidenciasModalVisible, setCoincidenciasModalVisible] = useState(false);
+  const [coincidenciasResultados, setCoincidenciasResultados] = useState<any[]>([]);
 
   // Scroll lock for signature pad
   const [scrollEnabled, setScrollEnabled] = useState(true);
@@ -180,18 +183,40 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
       const res = await fetch(`${BACKEND_URL}/programaciones/${id}/beneficiarios`);
       if (res.ok) {
         const json = await res.json();
-        if (json.success && Array.isArray(json.data)) {
-          setBeneficiariosSector(json.data);
+        const lista = json.data || json.beneficiarios || (Array.isArray(json) ? json : []);
+        if (Array.isArray(lista) && lista.length > 0) {
+          const normalizados = lista.map((b: any) => ({
+            ...b,
+            id: b.id,
+            dni: b.dni,
+            nombres: b.nombres || b.nombres_apellidos || 'Sin nombre',
+            nombres_apellidos: b.nombres_apellidos || b.nombres || 'Sin nombre',
+            sector: b.sector_aahh || b.sector || 'Sector Moyobamba',
+            sector_aahh: b.sector_aahh || b.sector || 'Sector Moyobamba',
+            direccion: b.calle_direccion || b.direccion || '-',
+            vale_codigo: b.vale_codigo || null,
+            cuota_semanal: Number(b.cuota_semanal || 700),
+            litros_esta_semana: Number(b.litros_entregados_semana || b.litros_esta_semana || 0),
+            atendido_esta_semana: !!b.ha_recibido_esta_semana || !!b.atendido_esta_semana || (Number(b.saldo_semanal) <= 0 && Number(b.litros_entregados_semana) > 0)
+          }));
+          setBeneficiariosSector(normalizados);
           return;
         }
       }
       // Fallback local SQLite si no hay conexión a internet
       const db = await getDatabase();
-      const rows = await db.getAllAsync(`
-        SELECT id, nombres, dni, telefono, direccion, sector,
-               COALESCE(cuota_litros, 700) as cuota_semanal
-        FROM beneficiarios
-        ORDER BY nombres ASC
+      const rows: any = await db.getAllAsync(`
+        SELECT b.id, b.dni, 
+               COALESCE(b.nombres_apellidos, '') as nombres,
+               COALESCE(b.nombres_apellidos, '') as nombres_apellidos,
+               COALESCE(b.sector_aahh, b.sector, 'Sector') as sector,
+               COALESCE(b.calle_direccion, b.direccion, '-') as direccion,
+               b.telefono,
+               v.codigo_unico as vale_codigo,
+               COALESCE(v.litros_sugeridos, 700) as cuota_semanal
+        FROM beneficiarios b
+        LEFT JOIN vales_consumo v ON v.beneficiario_id = b.id
+        ORDER BY b.nombres_apellidos ASC
       `);
       setBeneficiariosSector(rows || []);
     } catch (err) {
@@ -201,11 +226,69 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
     }
   };
 
-  const handleSelectBeneficiarioFromList = (b: any) => {
-    if (!b?.dni) return;
-    setDni(b.dni);
-    handleSearchDNI(b.dni);
+  const seleccionarBeneficiarioFinal = async (result: any, paramCodigoVale?: string, qrLitros?: string) => {
+    if (!result) return;
+    setBeneficiario(result);
+    setDni(result.dni || '');
+    const codVale = paramCodigoVale || result.vale_codigo || null;
+    setValeCodigo(codVale);
+
+    const progId = selectedProg?.id || PROGRAMACION_ACTUAL_ID;
+
+    // Consultar entregas previas para este beneficiario en esta programación
+    let yaEntregado = 0;
+    try {
+      const db = await getDatabase();
+      const prevRows: any = await db.getFirstAsync(
+        `SELECT COALESCE(SUM(litros_entregados), 0) as total_entregado FROM entregas_agua WHERE beneficiario_id = ? AND programacion_id = ?`,
+        [result.id, progId]
+      );
+      if (prevRows?.total_entregado) {
+        yaEntregado = parseFloat(prevRows.total_entregado);
+      } else if (result.total_entregado_programacion) {
+        yaEntregado = parseFloat(result.total_entregado_programacion);
+      }
+    } catch (_) {}
+
+    // Calcular cuota familiar semanal total (SUNASS: 50L/hab/día × integrantes × 7 días = 350L/hab)
+    const dotacionSemanalHab = (systemConfig?.dotacion_diaria_litros || DOTACION_POR_HABITANTE) * (systemConfig?.dias_entrega_semanal || DIAS_ENTREGA_SEMANAL);
+    const cuotaFamiliar = qrLitros
+      ? parseFloat(qrLitros)
+      : result.vale_litros
+      ? parseFloat(result.vale_litros)
+      : (result.num_miembros || 1) * dotacionSemanalHab;
+
+    const saldoResta = Math.max(0, cuotaFamiliar - yaEntregado);
+
+    setCuotaTotal(cuotaFamiliar);
+    setEntregadoPrevio(yaEntregado);
+    setSaldoPendiente(saldoResta);
+    setTieneEntregaPrevia(yaEntregado > 0);
+
+    // Sugerir por defecto el saldo restante pendiente
+    setLitrosEntregar(String(saldoResta > 0 ? saldoResta : cuotaFamiliar));
+    setHasSignature(false);
+    setPhotoUri(null);
+    signatureRef.current?.clearSignature();
+
     setActiveTab('REPARTO');
+
+    // Desplazar suavemente hacia el formulario de reparto
+    setTimeout(() => {
+      scrollViewRef.current?.scrollTo({ y: 720, animated: true });
+    }, 150);
+
+    if (yaEntregado > 0) {
+      Alert.alert(
+        '⚠️ Entrega Parcial Previa Detectada',
+        `Este beneficiario ya recibió ${yaEntregado} Lts de su cuota total de ${cuotaFamiliar} Lts.\n\nSaldo disponible a entregar: ${saldoResta} Lts.`
+      );
+    }
+  };
+
+  const handleSelectBeneficiarioFromList = (b: any) => {
+    if (!b) return;
+    seleccionarBeneficiarioFinal(b);
   };
 
   const fetchGpsLocation = async () => {
@@ -339,21 +422,21 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
   };
 
   const handleSearchDNI = async (searchQuery?: string) => {
-    const raw = (searchQuery || dni).trim();
+    const raw = (searchQuery !== undefined ? searchQuery : dni).trim();
     if (!raw) {
-      Alert.alert('Atención', 'Ingrese un DNI o Código de Vale para buscar.');
+      Alert.alert('Atención', 'Ingrese Nombre, Apellido, DNI o Código de Vale para buscar.');
       return;
     }
 
     // Extract parts if structured QR: "VALE-20260826-001|47891234|200L"
     let codigoVale = '';
-    let queryDni = raw;
+    let queryTerm = raw;
     let qrLitros = '';
 
     if (raw.includes('|')) {
       const parts = raw.split('|');
       codigoVale = parts[0].trim();
-      if (parts.length > 1) queryDni = parts[1].trim();
+      if (parts.length > 1) queryTerm = parts[1].trim();
       if (parts.length > 2) qrLitros = parts[2].replace(/[^\d.]/g, '');
     } else if (raw.toUpperCase().startsWith('VALE-')) {
       codigoVale = raw;
@@ -362,105 +445,93 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
     setSearching(true);
     try {
       const db = await getDatabase();
-      let result: any = null;
+      let matches: any[] = [];
+      const termUpper = queryTerm.toUpperCase();
 
-      // 1. Search in Local SQLite Database
-      if (codigoVale) {
+      // 1. In-memory check against loaded beneficiariosSector
+      if (beneficiariosSector && beneficiariosSector.length > 0) {
+        const memMatches = beneficiariosSector.filter((b: any) => {
+          const dniMatch = b.dni && b.dni.includes(queryTerm);
+          const nameMatch = (b.nombres || b.nombres_apellidos || '').toUpperCase().includes(termUpper);
+          const valeMatch = (b.vale_codigo || '').toUpperCase().includes(termUpper) || (codigoVale && (b.vale_codigo || '').toUpperCase().includes(codigoVale.toUpperCase()));
+          return dniMatch || nameMatch || valeMatch;
+        });
+        if (memMatches.length > 0) {
+          matches = memMatches;
+        }
+      }
+
+      // 2. Local SQLite search if no in-memory matches
+      if (matches.length === 0) {
         try {
-          result = await db.getFirstAsync(
-            `SELECT b.*, v.codigo_unico as vale_codigo, v.litros_sugeridos as vale_litros 
-             FROM vales_consumo v 
-             JOIN beneficiarios b ON v.beneficiario_id = b.id 
-             WHERE v.codigo_unico = ?`,
-            [codigoVale]
-          );
+          const likePattern = `%${queryTerm}%`;
+          const sql = `
+            SELECT b.*, 
+                   COALESCE(b.nombres_apellidos, b.nombres, '') as nombres,
+                   COALESCE(b.nombres_apellidos, b.nombres, '') as nombres_apellidos,
+                   COALESCE(b.sector_aahh, b.sector, 'Sector') as sector,
+                   COALESCE(b.calle_direccion, b.direccion, '-') as direccion,
+                   v.codigo_unico as vale_codigo, 
+                   COALESCE(v.litros_sugeridos, 700) as vale_litros 
+            FROM beneficiarios b 
+            LEFT JOIN vales_consumo v ON v.beneficiario_id = b.id 
+            WHERE b.dni LIKE ? 
+               OR UPPER(b.nombres_apellidos) LIKE ? 
+               OR (v.codigo_unico IS NOT NULL AND UPPER(v.codigo_unico) LIKE ?)
+            LIMIT 30
+          `;
+          const localRows: any = await db.getAllAsync(sql, [likePattern, `%${termUpper}%`, `%${termUpper}%`]);
+          if (localRows && localRows.length > 0) {
+            matches = localRows;
+          }
         } catch (dbErr) {
-          console.warn('Error en consulta local de vales:', dbErr);
+          console.warn('Error en consulta local SQLite:', dbErr);
         }
       }
 
-      if (!result && queryDni) {
-        try {
-          result = await db.getFirstAsync(
-            `SELECT * FROM beneficiarios WHERE dni = ?`,
-            [queryDni]
-          );
-        } catch (dbDniErr) {
-          console.warn('Error en consulta local de beneficiarios:', dbDniErr);
-        }
-      }
-
-      // 2. If not found locally, fetch from Backend API
-      if (!result) {
-        try {
-          const endpoint = codigoVale
-            ? `${BACKEND_URL}/vales/buscar/${encodeURIComponent(codigoVale)}`
-            : `${BACKEND_URL}/beneficiarios/buscar/${encodeURIComponent(queryDni)}`;
-
-          const res = await fetch(endpoint);
-          if (res.ok) {
-            const onlineData = await res.json();
-            if (onlineData) {
-              result = onlineData;
+      // 3. Online Backend API search
+      try {
+        const endpoint = `${BACKEND_URL}/beneficiarios/buscar/${encodeURIComponent(queryTerm)}`;
+        const res = await fetch(endpoint);
+        if (res.ok) {
+          const onlineData = await res.json();
+          if (onlineData) {
+            const apiList = onlineData.coincidencias || onlineData.data || (Array.isArray(onlineData) ? onlineData : (onlineData.id ? [onlineData] : []));
+            if (Array.isArray(apiList) && apiList.length > 0) {
+              const seenIds = new Set<string>();
+              const merged: any[] = [];
+              for (const item of [...apiList, ...matches]) {
+                const uniqueKey = String(item.id || item.dni);
+                if (!seenIds.has(uniqueKey)) {
+                  seenIds.add(uniqueKey);
+                  merged.push(item);
+                }
+              }
+              matches = merged;
+            } else if (onlineData.id) {
+              if (!matches.some(m => m.id === onlineData.id)) {
+                matches.unshift(onlineData);
+              }
             }
           }
-        } catch (apiErr) {
-          console.log('Online search skipped or failed:', apiErr);
         }
+      } catch (apiErr) {
+        console.log('Online search skipped or failed:', apiErr);
       }
 
-      if (result) {
-        setBeneficiario(result);
-        setValeCodigo(codigoVale || result.vale_codigo || null);
-
-        const progId = selectedProg?.id || PROGRAMACION_ACTUAL_ID;
-
-        // Consultar entregas previas para este beneficiario en esta programación
-        let yaEntregado = 0;
-        try {
-          const prevRows: any = await db.getFirstAsync(
-            `SELECT COALESCE(SUM(litros_entregados), 0) as total_entregado FROM entregas_agua WHERE beneficiario_id = ? AND programacion_id = ?`,
-            [result.id, progId]
-          );
-          if (prevRows?.total_entregado) {
-            yaEntregado = parseFloat(prevRows.total_entregado);
-          } else if (result.total_entregado_programacion) {
-            yaEntregado = parseFloat(result.total_entregado_programacion);
-          }
-        } catch (_) {}
-
-        // Calcular cuota familiar semanal total (SUNASS: 50L/hab/día × integrantes × 7 días = 350L/hab)
-        const dotacionSemanalHab = (systemConfig?.dotacion_diaria_litros || DOTACION_POR_HABITANTE) * (systemConfig?.dias_entrega_semanal || DIAS_ENTREGA_SEMANAL);
-        const cuotaFamiliar = qrLitros
-          ? parseFloat(qrLitros)
-          : result.vale_litros
-          ? parseFloat(result.vale_litros)
-          : (result.num_miembros || 1) * dotacionSemanalHab;
-
-        const saldoResta = Math.max(0, cuotaFamiliar - yaEntregado);
-
-        setCuotaTotal(cuotaFamiliar);
-        setEntregadoPrevio(yaEntregado);
-        setSaldoPendiente(saldoResta);
-        setTieneEntregaPrevia(yaEntregado > 0);
-
-        // Sugerir por defecto el saldo restante pendiente
-        setLitrosEntregar(String(saldoResta > 0 ? saldoResta : cuotaFamiliar));
-        setHasSignature(false);
-        setPhotoUri(null);
-        signatureRef.current?.clearSignature();
-
-        if (yaEntregado > 0) {
-          Alert.alert(
-            '⚠️ Entrega Parcial Previa Detectada',
-            `Este beneficiario ya recibió ${yaEntregado} Lts de su cuota total de ${cuotaFamiliar} Lts.\n\nSaldo disponible a entregar: ${saldoResta} Lts.`
-          );
-        }
-      } else {
+      if (matches.length === 0) {
         Alert.alert(
           'No encontrado',
-          `No se encontró ningún beneficiario con el criterio "${raw}". Verifique en el padrón.`
+          `No se encontró ningún beneficiario con "${raw}".\n\nPuede buscar por:\n• Nombre o Apellido\n• Número de DNI (8 dígitos)\n• Código de Vale de Consumo`
         );
+      } else if (matches.length === 1) {
+        // Coincidencia única: seleccionar de inmediato
+        const b = matches[0];
+        seleccionarBeneficiarioFinal(b, codigoVale || b.vale_codigo, qrLitros);
+      } else {
+        // Múltiples coincidencias (ej. búsqueda por nombre común o apellido): abrir selector
+        setCoincidenciasResultados(matches);
+        setCoincidenciasModalVisible(true);
       }
     } catch (error: any) {
       Alert.alert('Error de búsqueda', error.message);
@@ -1077,21 +1148,88 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
             </View>
           </View>
 
-          {/* CARD 3: SECTORES ASIGNADOS A REPARTIR */}
+          {/* CARD 3: SECTORES ASIGNADOS Y PADRÓN DE BENEFICIARIOS */}
           <View style={styles.sectoresCard}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 }}>
-              <Ionicons name="location-outline" size={17} color="#0284c7" />
-              <Text style={styles.sectoresCardTitle}>Sectores / AA.HH. Asignados</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Ionicons name="location-outline" size={17} color="#0284c7" />
+                <Text style={styles.sectoresCardTitle}>Sectores / AA.HH. Asignados</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => {
+                  setActiveTab('BENEFICIARIOS');
+                  if (selectedProg?.id && beneficiariosSector.length === 0) {
+                    loadBeneficiariosSector(selectedProg.id);
+                  }
+                }}
+                activeOpacity={0.7}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}
+              >
+                <Text style={{ fontSize: 11, fontWeight: '700', color: '#0284c7' }}>Padrón Completo</Text>
+                <Ionicons name="arrow-forward" size={12} color="#0284c7" />
+              </TouchableOpacity>
             </View>
 
-            <View style={styles.sectoresPillsRow}>
-              {(selectedProg?.zona ? selectedProg.zona.split(',') : []).map((sec: string, idx: number) => (
-                <View key={idx} style={styles.sectorItemBadge}>
-                  <Ionicons name="navigate-outline" size={11} color="#0369a1" style={{ marginRight: 4 }} />
-                  <Text style={styles.sectorItemBadgeText}>{sec.trim()}</Text>
-                </View>
-              ))}
-            </View>
+            {/* SECTORES FILTER PILLS */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingVertical: 4 }}>
+              <TouchableOpacity
+                style={[
+                  styles.sectorFilterPill,
+                  sectorSeleccionado === 'TODOS' && styles.sectorFilterPillActive
+                ]}
+                onPress={() => setSectorSeleccionado('TODOS')}
+                activeOpacity={0.8}
+              >
+                <Ionicons
+                  name="grid-outline"
+                  size={12}
+                  color={sectorSeleccionado === 'TODOS' ? '#ffffff' : '#0369a1'}
+                />
+                <Text
+                  style={[
+                    styles.sectorFilterPillText,
+                    sectorSeleccionado === 'TODOS' && styles.sectorFilterPillTextActive
+                  ]}
+                >
+                  Todos ({beneficiariosSector.length})
+                </Text>
+              </TouchableOpacity>
+
+              {(selectedProg?.zona ? selectedProg.zona.split(',') : []).map((secRaw: string, idx: number) => {
+                const secName = secRaw.trim();
+                if (!secName) return null;
+                const isSelected = sectorSeleccionado.toLowerCase() === secName.toLowerCase();
+                const count = beneficiariosSector.filter((b) =>
+                  (b.sector || b.sector_aahh || '').toLowerCase().includes(secName.toLowerCase())
+                ).length;
+
+                return (
+                  <TouchableOpacity
+                    key={idx}
+                    style={[
+                      styles.sectorFilterPill,
+                      isSelected && styles.sectorFilterPillActive
+                    ]}
+                    onPress={() => setSectorSeleccionado(isSelected ? 'TODOS' : secName)}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons
+                      name="navigate-outline"
+                      size={12}
+                      color={isSelected ? '#ffffff' : '#0369a1'}
+                    />
+                    <Text
+                      style={[
+                        styles.sectorFilterPillText,
+                        isSelected && styles.sectorFilterPillTextActive
+                      ]}
+                    >
+                      {secName} ({count})
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
 
             <View style={styles.sectoresMetaRow}>
               <View style={styles.metaItem}>
@@ -1105,6 +1243,147 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                   <Text style={styles.metaValue}>{selectedProg?.viajes_estimados || 2} Viajes</Text>
                 </View>
               </View>
+            </View>
+
+            {/* SECCIÓN DESPLEGADA DE BENEFICIARIOS DEL SECTOR */}
+            <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#f1f5f9' }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                  <Ionicons name="people-outline" size={14} color="#0369a1" />
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: '#0f172a' }}>
+                    Beneficiarios {sectorSeleccionado !== 'TODOS' ? `en ${sectorSeleccionado}` : 'Programados'}
+                  </Text>
+                </View>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: '#64748b' }}>
+                  {(() => {
+                    const secFiltrados = beneficiariosSector.filter((b) => {
+                      if (sectorSeleccionado === 'TODOS') return true;
+                      return (b.sector || b.sector_aahh || '').toLowerCase().includes(sectorSeleccionado.toLowerCase());
+                    });
+                    const atendidos = secFiltrados.filter(b => b.atendido_esta_semana).length;
+                    return `${atendidos}/${secFiltrados.length} Atendidos`;
+                  })()}
+                </Text>
+              </View>
+
+              {/* BÚSQUEDA RÁPIDA EN EL SECTOR */}
+              <View style={styles.sectorMiniSearchWrapper}>
+                <Ionicons name="search-outline" size={14} color="#64748b" style={{ marginRight: 6 }} />
+                <TextInput
+                  style={styles.sectorMiniSearchInput}
+                  placeholder="Buscar beneficiario (Nombre, DNI, Vale)..."
+                  placeholderTextColor="#94a3b8"
+                  value={filtroBeneficiario}
+                  onChangeText={setFiltroBeneficiario}
+                  autoCapitalize="none"
+                />
+                {filtroBeneficiario ? (
+                  <TouchableOpacity onPress={() => setFiltroBeneficiario('')} style={{ padding: 2 }}>
+                    <Ionicons name="close-circle" size={14} color="#94a3b8" />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+
+              {/* LISTA RÁPIDA DE BENEFICIARIOS (HASTA 6 CON BOTÓN DE EXPANDIR) */}
+              {loadingBeneficiarios ? (
+                <View style={{ paddingVertical: 14, alignItems: 'center' }}>
+                  <ActivityIndicator size="small" color="#0284c7" />
+                  <Text style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>Cargando beneficiarios...</Text>
+                </View>
+              ) : (() => {
+                const query = filtroBeneficiario.trim().toLowerCase();
+                const secFiltrados = beneficiariosSector.filter((b) => {
+                  const matchSec = sectorSeleccionado === 'TODOS' || 
+                    (b.sector || b.sector_aahh || '').toLowerCase().includes(sectorSeleccionado.toLowerCase());
+                  if (!matchSec) return false;
+                  if (!query) return true;
+                  return (b.nombres && b.nombres.toLowerCase().includes(query)) ||
+                    (b.nombres_apellidos && b.nombres_apellidos.toLowerCase().includes(query)) ||
+                    (b.dni && b.dni.includes(query)) ||
+                    (b.vale_codigo && b.vale_codigo.toLowerCase().includes(query)) ||
+                    (b.sector && b.sector.toLowerCase().includes(query));
+                });
+
+                if (secFiltrados.length === 0) {
+                  return (
+                    <View style={{ paddingVertical: 14, alignItems: 'center' }}>
+                      <Text style={{ fontSize: 11.5, color: '#94a3b8', fontStyle: 'italic' }}>
+                        {beneficiariosSector.length === 0
+                          ? 'Cargando padrón del sector...'
+                          : `Sin beneficiarios encontrados con el filtro aplicado.`}
+                      </Text>
+                    </View>
+                  );
+                }
+
+                // Mostrar primeros 6 beneficiarios para mantener la vista fluida
+                const previewList = secFiltrados.slice(0, 6);
+
+                return (
+                  <View style={{ gap: 8, marginTop: 6 }}>
+                    {previewList.map((b) => {
+                      const atendido = !!b.atendido_esta_semana;
+                      return (
+                        <View key={b.id || b.dni} style={styles.progBenefItemRow}>
+                          <View style={{ flex: 1, marginRight: 8 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                              <Text style={styles.progBenefItemName} numberOfLines={1}>
+                                {b.nombres || b.nombres_apellidos}
+                              </Text>
+                              {b.vale_codigo ? (
+                                <View style={styles.miniValeBadge}>
+                                  <Text style={styles.miniValeBadgeText}>{b.vale_codigo}</Text>
+                                </View>
+                              ) : null}
+                            </View>
+                            <Text style={styles.progBenefItemSub}>
+                              DNI: <Text style={{ fontWeight: '700', color: '#0f172a' }}>{b.dni}</Text> • 📍 {b.sector || 'Sector'}
+                            </Text>
+                          </View>
+
+                          <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                            <View style={atendido ? styles.benefStatusOk : styles.benefStatusPending}>
+                              <Ionicons
+                                name={atendido ? "checkmark-circle" : "time-outline"}
+                                size={10}
+                                color={atendido ? "#059669" : "#b45309"}
+                                style={{ marginRight: 2 }}
+                              />
+                              <Text style={atendido ? styles.benefStatusOkText : styles.benefStatusPendingText}>
+                                {atendido ? 'Atendido' : 'Pendiente'}
+                              </Text>
+                            </View>
+
+                            <TouchableOpacity
+                              style={styles.progBenefDeliverBtn}
+                              onPress={() => seleccionarBeneficiarioFinal(b)}
+                              activeOpacity={0.8}
+                            >
+                              <Ionicons name="water" size={11} color="#ffffff" />
+                              <Text style={styles.progBenefDeliverBtnText}>Entregar</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      );
+                    })}
+
+                    {secFiltrados.length > 6 && (
+                      <TouchableOpacity
+                        style={styles.progBenefViewAllBtn}
+                        onPress={() => {
+                          setActiveTab('BENEFICIARIOS');
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={styles.progBenefViewAllBtnText}>
+                          Ver los {secFiltrados.length} beneficiarios en padrón completo
+                        </Text>
+                        <Ionicons name="arrow-forward" size={13} color="#0284c7" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                );
+              })()}
             </View>
           </View>
 
@@ -1251,12 +1530,73 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
               Sectores: <Text style={{ fontWeight: '700', color: '#0369a1' }}>{selectedProg?.zona || 'Todos los sectores'}</Text>
             </Text>
 
+            {/* SECTORES FILTER PILLS */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingVertical: 4 }}>
+              <TouchableOpacity
+                style={[
+                  styles.sectorFilterPill,
+                  sectorSeleccionado === 'TODOS' && styles.sectorFilterPillActive
+                ]}
+                onPress={() => setSectorSeleccionado('TODOS')}
+                activeOpacity={0.8}
+              >
+                <Ionicons
+                  name="grid-outline"
+                  size={12}
+                  color={sectorSeleccionado === 'TODOS' ? '#ffffff' : '#0369a1'}
+                />
+                <Text
+                  style={[
+                    styles.sectorFilterPillText,
+                    sectorSeleccionado === 'TODOS' && styles.sectorFilterPillTextActive
+                  ]}
+                >
+                  Todos ({beneficiariosSector.length})
+                </Text>
+              </TouchableOpacity>
+
+              {(selectedProg?.zona ? selectedProg.zona.split(',') : []).map((secRaw: string, idx: number) => {
+                const secName = secRaw.trim();
+                if (!secName) return null;
+                const isSelected = sectorSeleccionado.toLowerCase() === secName.toLowerCase();
+                const count = beneficiariosSector.filter((b) =>
+                  (b.sector || b.sector_aahh || '').toLowerCase().includes(secName.toLowerCase())
+                ).length;
+
+                return (
+                  <TouchableOpacity
+                    key={idx}
+                    style={[
+                      styles.sectorFilterPill,
+                      isSelected && styles.sectorFilterPillActive
+                    ]}
+                    onPress={() => setSectorSeleccionado(isSelected ? 'TODOS' : secName)}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons
+                      name="navigate-outline"
+                      size={12}
+                      color={isSelected ? '#ffffff' : '#0369a1'}
+                    />
+                    <Text
+                      style={[
+                        styles.sectorFilterPillText,
+                        isSelected && styles.sectorFilterPillTextActive
+                      ]}
+                    >
+                      {secName} ({count})
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
             {/* BARRA DE BÚSQUEDA RÁPIDA */}
             <View style={styles.benefSearchWrapper}>
               <Ionicons name="search-outline" size={16} color="#64748b" style={{ marginRight: 6 }} />
               <TextInput
                 style={styles.benefSearchInput}
-                placeholder="Buscar por DNI o Nombre..."
+                placeholder="Buscar por Nombre, DNI o Vale..."
                 placeholderTextColor="#94a3b8"
                 value={filtroBeneficiario}
                 onChangeText={setFiltroBeneficiario}
@@ -1302,9 +1642,15 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
           ) : (() => {
             const query = filtroBeneficiario.trim().toLowerCase();
             const filtrados = beneficiariosSector.filter((b) => {
+              const matchSec = sectorSeleccionado === 'TODOS' || 
+                (b.sector || b.sector_aahh || '').toLowerCase().includes(sectorSeleccionado.toLowerCase());
+              if (!matchSec) return false;
+
               const matchText = !query || 
                 (b.nombres && b.nombres.toLowerCase().includes(query)) ||
+                (b.nombres_apellidos && b.nombres_apellidos.toLowerCase().includes(query)) ||
                 (b.dni && b.dni.includes(query)) ||
+                (b.vale_codigo && b.vale_codigo.toLowerCase().includes(query)) ||
                 (b.sector && b.sector.toLowerCase().includes(query)) ||
                 (b.direccion && b.direccion.toLowerCase().includes(query));
               if (!matchText) return false;
@@ -1339,9 +1685,16 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                     <View key={b.id || b.dni} style={styles.benefCardItem}>
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                         <View style={{ flex: 1, marginRight: 8 }}>
-                          <Text style={styles.benefNombreText} numberOfLines={1}>
-                            {b.nombres}
-                          </Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                            <Text style={styles.benefNombreText} numberOfLines={1}>
+                              {b.nombres}
+                            </Text>
+                            {b.vale_codigo ? (
+                              <View style={styles.miniValeBadge}>
+                                <Text style={styles.miniValeBadgeText}>{b.vale_codigo}</Text>
+                              </View>
+                            ) : null}
+                          </View>
                           <Text style={styles.benefDniText}>
                             DNI: <Text style={{ fontWeight: '800', color: '#0f172a' }}>{b.dni}</Text> • 📍 {b.sector || 'Sector'}
                           </Text>
@@ -1613,12 +1966,13 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
             <Ionicons name="search-outline" size={16} color="#0284c7" style={{ marginRight: 6 }} />
             <TextInput
               style={styles.input}
-              placeholder="DNI o código de vale"
+              placeholder="Nombre, Apellido, DNI o Vale..."
               placeholderTextColor="#94a3b8"
               value={dni}
               onChangeText={setDni}
-              keyboardType="numeric"
-              maxLength={15}
+              keyboardType="default"
+              autoCapitalize="words"
+              maxLength={60}
               onFocus={() => {
                 setTimeout(() => {
                   scrollViewRef.current?.scrollTo({ y: 620, animated: true });
@@ -2225,6 +2579,112 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                 <Text style={styles.modalCalidadSaveText}>Guardar Test</Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL COINCIDENCIAS DE BÚSQUEDA (CUANDO SE ENCUENTRAN VARIOS BENEFICIARIOS) */}
+      <Modal
+        visible={coincidenciasModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setCoincidenciasModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.coincidenciasModalContent}>
+            {/* HEADER MODAL */}
+            <View style={styles.modalCalidadHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                <View style={[styles.avatarCircle, { width: 34, height: 34, borderRadius: 17, backgroundColor: '#e0f2fe' }]}>
+                  <Ionicons name="people" size={18} color="#0284c7" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.modalCalidadTitle}>
+                    {coincidenciasResultados.length} Coincidencias Encontradas
+                  </Text>
+                  <Text style={{ fontSize: 11, color: '#64748b' }}>
+                    Seleccione el beneficiario para registrar la entrega
+                  </Text>
+                </View>
+              </View>
+
+              <TouchableOpacity
+                onPress={() => setCoincidenciasModalVisible(false)}
+                style={styles.modalCloseCircle}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="close" size={20} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            {/* LISTA CON SCROLL DE COINCIDENCIAS */}
+            <ScrollView style={{ maxHeight: 380, marginTop: 10 }}>
+              <View style={{ gap: 8 }}>
+                {coincidenciasResultados.map((item, idx) => {
+                  const itemNombre = item.nombres || item.nombres_apellidos || 'Sin nombre';
+                  const itemSector = item.sector_aahh || item.sector || 'Sector';
+                  const itemDni = item.dni || '-';
+                  const itemVale = item.vale_codigo || null;
+                  const itemAtendido = !!item.atendido_esta_semana || (Number(item.saldo_semanal) <= 0 && Number(item.litros_entregados_semana) > 0);
+
+                  return (
+                    <TouchableOpacity
+                      key={item.id ? `c-${item.id}` : `c-idx-${idx}`}
+                      style={styles.coincidenciaCard}
+                      onPress={() => {
+                        setCoincidenciasModalVisible(false);
+                        seleccionarBeneficiarioFinal(item);
+                      }}
+                      activeOpacity={0.85}
+                    >
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <View style={{ flex: 1, marginRight: 8 }}>
+                          <Text style={styles.coincidenciaNombre} numberOfLines={1}>
+                            {itemNombre}
+                          </Text>
+
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3, flexWrap: 'wrap' }}>
+                            <Text style={styles.coincidenciaDni}>
+                              DNI: <Text style={{ fontWeight: '800', color: '#0f172a' }}>{itemDni}</Text>
+                            </Text>
+                            <Text style={styles.coincidenciaSector}>
+                              📍 {itemSector}
+                            </Text>
+                          </View>
+
+                          {itemVale ? (
+                            <View style={[styles.miniValeBadge, { marginTop: 4, alignSelf: 'flex-start' }]}>
+                              <Text style={styles.miniValeBadgeText}>🎫 {itemVale}</Text>
+                            </View>
+                          ) : null}
+                        </View>
+
+                        <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                          <View style={itemAtendido ? styles.benefStatusOk : styles.benefStatusPending}>
+                            <Text style={itemAtendido ? styles.benefStatusOkText : styles.benefStatusPendingText}>
+                              {itemAtendido ? 'Atendido' : 'Pendiente'}
+                            </Text>
+                          </View>
+
+                          <View style={styles.coincidenciaSelectBtn}>
+                            <Text style={styles.coincidenciaSelectBtnText}>Elegir</Text>
+                            <Ionicons name="arrow-forward" size={11} color="#0284c7" />
+                          </View>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </ScrollView>
+
+            <TouchableOpacity
+              style={styles.modalCancelPillBtn}
+              onPress={() => setCoincidenciasModalVisible(false)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.modalCancelPillText}>Cerrar</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -4229,5 +4689,192 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#0369a1',
     marginLeft: 6,
+  },
+
+  // SECTOR FILTER PILLS
+  sectorFilterPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#f0f9ff',
+    borderWidth: 1,
+    borderColor: '#bae6fd',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+  },
+  sectorFilterPillActive: {
+    backgroundColor: '#0284c7',
+    borderColor: '#0284c7',
+  },
+  sectorFilterPillText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#0369a1',
+  },
+  sectorFilterPillTextActive: {
+    color: '#ffffff',
+    fontWeight: '800',
+  },
+
+  // MINI SEARCH EN CARD DE SECTOR
+  sectorMiniSearchWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    height: 38,
+    marginBottom: 8,
+  },
+  sectorMiniSearchInput: {
+    flex: 1,
+    fontSize: 12,
+    color: '#0f172a',
+    paddingVertical: 0,
+  },
+
+  // PREVIEW BENEFICIARIOS EN PROGRAMACION CARD
+  progBenefItemRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 12,
+    padding: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  progBenefItemName: {
+    fontSize: 12.5,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  progBenefItemSub: {
+    fontSize: 11,
+    color: '#64748b',
+    marginTop: 2,
+  },
+  progBenefDeliverBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#0284c7',
+    paddingVertical: 5,
+    paddingHorizontal: 9,
+    borderRadius: 8,
+  },
+  progBenefDeliverBtnText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#ffffff',
+  },
+  progBenefViewAllBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#f0f9ff',
+    borderWidth: 1,
+    borderColor: '#bae6fd',
+    paddingVertical: 8,
+    borderRadius: 10,
+    marginTop: 4,
+  },
+  progBenefViewAllBtnText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#0284c7',
+  },
+
+  // MINI VALE BADGE
+  miniValeBadge: {
+    backgroundColor: '#f0fdf4',
+    borderWidth: 1,
+    borderColor: '#bbf7d0',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  miniValeBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#15803d',
+  },
+
+  // COINCIDENCIAS SEARCH MODAL
+  coincidenciasModalContent: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    padding: 18,
+    paddingBottom: 28,
+    maxHeight: '82%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 10,
+  },
+  coincidenciaCard: {
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 14,
+    padding: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  coincidenciaNombre: {
+    fontSize: 13.5,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  coincidenciaDni: {
+    fontSize: 11.5,
+    color: '#64748b',
+  },
+  coincidenciaSector: {
+    fontSize: 11.5,
+    color: '#0284c7',
+    fontWeight: '600',
+  },
+  coincidenciaSelectBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#e0f2fe',
+    borderWidth: 1,
+    borderColor: '#bae6fd',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+  },
+  coincidenciaSelectBtnText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#0284c7',
+  },
+  modalCancelPillBtn: {
+    marginTop: 14,
+    backgroundColor: '#f1f5f9',
+    paddingVertical: 10,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  modalCancelPillText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#64748b',
   },
 });

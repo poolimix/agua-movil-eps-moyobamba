@@ -114,39 +114,68 @@ export const getBeneficiarioByDni = async (req: Request, res: Response) => {
     const dotacionSemanal = config.dotacion_semanal_por_habitante;
 
     const { dni } = req.params;
-    const { programacion_id } = req.query;
+    const { programacion_id, multi } = req.query;
+    const term = String(dni || '').trim();
+    const likeTerm = `%${term}%`;
 
     const result = await query(`
       SELECT 
-        id,
-        dni,
-        COALESCE(nombres, SPLIT_PART(nombres_apellidos, ' ', 1), '') as nombres,
-        COALESCE(apellidos, SUBSTRING(nombres_apellidos FROM LENGTH(SPLIT_PART(nombres_apellidos, ' ', 1)) + 2), '') as apellidos,
-        nombres_apellidos,
-        COALESCE(distrito, 'Moyobamba') as distrito,
-        COALESCE(sector_aahh, sector, '') as sector_aahh,
-        COALESCE(sector_aahh, sector, '') as sector,
-        COALESCE(num_vivienda, '') as num_vivienda,
-        COALESCE(num_miembros, 1) as num_miembros,
-        COALESCE(mz, '') as mz,
-        COALESCE(lt, '') as lt,
-        COALESCE(calle_direccion, direccion, '') as calle_direccion,
-        COALESCE(calle_direccion, direccion, '') as direccion,
-        COALESCE(telefono, '') as telefono,
-        COALESCE(email, '') as email,
-        (COALESCE(num_miembros, 1) * ${dotacionDiaria}) as dotacion_diaria_litros,
-        (COALESCE(num_miembros, 1) * ${dotacionSemanal}) as dotacion_semanal_litros,
-        (COALESCE(num_miembros, 1) * ${dotacionSemanal}) as litros_sugeridos
-      FROM beneficiarios 
-      WHERE dni = $1
-      LIMIT 1
-    `, [String(dni).trim()]);
+        b.id,
+        b.dni,
+        COALESCE(b.nombres, SPLIT_PART(b.nombres_apellidos, ' ', 1), '') as nombres,
+        COALESCE(b.apellidos, SUBSTRING(b.nombres_apellidos FROM LENGTH(SPLIT_PART(b.nombres_apellidos, ' ', 1)) + 2), '') as apellidos,
+        b.nombres_apellidos,
+        COALESCE(b.distrito, 'Moyobamba') as distrito,
+        COALESCE(b.sector_aahh, b.sector, '') as sector_aahh,
+        COALESCE(b.sector_aahh, b.sector, '') as sector,
+        COALESCE(b.num_vivienda, '') as num_vivienda,
+        COALESCE(b.num_miembros, 1) as num_miembros,
+        COALESCE(b.mz, '') as mz,
+        COALESCE(b.lt, '') as lt,
+        COALESCE(b.calle_direccion, b.direccion, '') as calle_direccion,
+        COALESCE(b.calle_direccion, b.direccion, '') as direccion,
+        COALESCE(b.telefono, '') as telefono,
+        COALESCE(b.email, '') as email,
+        (COALESCE(b.num_miembros, 1) * ${dotacionDiaria}) as dotacion_diaria_litros,
+        (COALESCE(b.num_miembros, 1) * ${dotacionSemanal}) as dotacion_semanal_litros,
+        (COALESCE(b.num_miembros, 1) * ${dotacionSemanal}) as litros_sugeridos,
+        (SELECT v.codigo_unico FROM vales_entrega v WHERE v.beneficiario_id = b.id ORDER BY v.id DESC LIMIT 1) as vale_codigo
+      FROM beneficiarios b
+      WHERE b.dni = $1
+         OR b.dni LIKE $2
+         OR b.nombres_apellidos ILIKE $2
+         OR b.nombres ILIKE $2
+         OR b.apellidos ILIKE $2
+         OR EXISTS (
+           SELECT 1 FROM vales_entrega v 
+           WHERE v.beneficiario_id = b.id 
+             AND (v.codigo_unico = $1 OR v.codigo_unico ILIKE $2)
+         )
+      ORDER BY 
+        CASE 
+          WHEN b.dni = $1 THEN 1 
+          WHEN EXISTS (SELECT 1 FROM vales_entrega v WHERE v.beneficiario_id = b.id AND v.codigo_unico = $1) THEN 2
+          WHEN b.dni LIKE $2 THEN 3 
+          ELSE 4 
+        END,
+        b.nombres_apellidos ASC
+      LIMIT 15
+    `, [term, likeTerm]);
 
     if (result.rows.length === 0) {
-      return res.status(404).json({ message: `Beneficiario con DNI ${dni} no encontrado en el sistema.` });
+      return res.status(404).json({ message: `Beneficiario '${term}' no encontrado en el sistema.` });
     }
 
-    const benef = result.rows[0];
+    if (multi === 'true' || req.query.multiple === 'true') {
+      return res.json({
+        success: true,
+        count: result.rows.length,
+        data: result.rows
+      });
+    }
+
+    const allResults = result.rows.map(r => ({ ...r }));
+    const benef = { ...allResults[0], coincidencias: allResults };
 
     // Si se pasa programacion_id, consultar entregas previas y calcular saldo
     if (programacion_id) {
@@ -171,7 +200,7 @@ export const getBeneficiarioByDni = async (req: Request, res: Response) => {
 
     res.json(benef);
   } catch (error: any) {
-    console.error('Error searching beneficiario by DNI:', error);
+    console.error('Error searching beneficiario by DNI/Nombre/Vale:', error);
     res.status(500).json({ message: 'Error al buscar beneficiario', error: error.message });
   }
 };

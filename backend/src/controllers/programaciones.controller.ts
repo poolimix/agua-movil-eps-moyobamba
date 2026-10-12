@@ -737,10 +737,12 @@ export const getBeneficiariosProgramados = async (req: Request, res: Response) =
     });
 
     res.json({
+      success: true,
       programacion_id: prog.id,
       zona: prog.zona,
       sectores,
       total: beneficiariosConEstado.length,
+      data: beneficiariosConEstado,
       beneficiarios: beneficiariosConEstado
     });
   } catch (error: any) {
