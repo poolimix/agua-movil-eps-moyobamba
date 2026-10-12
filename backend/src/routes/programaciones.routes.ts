@@ -7,6 +7,8 @@ const router = Router();
 router.get('/', programacionesController.getAllProgramaciones);
 router.get('/:id/pdf', programacionesController.generatePdf);
 router.get('/:id/excel', programacionesController.exportarProgramacionExcel);
+router.get('/:id/avances-calendario', programacionesController.getAvancesCalendario);
+router.get('/:id/beneficiarios', programacionesController.getBeneficiariosProgramados);
 
 // Modificaciones protegidas por roles
 router.post('/', verifyToken, requireRole(['ADMIN', 'SUPERVISOR']), programacionesController.createProgramacion);

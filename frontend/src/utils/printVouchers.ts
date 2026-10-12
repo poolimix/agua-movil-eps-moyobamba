@@ -244,8 +244,9 @@ export async function imprimirValeIndividual(v: ValePrintData, config?: ConfigPr
           </div>
 
           <div class="serie-box">
-            <div class="serie-title">Vale Oficial de Consumo de Agua</div>
+            <div class="serie-title">${v.codigo_unico.includes('ANUAL') ? '🌟 CARNET / VALE ANUAL OFICIAL DE AGUA POTABLE' : 'Vale Oficial de Consumo de Agua'}</div>
             <div class="serie-code">${v.codigo_unico}</div>
+            ${v.codigo_unico.includes('ANUAL') ? '<div style="font-size: 10px; font-weight: 800; color: #047857; margin-top: 4px; background: #ecfdf5; border: 1px solid #a7f3d0; padding: 3px 8px; border-radius: 6px; display: inline-block;">✓ VÁLIDO PARA TODO EL AÑO (QR PERMANENTE EN RUTA)</div>' : ''}
           </div>
 
           <div class="info-grid">
@@ -357,9 +358,10 @@ export async function imprimirValesLote(
     return `
       <div class="vale-ticket">
         <div class="ticket-header">
-          <div class="inst-logo">💧 EPS MOYOBAMBA S.A.</div>
+          <div class="inst-logo">💧 EPS MOYOBAMBA S.A. ${v.codigo_unico.includes('ANUAL') ? '• VALE ANUAL' : ''}</div>
           <div class="inst-sub">Convenio PNSU N° 023-2026/VIVIENDA</div>
           <div class="inst-code">${v.codigo_unico}</div>
+          ${v.codigo_unico.includes('ANUAL') ? '<div style="font-size: 8px; font-weight: 800; color: #047857; margin-top: 2px;">🌟 VÁLIDO TODO EL AÑO</div>' : ''}
         </div>
 
         <div class="ticket-body">

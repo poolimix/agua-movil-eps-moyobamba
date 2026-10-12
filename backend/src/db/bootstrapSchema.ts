@@ -257,8 +257,12 @@ export const bootstrapSchema = async () => {
       ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS litros_programados INT DEFAULT 0;
       ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS viajes_estimados INT DEFAULT 1;
       ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS dias_semana TEXT DEFAULT 'Lunes, Miércoles, Viernes';
-      ALTER TABLE programaciones ALTER COLUMN dias_semana TYPE TEXT;
       ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS sectores_seleccionados TEXT;
+      ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS fecha_inicio DATE DEFAULT CURRENT_DATE;
+      ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS fecha_fin DATE DEFAULT CURRENT_DATE;
+      ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS es_anual BOOLEAN DEFAULT TRUE;
+      UPDATE programaciones SET fecha_inicio = fecha WHERE fecha_inicio IS NULL;
+      UPDATE programaciones SET fecha_fin = fecha WHERE fecha_fin IS NULL;
 
       -- Asegurar todas las columnas en control_calidad
       ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS cloro_residual_ppm NUMERIC(5,2) DEFAULT 1.20;

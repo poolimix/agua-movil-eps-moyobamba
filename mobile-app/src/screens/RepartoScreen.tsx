@@ -84,10 +84,16 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
   });
 
   // Navigation Tab State (Inicia en 'PROGRAMACION' para que el conductor vea su jornada asignada)
-  const [activeTab, setActiveTab] = useState<'PROGRAMACION' | 'REPARTO'>('PROGRAMACION');
+  const [activeTab, setActiveTab] = useState<'PROGRAMACION' | 'BENEFICIARIOS' | 'REPARTO'>('PROGRAMACION');
   const [programaciones, setProgramaciones] = useState<any[]>([]);
   const [selectedProg, setSelectedProg] = useState<any | null>(null);
   const [loadingProg, setLoadingProg] = useState(false);
+
+  // Beneficiarios asignados al sector programado
+  const [beneficiariosSector, setBeneficiariosSector] = useState<any[]>([]);
+  const [loadingBeneficiarios, setLoadingBeneficiarios] = useState(false);
+  const [filtroBeneficiario, setFiltroBeneficiario] = useState('');
+  const [filtroEstadoBenef, setFiltroEstadoBenef] = useState<'TODOS' | 'PENDIENTES' | 'ATENDIDOS'>('TODOS');
 
   // Scroll lock for signature pad
   const [scrollEnabled, setScrollEnabled] = useState(true);
@@ -153,6 +159,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
             setSelectedProg(filteredProgs[0]);
             if (filteredProgs[0].cisterna_id) setSelectedCisternaId(filteredProgs[0].cisterna_id);
             if (filteredProgs[0].conductor_id) setSelectedConductorId(filteredProgs[0].conductor_id);
+            loadBeneficiariosSector(filteredProgs[0].id);
           } else {
             setSelectedProg(null);
           }
@@ -163,6 +170,42 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
     } finally {
       setLoadingProg(false);
     }
+  };
+
+  const loadBeneficiariosSector = async (progId?: number) => {
+    const id = progId || selectedProg?.id;
+    if (!id) return;
+    setLoadingBeneficiarios(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/programaciones/${id}/beneficiarios`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data)) {
+          setBeneficiariosSector(json.data);
+          return;
+        }
+      }
+      // Fallback local SQLite si no hay conexión a internet
+      const db = await getDatabase();
+      const rows = await db.getAllAsync(`
+        SELECT id, nombres, dni, telefono, direccion, sector,
+               COALESCE(cuota_litros, 700) as cuota_semanal
+        FROM beneficiarios
+        ORDER BY nombres ASC
+      `);
+      setBeneficiariosSector(rows || []);
+    } catch (err) {
+      console.warn('Error cargando beneficiarios de sector:', err);
+    } finally {
+      setLoadingBeneficiarios(false);
+    }
+  };
+
+  const handleSelectBeneficiarioFromList = (b: any) => {
+    if (!b?.dni) return;
+    setDni(b.dni);
+    handleSearchDNI(b.dni);
+    setActiveTab('REPARTO');
   };
 
   const fetchGpsLocation = async () => {
@@ -565,11 +608,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
   const handleSignatureOK = async (signatureBase64: string) => {
     if (!beneficiario) return;
 
-    // FOTOGRAFÍA OBLIGATORIA
-    if (!photoUri) {
-      Alert.alert('Fotografía obligatoria', '📸 Debe capturar la fotografía de evidencia en campo antes de registrar la entrega.');
-      return;
-    }
+    // FOTOGRAFÍA OPCIONAL (Requerimiento operativo: la foto es opcional, no obligatoria)
 
     const litrosNum = parseFloat(litrosEntregar);
     if (isNaN(litrosNum) || litrosNum <= 0) {
@@ -660,12 +699,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
   };
 
   const handleSaveDelivery = () => {
-    // 1. Fotografía es OBLIGATORIA
-    if (!photoUri) {
-      Alert.alert('Fotografía obligatoria', '📸 Debe capturar la fotografía de evidencia de la entrega antes de registrar.');
-      return;
-    }
-    
+    // 1. Fotografía es OPCIONAL (Requerimiento operativo: la foto no es obligatoria para registrar)
     // 2. Firma digital es OPCIONAL: solo si se habilitó el recuadro y se firmó en pantalla se lee
     if (showSignaturePad && hasSignature) {
       signatureRef.current?.readSignature();
@@ -841,11 +875,11 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
         return (
           <View style={styles.topTabsBarPill}>
             <TouchableOpacity
-              style={[styles.topTabBtnPill, activeTab === 'PROGRAMACION' && styles.topTabBtnPillActive, { flexDirection: 'row', gap: 5 }]}
+              style={[styles.topTabBtnPill, activeTab === 'PROGRAMACION' && styles.topTabBtnPillActive, { flexDirection: 'row', gap: 4 }]}
               onPress={() => setActiveTab('PROGRAMACION')}
               activeOpacity={0.85}
             >
-              <Ionicons name="calendar-outline" size={14} color={activeTab === 'PROGRAMACION' ? '#ffffff' : '#64748b'} />
+              <Ionicons name="calendar-outline" size={13} color={activeTab === 'PROGRAMACION' ? '#ffffff' : '#64748b'} />
               <Text style={[styles.topTabText, activeTab === 'PROGRAMACION' && styles.topTabTextActive]}>
                 Programación
               </Text>
@@ -853,13 +887,30 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.topTabBtnPill, activeTab === 'REPARTO' && styles.topTabBtnPillActive, { flexDirection: 'row', gap: 5 }]}
+              style={[styles.topTabBtnPill, activeTab === 'BENEFICIARIOS' && styles.topTabBtnPillActive, { flexDirection: 'row', gap: 4 }]}
+              onPress={() => {
+                setActiveTab('BENEFICIARIOS');
+                if (selectedProg?.id && beneficiariosSector.length === 0) {
+                  loadBeneficiariosSector(selectedProg.id);
+                }
+              }}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="people-outline" size={13} color={activeTab === 'BENEFICIARIOS' ? '#ffffff' : '#64748b'} />
+              <Text style={[styles.topTabText, activeTab === 'BENEFICIARIOS' && styles.topTabTextActive]}>
+                Beneficiarios ({beneficiariosSector.length})
+              </Text>
+              {activeTab === 'BENEFICIARIOS' && <View style={styles.activeDotIndicator} />}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.topTabBtnPill, activeTab === 'REPARTO' && styles.topTabBtnPillActive, { flexDirection: 'row', gap: 4 }]}
               onPress={() => setActiveTab('REPARTO')}
               activeOpacity={0.85}
             >
-              <Ionicons name="water-outline" size={14} color={activeTab === 'REPARTO' ? '#ffffff' : '#64748b'} />
+              <Ionicons name="water-outline" size={13} color={activeTab === 'REPARTO' ? '#ffffff' : '#64748b'} />
               <Text style={[styles.topTabText, activeTab === 'REPARTO' && styles.topTabTextActive]}>
-                Registrar Entrega
+                Entrega
               </Text>
               {activeTab === 'REPARTO' && <View style={styles.activeDotIndicator} />}
             </TouchableOpacity>
@@ -1176,6 +1227,183 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
           )}
         </View>
         )
+      ) : activeTab === 'BENEFICIARIOS' ? (
+        /* ─── VISTA 2: LISTA DE BENEFICIARIOS POR SECTOR PROGRAMADO ───── */
+        <View style={styles.beneficiariosViewContainer}>
+          {/* HEADER RESUMEN SECTOR */}
+          <View style={styles.benefHeaderCard}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Ionicons name="people" size={18} color="#0284c7" />
+                <Text style={styles.benefHeaderTitle}>Beneficiarios Asignados</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => loadBeneficiariosSector(selectedProg?.id)}
+                style={styles.benefRefreshBtn}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="refresh-outline" size={14} color="#0284c7" />
+                <Text style={styles.benefRefreshText}>Actualizar</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.benefSubtitle}>
+              Sectores: <Text style={{ fontWeight: '700', color: '#0369a1' }}>{selectedProg?.zona || 'Todos los sectores'}</Text>
+            </Text>
+
+            {/* BARRA DE BÚSQUEDA RÁPIDA */}
+            <View style={styles.benefSearchWrapper}>
+              <Ionicons name="search-outline" size={16} color="#64748b" style={{ marginRight: 6 }} />
+              <TextInput
+                style={styles.benefSearchInput}
+                placeholder="Buscar por DNI o Nombre..."
+                placeholderTextColor="#94a3b8"
+                value={filtroBeneficiario}
+                onChangeText={setFiltroBeneficiario}
+                autoCapitalize="none"
+              />
+              {filtroBeneficiario ? (
+                <TouchableOpacity onPress={() => setFiltroBeneficiario('')} style={{ padding: 4 }}>
+                  <Ionicons name="close-circle" size={16} color="#94a3b8" />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+
+            {/* FILTRO CHIPS: TODOS / PENDIENTES / ATENDIDOS */}
+            <View style={styles.benefFilterRow}>
+              {(['TODOS', 'PENDIENTES', 'ATENDIDOS'] as const).map((tipo) => {
+                const isActive = filtroEstadoBenef === tipo;
+                return (
+                  <TouchableOpacity
+                    key={tipo}
+                    style={[styles.benefFilterChip, isActive && styles.benefFilterChipActive]}
+                    onPress={() => setFiltroEstadoBenef(tipo)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.benefFilterChipText, isActive && styles.benefFilterChipTextActive]}>
+                      {tipo === 'TODOS' ? `Todos (${beneficiariosSector.length})` : 
+                       tipo === 'PENDIENTES' ? `Pendientes (${beneficiariosSector.filter(b => !b.atendido_esta_semana).length})` :
+                       `Atendidos (${beneficiariosSector.filter(b => b.atendido_esta_semana).length})`}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* LISTADO DE TARJETAS */}
+          {loadingBeneficiarios ? (
+            <View style={{ padding: 30, alignItems: 'center' }}>
+              <ActivityIndicator size="large" color="#0284c7" />
+              <Text style={{ marginTop: 10, color: '#64748b', fontSize: 13, fontWeight: '600' }}>
+                Cargando padrón del sector...
+              </Text>
+            </View>
+          ) : (() => {
+            const query = filtroBeneficiario.trim().toLowerCase();
+            const filtrados = beneficiariosSector.filter((b) => {
+              const matchText = !query || 
+                (b.nombres && b.nombres.toLowerCase().includes(query)) ||
+                (b.dni && b.dni.includes(query)) ||
+                (b.sector && b.sector.toLowerCase().includes(query)) ||
+                (b.direccion && b.direccion.toLowerCase().includes(query));
+              if (!matchText) return false;
+              if (filtroEstadoBenef === 'PENDIENTES') return !b.atendido_esta_semana;
+              if (filtroEstadoBenef === 'ATENDIDOS') return !!b.atendido_esta_semana;
+              return true;
+            });
+
+            if (filtrados.length === 0) {
+              return (
+                <View style={styles.benefEmptyCard}>
+                  <Ionicons name="search-outline" size={32} color="#94a3b8" />
+                  <Text style={styles.benefEmptyTitle}>Sin coincidencias</Text>
+                  <Text style={styles.benefEmptySubtitle}>
+                    {beneficiariosSector.length === 0 
+                      ? 'No hay beneficiarios asignados a este sector o aún no se han sincronizado.' 
+                      : 'No se encontraron beneficiarios con el filtro aplicado.'}
+                  </Text>
+                </View>
+              );
+            }
+
+            return (
+              <View style={{ gap: 10, marginTop: 4 }}>
+                {filtrados.map((b) => {
+                  const atendido = !!b.atendido_esta_semana;
+                  const cuota = Number(b.cuota_semanal || 700);
+                  const entregado = Number(b.litros_esta_semana || 0);
+                  const pendiente = Math.max(0, cuota - entregado);
+
+                  return (
+                    <View key={b.id || b.dni} style={styles.benefCardItem}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <View style={{ flex: 1, marginRight: 8 }}>
+                          <Text style={styles.benefNombreText} numberOfLines={1}>
+                            {b.nombres}
+                          </Text>
+                          <Text style={styles.benefDniText}>
+                            DNI: <Text style={{ fontWeight: '800', color: '#0f172a' }}>{b.dni}</Text> • 📍 {b.sector || 'Sector'}
+                          </Text>
+                          {b.direccion ? (
+                            <Text style={styles.benefDirText} numberOfLines={1}>
+                              🏠 {b.direccion}
+                            </Text>
+                          ) : null}
+                        </View>
+
+                        <View style={atendido ? styles.benefStatusOk : styles.benefStatusPending}>
+                          <Ionicons 
+                            name={atendido ? "checkmark-circle" : "time-outline"} 
+                            size={11} 
+                            color={atendido ? "#059669" : "#b45309"} 
+                            style={{ marginRight: 3 }} 
+                          />
+                          <Text style={atendido ? styles.benefStatusOkText : styles.benefStatusPendingText}>
+                            {atendido ? 'Atendido' : 'Pendiente'}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* BARRA DE CUOTA Y METROS CÚBICOS */}
+                      <View style={styles.benefMetricsRow}>
+                        <View style={styles.benefMetricMiniBox}>
+                          <Text style={styles.benefMetricMiniLabel}>CUOTA SEMANAL</Text>
+                          <Text style={styles.benefMetricMiniVal}>{cuota.toLocaleString()} L</Text>
+                        </View>
+                        <View style={styles.benefMetricMiniBox}>
+                          <Text style={styles.benefMetricMiniLabel}>ENTREGADO ESTA SEM.</Text>
+                          <Text style={[styles.benefMetricMiniVal, { color: atendido ? '#059669' : '#0284c7' }]}>
+                            {entregado.toLocaleString()} L
+                          </Text>
+                        </View>
+                        <View style={styles.benefMetricMiniBox}>
+                          <Text style={styles.benefMetricMiniLabel}>SALDO RESTANTE</Text>
+                          <Text style={[styles.benefMetricMiniVal, { color: pendiente > 0 ? '#b45309' : '#059669' }]}>
+                            {pendiente.toLocaleString()} L
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* BOTÓN DE SELECCIÓN DIRECTA */}
+                      <TouchableOpacity
+                        style={styles.benefSelectBtn}
+                        onPress={() => handleSelectBeneficiarioFromList(b)}
+                        activeOpacity={0.85}
+                      >
+                        <Ionicons name="water-outline" size={15} color="#ffffff" />
+                        <Text style={styles.benefSelectBtnText}>
+                          {atendido ? 'Registrar Otra Entrega' : 'Seleccionar para Entrega'}
+                        </Text>
+                        <Ionicons name="arrow-forward" size={14} color="#ffffff" />
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })}
+              </View>
+            );
+          })()}
+        </View>
       ) : (
         /* ─── VISTA 2: REGISTRAR ENTREGA (QR, DNI, FIRMA, FOTO) ───────── */
         <View style={{ width: '100%' }}>
@@ -1418,6 +1646,24 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
             )}
           </TouchableOpacity>
         </View>
+
+        {/* BOTÓN DIRECTO PARA VER BENEFICIARIOS PROGRAMADOS */}
+        <TouchableOpacity
+          style={styles.verBeneficiariosBtn}
+          onPress={() => {
+            setActiveTab('BENEFICIARIOS');
+            if (selectedProg?.id && beneficiariosSector.length === 0) {
+              loadBeneficiariosSector(selectedProg.id);
+            }
+          }}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="people-outline" size={16} color="#0284c7" />
+          <Text style={styles.verBeneficiariosBtnText}>
+            Ver lista de beneficiarios del sector ({beneficiariosSector.length} empadronados)
+          </Text>
+          <Ionicons name="chevron-forward" size={16} color="#0284c7" />
+        </TouchableOpacity>
       </View>
 
       {/* BENEFICIARY CARD */}
@@ -1568,7 +1814,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
             <View style={styles.sectionHeader}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                 <Ionicons name="camera-outline" size={16} color="#0f172a" />
-                <Text style={styles.label}>Fotografía de Evidencia (Obligatorio *)</Text>
+                <Text style={styles.label}>Fotografía de Evidencia (Opcional)</Text>
               </View>
               {photoUri ? (
                 <View style={styles.statusPillOk}>
@@ -1576,9 +1822,9 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                   <Text style={styles.statusPillOkText}>Capturada</Text>
                 </View>
               ) : (
-                <View style={[styles.statusPillPending, { backgroundColor: '#fee2e2', borderColor: '#fca5a5' }]}>
-                  <Ionicons name="alert-circle" size={11} color="#dc2626" style={{ marginRight: 3 }} />
-                  <Text style={[styles.statusPillPendingText, { color: '#dc2626' }]}>Obligatorio *</Text>
+                <View style={[styles.statusPillPending, { backgroundColor: '#f1f5f9', borderColor: '#cbd5e1' }]}>
+                  <Ionicons name="camera-outline" size={11} color="#64748b" style={{ marginRight: 3 }} />
+                  <Text style={[styles.statusPillPendingText, { color: '#64748b' }]}>Opcional</Text>
                 </View>
               )}
             </View>
@@ -1634,7 +1880,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
               <TouchableOpacity style={styles.takePhotoBtn} onPress={handleTakePhoto} activeOpacity={0.85}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                   <Ionicons name="camera-outline" size={18} color="#fff" />
-                  <Text style={styles.takePhotoBtnText}>📸 Tomar Fotografía (Requerido)</Text>
+                  <Text style={styles.takePhotoBtnText}>📸 Tomar Fotografía (Opcional)</Text>
                 </View>
               </TouchableOpacity>
             )}
@@ -3759,4 +4005,229 @@ const styles = StyleSheet.create({
     borderColor: '#fca5a5',
   },
   cancelScannerBtnText: { color: '#ffffff', fontWeight: '800', fontSize: 14 },
+
+  /* ─── ESTILOS LISTA DE BENEFICIARIOS POR SECTOR ─── */
+  beneficiariosViewContainer: {
+    width: '100%',
+    paddingBottom: 30,
+  },
+  benefHeaderCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 5,
+    elevation: 2,
+  },
+  benefHeaderTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  benefRefreshBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: '#f0f9ff',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#bae6fd',
+  },
+  benefRefreshText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#0284c7',
+  },
+  benefSubtitle: {
+    fontSize: 12.5,
+    color: '#64748b',
+    marginTop: 6,
+    marginBottom: 12,
+  },
+  benefSearchWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 12,
+  },
+  benefSearchInput: {
+    flex: 1,
+    fontSize: 14,
+    color: '#0f172a',
+    paddingVertical: 2,
+  },
+  benefFilterRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  benefFilterChip: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 6,
+    borderRadius: 8,
+    backgroundColor: '#f1f5f9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  benefFilterChipActive: {
+    backgroundColor: '#0284c7',
+  },
+  benefFilterChipText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748b',
+  },
+  benefFilterChipTextActive: {
+    color: '#ffffff',
+  },
+  benefEmptyCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 14,
+    padding: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    marginTop: 8,
+  },
+  benefEmptyTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#334155',
+    marginTop: 10,
+  },
+  benefEmptySubtitle: {
+    fontSize: 12.5,
+    color: '#64748b',
+    textAlign: 'center',
+    marginTop: 6,
+    lineHeight: 18,
+  },
+  benefCardItem: {
+    backgroundColor: '#ffffff',
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  benefNombreText: {
+    fontSize: 14.5,
+    fontWeight: '800',
+    color: '#0f172a',
+    marginBottom: 3,
+  },
+  benefDniText: {
+    fontSize: 12,
+    color: '#475569',
+    marginBottom: 2,
+  },
+  benefDirText: {
+    fontSize: 11.5,
+    color: '#64748b',
+    marginTop: 1,
+  },
+  benefStatusOk: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ecfdf5',
+    borderWidth: 1,
+    borderColor: '#a7f3d0',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+  },
+  benefStatusOkText: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    color: '#059669',
+  },
+  benefStatusPending: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fef3c7',
+    borderWidth: 1,
+    borderColor: '#fde68a',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+  },
+  benefStatusPendingText: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    color: '#b45309',
+  },
+  benefMetricsRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 10,
+    marginBottom: 10,
+    backgroundColor: '#f8fafc',
+    borderRadius: 10,
+    padding: 8,
+  },
+  benefMetricMiniBox: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  benefMetricMiniLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#64748b',
+    marginBottom: 2,
+  },
+  benefMetricMiniVal: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  benefSelectBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#0284c7',
+    paddingVertical: 9,
+    borderRadius: 10,
+  },
+  benefSelectBtnText: {
+    fontSize: 12.5,
+    fontWeight: '800',
+    color: '#ffffff',
+  },
+  verBeneficiariosBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#f0f9ff',
+    borderWidth: 1,
+    borderColor: '#bae6fd',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    marginTop: 12,
+  },
+  verBeneficiariosBtnText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0369a1',
+    marginLeft: 6,
+  },
 });

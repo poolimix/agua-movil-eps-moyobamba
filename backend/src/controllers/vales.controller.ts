@@ -45,11 +45,12 @@ export const buscarVale = async (req: Request, res: Response) => {
         COALESCE(b.calle_direccion, b.direccion, '') as direccion,
         COALESCE(b.telefono, '') as telefono
       FROM beneficiarios b
-      LEFT JOIN vales_entrega v ON (v.beneficiario_id = b.id AND (v.codigo_unico = $1 OR v.codigo_unico ILIKE $1))
+      LEFT JOIN vales_entrega v ON v.beneficiario_id = b.id
       WHERE v.codigo_unico = $1 
          OR v.codigo_unico ILIKE $1
          OR b.dni = $2
          OR b.dni = $1
+         OR $1 ILIKE CONCAT('%', b.dni, '%')
       ORDER BY v.id DESC NULLS LAST
       LIMIT 1
     `, [codigo, dni]);
@@ -175,19 +176,27 @@ export const despacharValesProgramacion = async (req: Request, res: Response) =>
     const config = await getConfiguracion();
     const dotacionSemanal = config.dotacion_semanal_por_habitante || 350;
 
+    const anioProg = programacion.fecha_inicio
+      ? new Date(programacion.fecha_inicio).getFullYear()
+      : (programacion.fecha ? new Date(programacion.fecha).getFullYear() : 2026);
+
     for (const b of beneficiarios) {
       // Regla de Negocio: Dotación familiar semanal según configuración del sistema
       const litros = (b.num_miembros || 1) * dotacionSemanal;
-      const codigoUnico = `VALE-P${programacion.id}-${dateSlug}-${String(b.id).padStart(3, '0')}`;
-      const qrData = `${codigoUnico}|${b.dni}|${litros}L|${programacion.id}`;
+      const dniSafe = (b.dni || String(b.id)).trim();
+      const codigoUnico = programacion.es_anual !== false
+        ? `VALE-ANUAL-${anioProg}-${dniSafe}`
+        : `VALE-P${programacion.id}-${dateSlug}-${String(b.id).padStart(3, '0')}`;
+      const qrData = `${codigoUnico}|${dniSafe}|${litros}L|${programacion.id}`;
 
       // Check if already exists for this programming and beneficiary or matching code
       const existing = await query(
         `SELECT * FROM vales_entrega 
          WHERE (programacion_id = $1 AND beneficiario_id = $2) 
             OR codigo_unico = $3
+            OR (beneficiario_id = $2 AND codigo_unico ILIKE $4)
          LIMIT 1`,
-        [programacion.id, b.id, codigoUnico]
+        [programacion.id, b.id, codigoUnico, `%${dniSafe}%`]
       );
 
       let vale;

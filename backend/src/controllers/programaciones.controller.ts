@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import PDFDocument from 'pdfkit';
 import * as xlsx from 'xlsx';
 import { query } from '../db';
+import { getConfiguracion } from '../services/configuracion.service';
 
 const ensureProgramacionesSchema = async () => {
   try {
@@ -25,6 +26,11 @@ const ensureProgramacionesSchema = async () => {
       ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS dias_semana TEXT DEFAULT 'Lunes, Miércoles, Viernes';
       ALTER TABLE programaciones ALTER COLUMN dias_semana TYPE TEXT;
       ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS sectores_seleccionados TEXT;
+      ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS fecha_inicio DATE DEFAULT CURRENT_DATE;
+      ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS fecha_fin DATE DEFAULT CURRENT_DATE;
+      ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS es_anual BOOLEAN DEFAULT TRUE;
+      UPDATE programaciones SET fecha_inicio = fecha WHERE fecha_inicio IS NULL;
+      UPDATE programaciones SET fecha_fin = fecha WHERE fecha_fin IS NULL;
 
       ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS programacion_id INT REFERENCES programaciones(id) ON DELETE SET NULL;
       ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS etapa_control VARCHAR(50) DEFAULT 'CARGA';
@@ -40,6 +46,9 @@ export const getAllProgramaciones = async (req: Request, res: Response) => {
     const result = await query(`
       SELECT 
         p.*,
+        COALESCE(p.fecha_inicio, p.fecha) as fecha_inicio,
+        COALESCE(p.fecha_fin, p.fecha) as fecha_fin,
+        COALESCE(p.es_anual, TRUE) as es_anual,
         c.placa as cisterna_placa,
         c.marca_modelo as cisterna_marca,
         c.capacidad_m3 as cisterna_capacidad_m3,
@@ -60,6 +69,9 @@ export const getAllProgramaciones = async (req: Request, res: Response) => {
         (SELECT ROUND((COALESCE(SUM(litros_entregados), 0)::numeric / 1000.0) * 39.13, 2) FROM entregas_agua e WHERE e.programacion_id = p.id) as monto_valorizado,
         ROUND((COALESCE(p.litros_programados, 15000)::numeric / 1000.0) * 39.13, 2) as monto_programado,
         ROUND(COALESCE(p.litros_programados, 15000)::numeric / 350.0 * 4) as poblacion_programada,
+        (SELECT COALESCE(SUM(litros_entregados), 0) FROM entregas_agua e WHERE e.programacion_id = p.id AND e.fecha_hora >= date_trunc('week', CURRENT_DATE)) as litros_esta_semana,
+        (SELECT COALESCE(SUM(litros_entregados), 0) FROM entregas_agua e WHERE e.programacion_id = p.id AND e.fecha_hora >= date_trunc('month', CURRENT_DATE)) as litros_este_mes,
+        (SELECT COUNT(DISTINCT e.beneficiario_id) FROM entregas_agua e WHERE e.programacion_id = p.id AND e.fecha_hora >= date_trunc('week', CURRENT_DATE)) as familias_esta_semana,
         (SELECT COUNT(*) FROM control_calidad cc WHERE cc.programacion_id = p.id) as total_calidad,
         (SELECT COUNT(*) FROM control_calidad cc WHERE cc.programacion_id = p.id AND cc.etapa_control = 'CARGA') as calidad_carga,
         (SELECT COUNT(*) FROM control_calidad cc WHERE cc.programacion_id = p.id AND cc.etapa_control = 'RUTA') as calidad_ruta,
@@ -82,6 +94,9 @@ export const createProgramacion = async (req: Request, res: Response) => {
     await ensureProgramacionesSchema();
     const {
       fecha,
+      fecha_inicio,
+      fecha_fin,
+      es_anual = true,
       zona,
       sectores_seleccionados,
       estado = 'Activa',
@@ -93,7 +108,9 @@ export const createProgramacion = async (req: Request, res: Response) => {
       dias_semana = 'Lunes, Miércoles, Viernes',
     } = req.body;
 
-    // Validación segura de IDs numéricos para evitar errores con strings vacías o NaN
+    const fInicio = fecha_inicio || fecha || new Date().toISOString().split('T')[0];
+    const fFin = fecha_fin || fInicio;
+
     const parsedCisternaId = cisterna_id && !isNaN(parseInt(String(cisterna_id), 10)) && parseInt(String(cisterna_id), 10) > 0 
       ? parseInt(String(cisterna_id), 10) 
       : null;
@@ -104,7 +121,6 @@ export const createProgramacion = async (req: Request, res: Response) => {
       ? parseInt(String(ayudante_id), 10) 
       : null;
 
-    // Verificar existencia de foreign keys para prevenir violación de constraints
     if (parsedConductorId) {
       const condCheck = await query('SELECT id FROM personal_operativo WHERE id = $1', [parsedConductorId]);
       if (condCheck.rows.length === 0) parsedConductorId = null;
@@ -117,7 +133,6 @@ export const createProgramacion = async (req: Request, res: Response) => {
 
     let viajes = parseInt(String(viajes_estimados), 10);
 
-    // Si los viajes no están definidos, calcular según capacidad de cisterna y demanda
     if (!viajes || isNaN(viajes) || viajes <= 0) {
       if (parsedCisternaId && litros_programados) {
         const cisternaRes = await query('SELECT capacidad_litros FROM cisternas WHERE id = $1', [parsedCisternaId]);
@@ -130,14 +145,17 @@ export const createProgramacion = async (req: Request, res: Response) => {
 
     const insertQuery = `
       INSERT INTO programaciones (
-        fecha, zona, sectores_seleccionados, estado, cisterna_id, conductor_id, ayudante_id, litros_programados, viajes_estimados, dias_semana
+        fecha, fecha_inicio, fecha_fin, es_anual, zona, sectores_seleccionados, estado, cisterna_id, conductor_id, ayudante_id, litros_programados, viajes_estimados, dias_semana
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       RETURNING *;
     `;
 
     const result = await query(insertQuery, [
-      fecha || new Date(),
+      fInicio,
+      fInicio,
+      fFin,
+      es_anual === true || es_anual === 'true',
       zona || sectores_seleccionados || 'Sector General',
       sectores_seleccionados || zona || null,
       estado || 'Activa',
@@ -162,7 +180,11 @@ export const updateProgramacion = async (req: Request, res: Response) => {
     const { id } = req.params;
     const {
       fecha,
+      fecha_inicio,
+      fecha_fin,
+      es_anual,
       zona,
+      sectores_seleccionados,
       estado,
       cisterna_id,
       conductor_id,
@@ -172,7 +194,9 @@ export const updateProgramacion = async (req: Request, res: Response) => {
       dias_semana,
     } = req.body;
 
-    // Validación segura de IDs numéricos
+    const fInicio = fecha_inicio || fecha;
+    const fFin = fecha_fin || fInicio;
+
     const parsedCisternaId = cisterna_id && !isNaN(parseInt(String(cisterna_id), 10)) && parseInt(String(cisterna_id), 10) > 0 
       ? parseInt(String(cisterna_id), 10) 
       : null;
@@ -207,22 +231,30 @@ export const updateProgramacion = async (req: Request, res: Response) => {
 
     const sql = `
       UPDATE programaciones
-      SET fecha = $1,
-          zona = $2,
-          estado = $3,
-          cisterna_id = $4,
-          conductor_id = $5,
-          ayudante_id = $6,
-          litros_programados = $7,
-          viajes_estimados = $8,
-          dias_semana = $9
-      WHERE id = $10
+      SET fecha = COALESCE($1, fecha),
+          fecha_inicio = COALESCE($2, fecha_inicio, fecha),
+          fecha_fin = COALESCE($3, fecha_fin, fecha),
+          es_anual = COALESCE($4, es_anual, TRUE),
+          zona = $5,
+          sectores_seleccionados = $6,
+          estado = $7,
+          cisterna_id = $8,
+          conductor_id = $9,
+          ayudante_id = $10,
+          litros_programados = $11,
+          viajes_estimados = $12,
+          dias_semana = $13
+      WHERE id = $14
       RETURNING *;
     `;
 
     const result = await query(sql, [
-      fecha,
+      fInicio || null,
+      fInicio || null,
+      fFin || null,
+      es_anual !== undefined ? (es_anual === true || es_anual === 'true') : null,
       zona,
+      sectores_seleccionados || zona || null,
       estado,
       parsedCisternaId,
       parsedConductorId,
@@ -520,6 +552,200 @@ export const updateEstadoProgramacion = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error actualizando estado de programacion:', error);
     res.status(500).json({ message: 'Error al actualizar estado', error: error.message });
+  }
+};
+
+/**
+ * Obtener avances y desglose de calendario (Lunes a Domingo, semanas y meses)
+ */
+export const getAvancesCalendario = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const anio = parseInt(req.query.anio as string, 10) || 2026;
+    const mes = parseInt(req.query.mes as string, 10) || (new Date().getMonth() + 1);
+
+    const progRes = await query('SELECT * FROM programaciones WHERE id = $1', [id]);
+    if (progRes.rows.length === 0) {
+      return res.status(404).json({ message: 'Programación no encontrada' });
+    }
+    const prog = progRes.rows[0];
+
+    // Entregas por día de la semana (1 = Lunes ... 7 = Domingo)
+    const diasSemanaRes = await query(`
+      SELECT 
+        EXTRACT(ISODOW FROM fecha_hora)::int as dia_num,
+        COUNT(id)::int as total_entregas,
+        COALESCE(SUM(litros_entregados), 0)::numeric as total_litros,
+        COUNT(DISTINCT beneficiario_id)::int as familias_atendidas
+      FROM entregas_agua
+      WHERE programacion_id = $1
+        AND EXTRACT(YEAR FROM fecha_hora) = $2
+        AND EXTRACT(MONTH FROM fecha_hora) = $3
+      GROUP BY EXTRACT(ISODOW FROM fecha_hora)
+      ORDER BY dia_num ASC
+    `, [id, anio, mes]);
+
+    // Entregas por semanas del mes
+    const semanasRes = await query(`
+      SELECT 
+        EXTRACT(WEEK FROM fecha_hora)::int as semana_anio,
+        COUNT(id)::int as total_entregas,
+        COALESCE(SUM(litros_entregados), 0)::numeric as total_litros,
+        COUNT(DISTINCT beneficiario_id)::int as familias_atendidas,
+        MIN(fecha_hora)::date as fecha_inicio_semana,
+        MAX(fecha_hora)::date as fecha_fin_semana
+      FROM entregas_agua
+      WHERE programacion_id = $1
+        AND EXTRACT(YEAR FROM fecha_hora) = $2
+        AND EXTRACT(MONTH FROM fecha_hora) = $3
+      GROUP BY EXTRACT(WEEK FROM fecha_hora)
+      ORDER BY semana_anio ASC
+    `, [id, anio, mes]);
+
+    // Entregas por meses del año
+    const mesesAnioRes = await query(`
+      SELECT 
+        EXTRACT(MONTH FROM fecha_hora)::int as mes_num,
+        COUNT(id)::int as total_entregas,
+        COALESCE(SUM(litros_entregados), 0)::numeric as total_litros,
+        COUNT(DISTINCT beneficiario_id)::int as familias_atendidas
+      FROM entregas_agua
+      WHERE programacion_id = $1
+        AND EXTRACT(YEAR FROM fecha_hora) = $2
+      GROUP BY EXTRACT(MONTH FROM fecha_hora)
+      ORDER BY mes_num ASC
+    `, [id, anio]);
+
+    // Resumen acumulado
+    const totalProgRes = await query(`
+      SELECT 
+        COUNT(id)::int as total_entregas,
+        COALESCE(SUM(litros_entregados), 0)::numeric as total_litros,
+        COUNT(DISTINCT beneficiario_id)::int as familias_atendidas
+      FROM entregas_agua
+      WHERE programacion_id = $1
+    `, [id]);
+
+    const totalLitros = parseFloat(totalProgRes.rows[0]?.total_litros || '0');
+    const metaLitros = parseFloat(prog.litros_programados || '15000');
+    const pctAvance = metaLitros > 0 ? Math.min(100, Math.round((totalLitros / metaLitros) * 100)) : 0;
+
+    res.json({
+      programacion: prog,
+      mesSeleccionado: mes,
+      anioSeleccionado: anio,
+      diasSemana: diasSemanaRes.rows,
+      semanasMes: semanasRes.rows,
+      mesesAnio: mesesAnioRes.rows,
+      resumenAcumulado: {
+        totalLitros,
+        metaLitros,
+        pctAvance,
+        totalEntregas: parseInt(totalProgRes.rows[0]?.total_entregas || '0', 10),
+        familiasAtendidas: parseInt(totalProgRes.rows[0]?.familias_atendidas || '0', 10)
+      }
+    });
+  } catch (error: any) {
+    console.error('Error obteniendo avances de calendario:', error);
+    res.status(500).json({ message: 'Error interno al obtener avances', error: error.message });
+  }
+};
+
+/**
+ * Listar beneficiarios correspondientes al sector programado
+ */
+export const getBeneficiariosProgramados = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const progRes = await query('SELECT * FROM programaciones WHERE id = $1', [id]);
+    if (progRes.rows.length === 0) {
+      return res.status(404).json({ message: 'Programación no encontrada' });
+    }
+    const prog = progRes.rows[0];
+
+    let sectores: string[] = [];
+    if (prog.sectores_seleccionados) {
+      try {
+        const parsed = JSON.parse(prog.sectores_seleccionados);
+        if (Array.isArray(parsed)) sectores = parsed;
+      } catch {
+        sectores = prog.sectores_seleccionados.split(',').map((s: string) => s.trim());
+      }
+    }
+    if (sectores.length === 0 && prog.zona) {
+      sectores = prog.zona.split(',').map((s: string) => s.trim()).filter(Boolean);
+    }
+
+    let queryStr = `
+      SELECT 
+        b.id,
+        b.dni,
+        b.nombres_apellidos,
+        COALESCE(b.sector_aahh, b.sector, 'Moyobamba') as sector,
+        COALESCE(b.calle_direccion, b.direccion, '-') as direccion,
+        COALESCE(b.num_miembros, 1) as num_miembros,
+        b.telefono,
+        b.email,
+        (SELECT COALESCE(SUM(litros_entregados), 0) 
+         FROM entregas_agua e 
+         WHERE e.beneficiario_id = b.id 
+           AND e.programacion_id = $1 
+           AND e.fecha_hora >= date_trunc('week', CURRENT_DATE)
+        ) as litros_entregados_semana,
+        (SELECT COUNT(*) 
+         FROM entregas_agua e 
+         WHERE e.beneficiario_id = b.id 
+           AND e.programacion_id = $1 
+           AND e.fecha_hora >= date_trunc('week', CURRENT_DATE)
+        ) as entregas_esta_semana,
+        (SELECT v.codigo_unico 
+         FROM vales_entrega v 
+         WHERE v.beneficiario_id = b.id AND v.programacion_id = $1 
+         ORDER BY v.id DESC LIMIT 1
+        ) as vale_codigo
+      FROM beneficiarios b
+    `;
+
+    const params: any[] = [id];
+
+    if (sectores.length > 0) {
+      params.push(sectores.map(s => s.toUpperCase().trim()));
+      queryStr += ` WHERE UPPER(TRIM(COALESCE(b.sector_aahh, b.sector, ''))) = ANY($2::text[])`;
+    }
+
+    queryStr += ` ORDER BY b.nombres_apellidos ASC`;
+
+    const result = await query(queryStr, params);
+    const config = await getConfiguracion();
+    const dotSemanal = config.dotacion_semanal_por_habitante || 350;
+
+    const beneficiariosConEstado = result.rows.map((row: any) => {
+      const miembros = Number(row.num_miembros || 1);
+      const cuotaSemanal = miembros * dotSemanal;
+      const litrosRecibidos = parseFloat(row.litros_entregados_semana || '0');
+      const saldoSemanal = Math.max(0, cuotaSemanal - litrosRecibidos);
+      const entregasSemana = parseInt(row.entregas_esta_semana || '0', 10);
+
+      return {
+        ...row,
+        cuota_semanal: cuotaSemanal,
+        saldo_semanal: saldoSemanal,
+        ha_recibido_esta_semana: entregasSemana > 0,
+        estado_semanal: saldoSemanal <= 0 ? 'COMPLETA' : (litrosRecibidos > 0 ? 'PARCIAL' : 'PENDIENTE')
+      };
+    });
+
+    res.json({
+      programacion_id: prog.id,
+      zona: prog.zona,
+      sectores,
+      total: beneficiariosConEstado.length,
+      beneficiarios: beneficiariosConEstado
+    });
+  } catch (error: any) {
+    console.error('Error obteniendo beneficiarios programados:', error);
+    res.status(500).json({ message: 'Error interno al obtener beneficiarios', error: error.message });
   }
 };
 

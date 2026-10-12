@@ -41,6 +41,12 @@ interface Programacion {
   calidad_carga?: string | number;
   calidad_ruta?: string | number;
   calidad_adicional?: string | number;
+  fecha_inicio?: string;
+  fecha_fin?: string;
+  es_anual?: boolean;
+  litros_esta_semana?: number | string;
+  litros_este_mes?: number | string;
+  familias_esta_semana?: number | string;
 }
 
 interface Cisterna {
@@ -102,6 +108,9 @@ export default function ProgramacionesPage() {
   // Form state
   const [formData, setFormData] = useState({
     fecha: new Date().toISOString().split('T')[0],
+    fecha_inicio: new Date().toISOString().split('T')[0],
+    fecha_fin: `${new Date().getFullYear()}-12-31`,
+    es_anual: true,
     selectedSectores: [] as string[],
     estado: 'Activa',
     cisterna_id: '' as string | number,
@@ -113,6 +122,14 @@ export default function ProgramacionesPage() {
   });
 
   const [ayudantes, setAyudantes] = useState<any[]>([]);
+
+  // Calendar & Progress Breakdown State (Lunes a Domingo por Semanas y por Meses)
+  const [viewMode, setViewMode] = useState<'PLANILLA' | 'CALENDARIO'>('PLANILLA');
+  const [selectedProgCalendar, setSelectedProgCalendar] = useState<Programacion | null>(null);
+  const [calendarData, setCalendarData] = useState<any | null>(null);
+  const [calendarLoading, setCalendarLoading] = useState(false);
+  const [selectedMesCalendario, setSelectedMesCalendario] = useState<number>(new Date().getMonth() + 1);
+  const [selectedAnioCalendario, setSelectedAnioCalendario] = useState<number>(new Date().getFullYear());
 
   // Vales & Dispatch State
   const [selectedProgForVales, setSelectedProgForVales] = useState<Programacion | null>(null);
@@ -231,6 +248,9 @@ export default function ProgramacionesPage() {
 
     setFormData({
       fecha: new Date().toISOString().split('T')[0],
+      fecha_inicio: new Date().toISOString().split('T')[0],
+      fecha_fin: '2026-12-31',
+      es_anual: true,
       selectedSectores: initialSelectedSectores,
       estado: 'Activa',
       cisterna_id: defaultCis?.id || '',
@@ -253,6 +273,9 @@ export default function ProgramacionesPage() {
 
     setFormData({
       fecha: new Date(p.fecha).toISOString().split('T')[0],
+      fecha_inicio: p.fecha_inicio ? new Date(p.fecha_inicio).toISOString().split('T')[0] : new Date(p.fecha).toISOString().split('T')[0],
+      fecha_fin: p.fecha_fin ? new Date(p.fecha_fin).toISOString().split('T')[0] : '2026-12-31',
+      es_anual: p.es_anual !== false,
       selectedSectores: parsedSectores.length > 0 ? parsedSectores : [p.zona],
       estado: p.estado,
       cisterna_id: p.cisterna_id || (cisternas[0]?.id || ''),
@@ -263,6 +286,31 @@ export default function ProgramacionesPage() {
       dias_semana: p.dias_semana || 'Lunes, Miércoles, Viernes',
     });
     setModalOpen(true);
+  };
+
+  const loadCalendarAvances = async (progId: number, mes?: number, anio?: number) => {
+    try {
+      setCalendarLoading(true);
+      const m = mes !== undefined ? mes : selectedMesCalendario;
+      const y = anio !== undefined ? anio : selectedAnioCalendario;
+      const res = await api.get(`/programaciones/${progId}/avances-calendario?mes=${m}&anio=${y}`);
+      if (res.data?.success) {
+        setCalendarData(res.data.data);
+      }
+    } catch (err) {
+      console.error('Error cargando avances calendario:', err);
+    } finally {
+      setCalendarLoading(false);
+    }
+  };
+
+  const handleOpenCalendarView = (p?: Programacion) => {
+    const target = p || selectedProgCalendar || (programaciones.length > 0 ? programaciones[0] : null);
+    if (target) {
+      setSelectedProgCalendar(target);
+      setViewMode('CALENDARIO');
+      loadCalendarAvances(target.id, selectedMesCalendario, selectedAnioCalendario);
+    }
   };
 
   const handleOpenDespachoModal = async (p: Programacion) => {
@@ -380,6 +428,9 @@ export default function ProgramacionesPage() {
 
     const payload = {
       fecha: formData.fecha,
+      fecha_inicio: formData.fecha_inicio || formData.fecha,
+      fecha_fin: formData.fecha_fin || formData.fecha,
+      es_anual: formData.es_anual,
       zona: formData.selectedSectores.join(', '),
       sectores_seleccionados: formData.selectedSectores.join(', '),
       estado: formData.estado,
@@ -472,14 +523,64 @@ export default function ProgramacionesPage() {
           <h1>Programaciones y Logística de Cisternas</h1>
           <p>Rutas multi-sector, asignación automática de chofer habitual, cálculo de viajes y vales multicanal</p>
         </div>
-        <div className="module-actions">
+        <div className="module-actions" style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          {/* TOGGLE VISTA PLANILLA VS VISTA CALENDARIO */}
+          <div style={{ display: 'flex', background: '#e2e8f0', borderRadius: 8, padding: 3, gap: 2 }}>
+            <button
+              type="button"
+              onClick={() => setViewMode('PLANILLA')}
+              style={{
+                border: 'none',
+                padding: '7px 14px',
+                borderRadius: 6,
+                fontWeight: 700,
+                fontSize: 13,
+                cursor: 'pointer',
+                background: viewMode === 'PLANILLA' ? '#0284c7' : 'transparent',
+                color: viewMode === 'PLANILLA' ? '#ffffff' : '#475569',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6
+              }}
+            >
+              📑 Vista Planilla
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (!selectedProgCalendar && programaciones.length > 0) {
+                  setSelectedProgCalendar(programaciones[0]);
+                  loadCalendarAvances(programaciones[0].id);
+                }
+                setViewMode('CALENDARIO');
+              }}
+              style={{
+                border: 'none',
+                padding: '7px 14px',
+                borderRadius: 6,
+                fontWeight: 700,
+                fontSize: 13,
+                cursor: 'pointer',
+                background: viewMode === 'CALENDARIO' ? '#0284c7' : 'transparent',
+                color: viewMode === 'CALENDARIO' ? '#ffffff' : '#475569',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6
+              }}
+            >
+              📅 Vista Calendario & Avances
+            </button>
+          </div>
+
           <button className="btn-primary" onClick={handleOpenCreateModal}>
             ➕ Nueva Programación
           </button>
         </div>
       </div>
 
-      <div className="filters-card">
+      {viewMode === 'PLANILLA' ? (
+        <>
+          <div className="filters-card">
         <input
           type="text"
           placeholder="🔍 Buscar por Zona, Cisterna o Conductor..."
@@ -498,7 +599,7 @@ export default function ProgramacionesPage() {
         <table className="custom-table" style={{ minWidth: 1260 }}>
           <thead>
             <tr>
-              <th style={{ minWidth: 100 }}>ID / Fecha</th>
+              <th style={{ minWidth: 120 }}>ID / Rango Fechas</th>
               <th style={{ minWidth: 260 }}>Sectores Asignados</th>
               <th style={{ minWidth: 220 }}>Cisterna y Cuadrilla</th>
               <th style={{ minWidth: 140 }}>Viajes Programados</th>
@@ -525,9 +626,19 @@ export default function ProgramacionesPage() {
               paginatedData.map((p) => (
                 <tr key={p.id}>
                   <td>
-                    <strong>#{p.id}</strong>
-                    <div style={{ fontSize: 11, color: '#64748b' }}>
-                      {new Date(p.fecha).toLocaleDateString('es-PE')}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <strong>#{p.id}</strong>
+                      {p.es_anual && (
+                        <span className="badge-count" style={{ background: '#ecfdf5', color: '#047857', fontSize: 10, fontWeight: 800, padding: '1px 6px' }}>
+                          🌟 Anual
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 11, color: '#0369a1', fontWeight: 700, marginTop: 3 }}>
+                      {p.fecha_inicio ? new Date(p.fecha_inicio).toLocaleDateString('es-PE') : new Date(p.fecha).toLocaleDateString('es-PE')}
+                      {p.fecha_fin && p.fecha_fin !== p.fecha_inicio && (
+                        <span> al {new Date(p.fecha_fin).toLocaleDateString('es-PE')}</span>
+                      )}
                     </div>
                   </td>
                   <td style={{ minWidth: 260 }}>
@@ -656,6 +767,26 @@ export default function ProgramacionesPage() {
                   </td>
                   <td>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, justifyContent: 'center', alignItems: 'center' }}>
+                      <button
+                        style={{
+                          background: '#f0f9ff',
+                          color: '#0369a1',
+                          border: '1.5px solid #bae6fd',
+                          padding: '6px 10px',
+                          borderRadius: 6,
+                          fontSize: 12,
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4
+                        }}
+                        onClick={() => handleOpenCalendarView(p)}
+                        title="Ver desglose tipo calendario y avances por semana y por mes"
+                      >
+                        📅 Calendario & Avances
+                      </button>
+
                       <button
                         style={{
                           background: '#eff6ff',
@@ -790,6 +921,389 @@ export default function ProgramacionesPage() {
           pageSizeOptions={[5, 10, 20, 50]}
         />
       </div>
+    </>
+  ) : (
+    /* VISTA CALENDARIO & AVANCES (LUNES A DOMINGO POR SEMANAS Y MESES) */
+    <div className="calendar-advances-container" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* HEADER SELECTOR DE PROGRAMACIÓN Y MES */}
+      <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 14, padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 14, boxShadow: '0 2px 6px rgba(0,0,0,0.03)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 300 }}>
+          <span style={{ fontSize: 20 }}>🚚</span>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 800, color: '#0369a1', textTransform: 'uppercase' }}>Programación en Seguimiento</div>
+            <select
+              className="form-input"
+              style={{ minWidth: 320, fontWeight: 700, fontSize: 13, borderColor: '#38bdf8' }}
+              value={selectedProgCalendar?.id || ''}
+              onChange={(e) => {
+                const found = programaciones.find(p => p.id === Number(e.target.value));
+                if (found) {
+                  setSelectedProgCalendar(found);
+                  loadCalendarAvances(found.id, selectedMesCalendario, selectedAnioCalendario);
+                }
+              }}
+            >
+              {programaciones.map(p => (
+                <option key={p.id} value={p.id}>
+                  Prog #{p.id} - {p.zona} ({p.cisterna_placa || 'Cisterna'}) [{p.fecha_inicio ? new Date(p.fecha_inicio).toLocaleDateString('es-PE') : p.fecha} al {p.fecha_fin ? new Date(p.fecha_fin).toLocaleDateString('es-PE') : p.fecha}] {p.es_anual ? '★ Anual' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* CONTROL MES ANTERIOR / SIGUIENTE */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#f8fafc', padding: '6px 12px', borderRadius: 10, border: '1px solid #cbd5e1' }}>
+          <button
+            type="button"
+            className="btn-link"
+            style={{ background: '#ffffff', border: '1px solid #cbd5e1', padding: '6px 10px', borderRadius: 6, cursor: 'pointer', fontWeight: 800, color: '#0369a1' }}
+            onClick={() => {
+              let prevM = selectedMesCalendario - 1;
+              let prevY = selectedAnioCalendario;
+              if (prevM < 1) { prevM = 12; prevY--; }
+              setSelectedMesCalendario(prevM);
+              setSelectedAnioCalendario(prevY);
+              if (selectedProgCalendar) loadCalendarAvances(selectedProgCalendar.id, prevM, prevY);
+            }}
+          >
+            ◀ Mes Anterior
+          </button>
+
+          <span style={{ fontWeight: 900, fontSize: 15, color: '#0f172a', minWidth: 150, textAlign: 'center' }}>
+            {calendarData?.resumenMesActual?.nombreMes || `${['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'][selectedMesCalendario - 1]} ${selectedAnioCalendario}`}
+          </span>
+
+          <button
+            type="button"
+            className="btn-link"
+            style={{ background: '#ffffff', border: '1px solid #cbd5e1', padding: '6px 10px', borderRadius: 6, cursor: 'pointer', fontWeight: 800, color: '#0369a1' }}
+            onClick={() => {
+              let nextM = selectedMesCalendario + 1;
+              let nextY = selectedAnioCalendario;
+              if (nextM > 12) { nextM = 1; nextY++; }
+              setSelectedMesCalendario(nextM);
+              setSelectedAnioCalendario(nextY);
+              if (selectedProgCalendar) loadCalendarAvances(selectedProgCalendar.id, nextM, nextY);
+            }}
+          >
+            Mes Siguiente ▶
+          </button>
+        </div>
+      </div>
+
+      {/* KPI CARDS RESUMEN OPERATIVO DEL PERÍODO */}
+      {calendarLoading ? (
+        <div style={{ background: '#fff', padding: 40, borderRadius: 14, textAlign: 'center', border: '1px solid #e2e8f0' }}>
+          <span style={{ fontSize: 28 }}>⏳</span>
+          <div style={{ marginTop: 8, fontWeight: 700, color: '#0369a1' }}>Calculando calendario y avances de distribución...</div>
+        </div>
+      ) : calendarData ? (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 14 }}>
+            {/* CARD 1: CUMPLIMIENTO GLOBAL PERÍODO / AÑO */}
+            <div style={{ background: '#ffffff', border: '1px solid #bae6fd', borderTop: '4px solid #0284c7', borderRadius: 14, padding: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 11, fontWeight: 800, color: '#0369a1' }}>AVANCE GLOBAL PERÍODO</span>
+                <span style={{ fontSize: 10.5, fontWeight: 800, background: '#e0f2fe', color: '#0369a1', padding: '2px 8px', borderRadius: 6 }}>
+                  {calendarData.programacion.es_anual ? '🌟 Período Anual' : 'Cronograma'}
+                </span>
+              </div>
+              <div style={{ fontSize: 24, fontWeight: 900, color: '#0f172a', marginTop: 6 }}>
+                {Number(calendarData.programacion.totalLitrosEntregados || 0).toLocaleString()} <span style={{ fontSize: 14, color: '#64748b' }}>Lts</span>
+              </div>
+              <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 2 }}>
+                Meta Total: {Number(calendarData.programacion.metaLitrosTotal || 0).toLocaleString()} Lts ({calendarData.programacion.pctAvanceGlobal}%)
+              </div>
+              <div style={{ width: '100%', height: 7, background: '#f1f5f9', borderRadius: 4, overflow: 'hidden', marginTop: 8 }}>
+                <div style={{ width: `${Math.min(100, calendarData.programacion.pctAvanceGlobal)}%`, height: '100%', background: '#0284c7', borderRadius: 4 }} />
+              </div>
+            </div>
+
+            {/* CARD 2: ESTE MES */}
+            <div style={{ background: '#ffffff', border: '1px solid #bbf7d0', borderTop: '4px solid #16a34a', borderRadius: 14, padding: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 11, fontWeight: 800, color: '#166534' }}>DISTRIBUCIÓN ESTE MES</span>
+                <span style={{ fontSize: 10.5, fontWeight: 800, background: '#ecfdf5', color: '#15803d', padding: '2px 8px', borderRadius: 6 }}>
+                  {calendarData.resumenMesActual?.diasAtencionMes || 0} Días de Reparto
+                </span>
+              </div>
+              <div style={{ fontSize: 24, fontWeight: 900, color: '#0f172a', marginTop: 6 }}>
+                {Number(calendarData.resumenMesActual?.entregadoMesLitros || 0).toLocaleString()} <span style={{ fontSize: 14, color: '#64748b' }}>Lts</span>
+              </div>
+              <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 2 }}>
+                {calendarData.resumenMesActual?.familiasAtendidasMes || 0} familias atendidas ({calendarData.resumenMesActual?.pctAvanceMes || 0}% de cuota mes)
+              </div>
+              <div style={{ width: '100%', height: 7, background: '#f1f5f9', borderRadius: 4, overflow: 'hidden', marginTop: 8 }}>
+                <div style={{ width: `${Math.min(100, calendarData.resumenMesActual?.pctAvanceMes || 0)}%`, height: '100%', background: '#16a34a', borderRadius: 4 }} />
+              </div>
+            </div>
+
+            {/* CARD 3: ESTA SEMANA (LUNES A DOMINGO) */}
+            <div style={{ background: '#ffffff', border: '1px solid #ddd6fe', borderTop: '4px solid #7c3aed', borderRadius: 14, padding: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 11, fontWeight: 800, color: '#6d28d9' }}>SEMANA EN CURSO (Lu-Do)</span>
+                <span style={{ fontSize: 10.5, fontWeight: 800, background: '#f5f3ff', color: '#6d28d9', padding: '2px 8px', borderRadius: 6 }}>
+                  {calendarData.resumenSemanaActual?.inicioSemana} al {calendarData.resumenSemanaActual?.finSemana}
+                </span>
+              </div>
+              <div style={{ fontSize: 24, fontWeight: 900, color: '#0f172a', marginTop: 6 }}>
+                {Number(calendarData.resumenSemanaActual?.entregadoSemanaLitros || 0).toLocaleString()} <span style={{ fontSize: 14, color: '#64748b' }}>Lts</span>
+              </div>
+              <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 2 }}>
+                👥 {calendarData.resumenSemanaActual?.familiasSemana || 0} familias registradas esta semana
+              </div>
+            </div>
+
+            {/* CARD 4: CISTERNA Y CUADRILLA */}
+            <div style={{ background: '#ffffff', border: '1px solid #fed7aa', borderTop: '4px solid #f97316', borderRadius: 14, padding: 16 }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: '#c2410c' }}>CISTERNA & FRECUENCIA</div>
+              <div style={{ fontSize: 17, fontWeight: 900, color: '#0f172a', marginTop: 6 }}>
+                🚛 {calendarData.programacion.cisterna_placa || 'EGA-902'}
+              </div>
+              <div style={{ fontSize: 11.5, color: '#475569', marginTop: 2 }}>
+                👤 Chofer: <strong>{calendarData.programacion.conductor_nombre || 'Asignado'}</strong>
+              </div>
+              <div style={{ fontSize: 11, color: '#0369a1', fontWeight: 700, marginTop: 4 }}>
+                🗓️ {calendarData.programacion.dias_semana || 'Lunes a Domingo'}
+              </div>
+            </div>
+          </div>
+
+          {/* MATRIZ DE CALENDARIO: LUNES A DOMINGO */}
+          <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 16, padding: 20, boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: '#0f172a' }}>
+                  📅 Calendario de Distribución (Lunes a Domingo) - {calendarData.resumenMesActual?.nombreMes}
+                </h3>
+                <p style={{ margin: '2px 0 0', fontSize: 12, color: '#64748b' }}>
+                  Visualización diaria del avance efectivo de entregas según la frecuencia pactada: {calendarData.programacion.dias_semana}
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', gap: 12, fontSize: 11, fontWeight: 700 }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ width: 10, height: 10, borderRadius: 2, background: '#ecfdf5', border: '1px solid #10b981' }} /> Con Reparto Efectivo
+                </span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ width: 10, height: 10, borderRadius: 2, background: '#f0f9ff', border: '1px solid #38bdf8' }} /> Día Programado
+                </span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ width: 10, height: 10, borderRadius: 2, background: '#f8fafc', border: '1px solid #cbd5e1' }} /> Sin Ruta
+                </span>
+              </div>
+            </div>
+
+            {/* 7 COLUMNAS: LUNES A DOMINGO */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 8 }}>
+              {['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'].map((diaNom) => (
+                <div
+                  key={diaNom}
+                  style={{
+                    background: '#0284c7',
+                    color: '#ffffff',
+                    textAlign: 'center',
+                    padding: '8px 4px',
+                    borderRadius: 8,
+                    fontWeight: 800,
+                    fontSize: 12.5,
+                    letterSpacing: 0.3
+                  }}
+                >
+                  {diaNom}
+                </div>
+              ))}
+
+              {/* LEADING EMPTY CELLS */}
+              {(() => {
+                const firstDayDate = new Date(selectedAnioCalendario, selectedMesCalendario - 1, 1);
+                const leadCount = (firstDayDate.getDay() + 6) % 7;
+                const empties = [];
+                for (let i = 0; i < leadCount; i++) {
+                  empties.push(
+                    <div key={`empty-${i}`} style={{ background: '#f8fafc', borderRadius: 10, border: '1px dashed #e2e8f0', minHeight: 90, opacity: 0.4 }} />
+                  );
+                }
+                return empties;
+              })()}
+
+              {/* DAYS OF THE MONTH */}
+              {Array.isArray(calendarData.diasCalendarioMes) && calendarData.diasCalendarioMes.map((dia: any) => {
+                const hasDelivery = Number(dia.litrosEntregados || 0) > 0;
+                return (
+                  <div
+                    key={dia.fecha}
+                    style={{
+                      background: hasDelivery ? '#ecfdf5' : (dia.esDiaAtencion ? '#f0f9ff' : '#ffffff'),
+                      border: dia.esHoy ? '2px solid #0284c7' : (hasDelivery ? '1.5px solid #a7f3d0' : (dia.esDiaAtencion ? '1px solid #bae6fd' : '1px solid #e2e8f0')),
+                      borderRadius: 10,
+                      padding: 8,
+                      minHeight: 92,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'space-between',
+                      position: 'relative',
+                      boxShadow: dia.esHoy ? '0 0 0 2px rgba(2, 132, 199, 0.2)' : 'none'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontWeight: 800, fontSize: 13, color: dia.esHoy ? '#0284c7' : '#0f172a' }}>
+                        {dia.diaNumero}
+                      </span>
+                      {dia.esHoy && (
+                        <span style={{ fontSize: 9, fontWeight: 800, background: '#0284c7', color: '#fff', padding: '1px 5px', borderRadius: 4 }}>
+                          HOY
+                        </span>
+                      )}
+                      {!dia.esHoy && dia.esDiaAtencion && !hasDelivery && (
+                        <span style={{ fontSize: 8.5, fontWeight: 700, color: '#0369a1', background: '#e0f2fe', padding: '1px 4px', borderRadius: 4 }}>
+                          Ruta
+                        </span>
+                      )}
+                    </div>
+
+                    {hasDelivery ? (
+                      <div style={{ marginTop: 4 }}>
+                        <div style={{ fontSize: 12, fontWeight: 900, color: '#047857' }}>
+                          💧 {Number(dia.litrosEntregados).toLocaleString()} L
+                        </div>
+                        <div style={{ fontSize: 10, color: '#065f46', fontWeight: 700, marginTop: 1 }}>
+                          👥 {dia.familiasAtendidas} familias
+                        </div>
+                        <div style={{ fontSize: 9, color: '#059669', fontWeight: 800, marginTop: 2 }}>
+                          ✓ Reparto Realizado
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ marginTop: 'auto', textAlign: 'center' }}>
+                        <span style={{ fontSize: 10, color: '#94a3b8' }}>
+                          {dia.esDiaAtencion ? 'Programado' : 'Sin ruta'}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* DESGLOSE POR SEMANAS DEL MES (SEMANA A SEMANA) */}
+          <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 16, padding: 20, boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
+            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#0f172a', marginBottom: 12 }}>
+              📊 Avances y Entregas por Semanas del Mes ({calendarData.resumenMesActual?.nombreMes})
+            </h3>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
+              {Array.isArray(calendarData.desgloseSemanasMes) && calendarData.desgloseSemanasMes.map((sem: any) => {
+                const pct = Number(sem.pctAvance || 0);
+                const cumplida = pct >= 100;
+                return (
+                  <div
+                    key={sem.semana}
+                    style={{
+                      background: '#f8fafc',
+                      border: cumplida ? '1.5px solid #a7f3d0' : '1px solid #e2e8f0',
+                      borderRadius: 12,
+                      padding: 14,
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <span style={{ fontWeight: 800, fontSize: 13, color: '#0f172a' }}>{sem.semana}</span>
+                        <div style={{ fontSize: 11, color: '#64748b' }}>📅 {sem.rango}</div>
+                      </div>
+                      <span
+                        style={{
+                          fontSize: 10.5,
+                          fontWeight: 800,
+                          background: cumplida ? '#ecfdf5' : (sem.entregadoLitros > 0 ? '#fef3c7' : '#f1f5f9'),
+                          color: cumplida ? '#059669' : (sem.entregadoLitros > 0 ? '#b45309' : '#64748b'),
+                          padding: '2px 8px',
+                          borderRadius: 6,
+                        }}
+                      >
+                        {cumplida ? '✅ Cumplida' : (sem.entregadoLitros > 0 ? '🟡 En Proceso' : '⚪ Pendiente')}
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 10 }}>
+                      <span style={{ fontSize: 18, fontWeight: 900, color: '#0f172a' }}>
+                        {Number(sem.entregadoLitros || 0).toLocaleString()} <span style={{ fontSize: 11, color: '#64748b' }}>Lts</span>
+                      </span>
+                      <span style={{ fontSize: 11, color: '#64748b' }}>
+                        Meta: {Number(sem.metaSemanalLitros || 0).toLocaleString()} L ({pct}%)
+                      </span>
+                    </div>
+
+                    <div style={{ width: '100%', height: 6, background: '#e2e8f0', borderRadius: 4, overflow: 'hidden', marginTop: 6 }}>
+                      <div style={{ width: `${Math.min(100, pct)}%`, height: '100%', background: cumplida ? '#10b981' : '#0284c7', borderRadius: 4 }} />
+                    </div>
+
+                    <div style={{ fontSize: 11, color: '#475569', marginTop: 6 }}>
+                      👥 Familias atendidas: <strong>{sem.familias || 0}</strong>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* DESGLOSE MES A MES DEL CRONOGRAMA ANUAL */}
+          <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 16, padding: 20, boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
+            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#0f172a', marginBottom: 12 }}>
+              🗓️ Seguimiento Mensual Acumulado del Cronograma Anual
+            </h3>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
+              {Array.isArray(calendarData.desgloseMeses) && calendarData.desgloseMeses.map((mItem: any) => {
+                const isSelected = mItem.mes === selectedMesCalendario;
+                const pct = Number(mItem.pctAvance || 0);
+                return (
+                  <div
+                    key={`${mItem.anio}-${mItem.mes}`}
+                    onClick={() => {
+                      setSelectedMesCalendario(mItem.mes);
+                      setSelectedAnioCalendario(mItem.anio);
+                      if (selectedProgCalendar) loadCalendarAvances(selectedProgCalendar.id, mItem.mes, mItem.anio);
+                    }}
+                    style={{
+                      background: isSelected ? '#eff6ff' : '#f8fafc',
+                      border: isSelected ? '2px solid #0284c7' : '1px solid #e2e8f0',
+                      borderRadius: 10,
+                      padding: 12,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontWeight: 800, fontSize: 12.5, color: isSelected ? '#0369a1' : '#0f172a' }}>
+                        {mItem.mesNombre}
+                      </span>
+                      <span style={{ fontSize: 10, fontWeight: 800, color: pct >= 100 ? '#059669' : '#0284c7' }}>
+                        {pct}%
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 14, fontWeight: 900, color: '#0f172a', marginTop: 4 }}>
+                      {Number(mItem.entregadoLitros || 0).toLocaleString()} <span style={{ fontSize: 10, color: '#64748b' }}>L</span>
+                    </div>
+                    <div style={{ width: '100%', height: 4, background: '#e2e8f0', borderRadius: 2, overflow: 'hidden', marginTop: 4 }}>
+                      <div style={{ width: `${Math.min(100, pct)}%`, height: '100%', background: isSelected ? '#0284c7' : '#94a3b8', borderRadius: 2 }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      ) : (
+        <div style={{ background: '#fff', padding: 40, borderRadius: 14, textAlign: 'center', border: '1px solid #e2e8f0' }}>
+          <span style={{ fontSize: 28 }}>📋</span>
+          <div style={{ marginTop: 8, fontWeight: 700, color: '#64748b' }}>Seleccione una programación para visualizar el calendario de entregas</div>
+        </div>
+      )}
+    </div>
+  )}
 
       {/* MODAL AUDITORÍA Y DESPACHO DE VALES */}
       {selectedProgForVales && (
@@ -1168,15 +1682,117 @@ export default function ProgramacionesPage() {
                       onChange={(newDays) => setFormData({ ...formData, dias_semana: newDays })}
                     />
 
-                    <div className="form-group" style={{ marginTop: 12 }}>
-                      <label style={{ fontWeight: 700, fontSize: 13 }}>Fecha de Inicio / Reparto *</label>
-                      <input
-                        type="date"
-                        required
-                        className="form-input"
-                        value={formData.fecha}
-                        onChange={(e) => setFormData({ ...formData, fecha: e.target.value })}
-                      />
+                    {/* DUAL DATE RANGE SELECTOR (INICIO - FIN) CON PRESETS TIPO CALENDARIO */}
+                    <div style={{ marginTop: 14, background: '#ffffff', borderRadius: 10, padding: 12, border: '1.5px solid #bae6fd' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                        <span style={{ fontSize: 12, fontWeight: 800, color: '#0369a1', textTransform: 'uppercase' }}>
+                          📅 Rango de Fechas del Cronograma (Inicio y Fin)
+                        </span>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: '#0284c7', background: '#e0f2fe', padding: '2px 8px', borderRadius: 6 }}>
+                          {formData.es_anual ? '🌟 Período Anual Oficial' : 'Rango Personalizado'}
+                        </span>
+                      </div>
+
+                      {/* QUICK PRESET BUTTONS (COMO EN LA FOTO DE REFERENCIA) */}
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+                        <button
+                          type="button"
+                          className="btn-link"
+                          style={{ fontSize: 11, fontWeight: 700, background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '4px 8px', borderRadius: 6, cursor: 'pointer' }}
+                          onClick={() => {
+                            const now = new Date();
+                            const y = now.getFullYear();
+                            setFormData({
+                              ...formData,
+                              fecha_inicio: `${y}-03-01`,
+                              fecha_fin: `${y}-12-10`,
+                              fecha: `${y}-03-01`,
+                              es_anual: true,
+                            });
+                          }}
+                        >
+                          🌟 Todo el Período Anual (01 Mar - 10 Dic)
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-link"
+                          style={{ fontSize: 11, fontWeight: 700, background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '4px 8px', borderRadius: 6, cursor: 'pointer' }}
+                          onClick={() => {
+                            const now = new Date();
+                            const y = now.getFullYear();
+                            const m = String(now.getMonth() + 1).padStart(2, '0');
+                            const firstDay = `${y}-${m}-01`;
+                            const lastDay = new Date(y, now.getMonth() + 1, 0).toISOString().split('T')[0];
+                            setFormData({
+                              ...formData,
+                              fecha_inicio: firstDay,
+                              fecha_fin: lastDay,
+                              fecha: firstDay,
+                            });
+                          }}
+                        >
+                          Mes Actual
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-link"
+                          style={{ fontSize: 11, fontWeight: 700, background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '4px 8px', borderRadius: 6, cursor: 'pointer' }}
+                          onClick={() => {
+                            const today = new Date().toISOString().split('T')[0];
+                            setFormData({
+                              ...formData,
+                              fecha_inicio: today,
+                              fecha_fin: today,
+                              fecha: today,
+                            });
+                          }}
+                        >
+                          Hoy / Fecha Única
+                        </button>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                        <div className="form-group" style={{ margin: 0 }}>
+                          <label style={{ fontWeight: 800, fontSize: 12, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 4 }}>
+                            INICIO 🗓️
+                          </label>
+                          <input
+                            type="date"
+                            required
+                            className="form-input"
+                            value={formData.fecha_inicio}
+                            onChange={(e) => setFormData({ ...formData, fecha_inicio: e.target.value, fecha: e.target.value })}
+                            style={{ borderColor: '#38bdf8', fontWeight: 700 }}
+                          />
+                        </div>
+
+                        <div className="form-group" style={{ margin: 0 }}>
+                          <label style={{ fontWeight: 800, fontSize: 12, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 4 }}>
+                            FIN 🏁
+                          </label>
+                          <input
+                            type="date"
+                            required
+                            className="form-input"
+                            value={formData.fecha_fin}
+                            onChange={(e) => setFormData({ ...formData, fecha_fin: e.target.value })}
+                            style={{ borderColor: '#38bdf8', fontWeight: 700 }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* CHECKBOX VALE Y QR ANUAL */}
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, cursor: 'pointer', background: '#f0fdf4', border: '1px solid #bbf7d0', padding: '8px 10px', borderRadius: 8 }}>
+                        <input
+                          type="checkbox"
+                          checked={formData.es_anual}
+                          onChange={(e) => setFormData({ ...formData, es_anual: e.target.checked })}
+                          style={{ width: 18, height: 18, accentColor: '#16a34a', cursor: 'pointer' }}
+                        />
+                        <span style={{ fontSize: 12, fontWeight: 700, color: '#166534' }}>
+                          🌟 Generar un solo vale y QR que dure todo el año (QR Anual permanente para cada beneficiario)
+                        </span>
+                      </label>
                     </div>
                   </div>
                 </div>
