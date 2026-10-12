@@ -209,12 +209,15 @@ export const bootstrapSchema = async () => {
       ALTER TABLE cisternas ADD COLUMN IF NOT EXISTS ultima_actualizacion_gps TIMESTAMP;
       ALTER TABLE cisternas ADD COLUMN IF NOT EXISTS conductor_habitual_id INT REFERENCES personal_operativo(id) ON DELETE SET NULL;
 
-      -- Semillar cisternas operativas oficiales si la tabla está vacía
+      -- Purgar cisternas de prueba demo para dejar exclusivamente la cisterna oficial CAT-849
+      DELETE FROM control_calidad WHERE cisterna_id IN (SELECT id FROM cisternas WHERE placa IN ('EGA-401', 'EGB-502', 'EGC-108'));
+      DELETE FROM programaciones WHERE cisterna_id IN (SELECT id FROM cisternas WHERE placa IN ('EGA-401', 'EGB-502', 'EGC-108'));
+      DELETE FROM cisternas WHERE placa IN ('EGA-401', 'EGB-502', 'EGC-108');
+
+      -- Asegurar exclusivamente la cisterna oficial de EPS Moyobamba: CAT-849
       INSERT INTO cisternas (placa, marca_modelo, capacidad_m3, capacidad_litros, soat_vencimiento, revision_tecnica_vencimiento, estado)
       VALUES 
-        ('CAT-849', 'VOLVO VM (EURO_V)', 19.00, 19000.00, '2027-01-15', '2026-12-20', 'OPERATIVO'),
-        ('EGA-401', 'Mercedes-Benz Actros 3331', 15.00, 15000.00, '2027-01-15', '2026-12-20', 'OPERATIVO'),
-        ('EGB-502', 'Volvo FMX 440 6x4', 20.00, 20000.00, '2026-11-30', '2026-10-15', 'OPERATIVO')
+        ('CAT-849', 'VOLVO VM (EURO_V)', 19.00, 19000.00, '2027-01-15', '2026-12-20', 'OPERATIVO')
       ON CONFLICT (placa) DO NOTHING;
 
       ALTER TABLE entregas_agua ADD COLUMN IF NOT EXISTS local_id VARCHAR(100);
