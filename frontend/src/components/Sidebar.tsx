@@ -1,6 +1,18 @@
-import { NavLink } from 'react-router-dom';
+import { useRef, useLayoutEffect, useEffect } from 'react';
+import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import AguaTrackLogo from './AguaTrackLogo';
+
+// Module-level cache: survives React component remounts across page navigation in SPA
+let cachedSidebarScrollTop = 0;
+try {
+  const saved = sessionStorage.getItem('aguatrack_sidebar_scroll');
+  if (saved) {
+    cachedSidebarScrollTop = Number(saved) || 0;
+  }
+} catch {
+  // ignore storage errors
+}
 
 interface SidebarProps {
   isOpen?: boolean;
@@ -11,8 +23,71 @@ interface SidebarProps {
 
 export default function Sidebar({ isOpen, onClose, isCollapsed = false, onToggleCollapse }: SidebarProps) {
   const { user, logout, isSuperAdmin } = useAuth();
+  const navRef = useRef<HTMLElement>(null);
+  const location = useLocation();
+
+  // Restore scroll position immediately before browser paint
+  useLayoutEffect(() => {
+    const nav = navRef.current;
+    if (!nav) return;
+
+    const restoreScroll = () => {
+      if (!nav) return;
+      if (cachedSidebarScrollTop > 0) {
+        nav.scrollTop = cachedSidebarScrollTop;
+      } else {
+        // Fallback: if user landed directly on a deep route, make sure active item is visible
+        const activeItem = nav.querySelector('.nav-item.active') as HTMLElement | null;
+        if (activeItem) {
+          const navRect = nav.getBoundingClientRect();
+          const itemRect = activeItem.getBoundingClientRect();
+          if (itemRect.bottom > navRect.bottom) {
+            nav.scrollTop += (itemRect.bottom - navRect.bottom + 16);
+          } else if (itemRect.top < navRect.top) {
+            nav.scrollTop -= (navRect.top - itemRect.top + 16);
+          }
+        }
+      }
+    };
+
+    restoreScroll();
+    const rafId = requestAnimationFrame(restoreScroll);
+    return () => cancelAnimationFrame(rafId);
+  }, [location.pathname]);
+
+  // Save scroll position on unmount
+  useEffect(() => {
+    return () => {
+      if (navRef.current) {
+        cachedSidebarScrollTop = navRef.current.scrollTop;
+        try {
+          sessionStorage.setItem('aguatrack_sidebar_scroll', String(cachedSidebarScrollTop));
+        } catch {
+          // ignore
+        }
+      }
+    };
+  }, []);
+
+  const handleScroll = (e: React.UIEvent<HTMLElement>) => {
+    const top = e.currentTarget.scrollTop;
+    cachedSidebarScrollTop = top;
+    try {
+      sessionStorage.setItem('aguatrack_sidebar_scroll', String(top));
+    } catch {
+      // ignore
+    }
+  };
 
   const handleNavClick = () => {
+    if (navRef.current) {
+      cachedSidebarScrollTop = navRef.current.scrollTop;
+      try {
+        sessionStorage.setItem('aguatrack_sidebar_scroll', String(cachedSidebarScrollTop));
+      } catch {
+        // ignore
+      }
+    }
     if (onClose) {
       onClose();
     }
@@ -73,7 +148,7 @@ export default function Sidebar({ isOpen, onClose, isCollapsed = false, onToggle
         </div>
       </div>
 
-      <nav className="sidebar-nav">
+      <nav className="sidebar-nav" ref={navRef} onScroll={handleScroll}>
         {/* DASHBOARD */}
         <NavLink 
           to="/dashboard" 
