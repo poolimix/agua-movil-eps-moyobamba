@@ -1247,24 +1247,62 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
 
             {/* SECCIÓN DESPLEGADA DE BENEFICIARIOS DEL SECTOR */}
             <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#f1f5f9' }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                  <Ionicons name="people-outline" size={14} color="#0369a1" />
-                  <Text style={{ fontSize: 12, fontWeight: '800', color: '#0f172a' }}>
-                    Beneficiarios {sectorSeleccionado !== 'TODOS' ? `en ${sectorSeleccionado}` : 'Programados'}
-                  </Text>
-                </View>
-                <Text style={{ fontSize: 11, fontWeight: '700', color: '#64748b' }}>
-                  {(() => {
-                    const secFiltrados = beneficiariosSector.filter((b) => {
-                      if (sectorSeleccionado === 'TODOS') return true;
-                      return (b.sector || b.sector_aahh || '').toLowerCase().includes(sectorSeleccionado.toLowerCase());
-                    });
-                    const atendidos = secFiltrados.filter(b => b.atendido_esta_semana).length;
-                    return `${atendidos}/${secFiltrados.length} Atendidos`;
-                  })()}
-                </Text>
-              </View>
+              {/* TARJETA DE AVANCE SEMANAL DEL SECTOR */}
+              {(() => {
+                const secFiltrados = beneficiariosSector.filter((b) => {
+                  if (sectorSeleccionado === 'TODOS') return true;
+                  return (b.sector || b.sector_aahh || '').toLowerCase().includes(sectorSeleccionado.toLowerCase());
+                });
+                const totalFamilias = secFiltrados.length;
+                const atendidas = secFiltrados.filter(b => b.atendido_esta_semana).length;
+                const pendientes = totalFamilias - atendidas;
+                const cuotaTotalLts = secFiltrados.reduce((acc, b) => acc + Number(b.cuota_semanal || 700), 0);
+                const entregadosLts = secFiltrados.reduce((acc, b) => acc + Number(b.litros_esta_semana || 0), 0);
+                const saldoLts = Math.max(0, cuotaTotalLts - entregadosLts);
+                const pct = cuotaTotalLts > 0 ? Math.min(100, Math.round((entregadosLts / cuotaTotalLts) * 100)) : (totalFamilias > 0 ? Math.round((atendidas / totalFamilias) * 100) : 0);
+
+                return (
+                  <View style={styles.sectorWeeklyProgressBox}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                        <Ionicons name="stats-chart" size={13} color="#0369a1" />
+                        <Text style={styles.sectorWeeklyTitle}>
+                          Avance Semanal: <Text style={{ fontWeight: '800', color: '#0369a1' }}>{sectorSeleccionado === 'TODOS' ? 'General' : sectorSeleccionado}</Text>
+                        </Text>
+                      </View>
+                      <View style={[styles.sectorWeeklyBadge, { backgroundColor: pct >= 100 ? '#dcfce7' : (pct > 0 ? '#e0f2fe' : '#f1f5f9') }]}>
+                        <Text style={[styles.sectorWeeklyBadgeText, { color: pct >= 100 ? '#15803d' : (pct > 0 ? '#0369a1' : '#64748b') }]}>
+                          {pct}% Cubierto
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* BARRA DE PROGRESO VISUAL DEL SECTOR */}
+                    <View style={styles.sectorProgressBarBg}>
+                      <View style={[styles.sectorProgressBarFill, { width: `${Math.max(pct, 2)}%`, backgroundColor: pct >= 100 ? '#10b981' : '#0284c7' }]} />
+                    </View>
+
+                    {/* 3 INDICADORES CLAVE DEL SECTOR */}
+                    <View style={styles.sectorMetricsRow}>
+                      <View style={styles.sectorMetricBox}>
+                        <Text style={styles.sectorMetricLabel}>ENTREGADO SEMANA</Text>
+                        <Text style={[styles.sectorMetricVal, { color: '#0284c7' }]}>{entregadosLts.toLocaleString()} L</Text>
+                        <Text style={styles.sectorMetricSub}>Meta: {cuotaTotalLts.toLocaleString()} L</Text>
+                      </View>
+                      <View style={styles.sectorMetricBox}>
+                        <Text style={styles.sectorMetricLabel}>FAMILIAS ATENDIDAS</Text>
+                        <Text style={[styles.sectorMetricVal, { color: '#15803d' }]}>{atendidas}/{totalFamilias}</Text>
+                        <Text style={styles.sectorMetricSub}>{pendientes} pendientes</Text>
+                      </View>
+                      <View style={styles.sectorMetricBox}>
+                        <Text style={styles.sectorMetricLabel}>SALDO POR REPARTIR</Text>
+                        <Text style={[styles.sectorMetricVal, { color: pendientes > 0 ? '#b45309' : '#15803d' }]}>{saldoLts.toLocaleString()} L</Text>
+                        <Text style={styles.sectorMetricSub}>{(saldoLts / 1000).toFixed(1)} m³ resta</Text>
+                      </View>
+                    </View>
+                  </View>
+                );
+              })()}
 
               {/* BÚSQUEDA RÁPIDA EN EL SECTOR */}
               <View style={styles.sectorMiniSearchWrapper}>
@@ -1323,6 +1361,11 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                   <View style={{ gap: 8, marginTop: 6 }}>
                     {previewList.map((b) => {
                       const atendido = !!b.atendido_esta_semana;
+                      const cuota = Number(b.cuota_semanal || 700);
+                      const entregado = Number(b.litros_esta_semana || 0);
+                      const saldo = Math.max(0, cuota - entregado);
+                      const pctBenef = cuota > 0 ? Math.min(100, Math.round((entregado / cuota) * 100)) : 0;
+
                       return (
                         <View key={b.id || b.dni} style={styles.progBenefItemRow}>
                           <View style={{ flex: 1, marginRight: 8 }}>
@@ -1339,6 +1382,21 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                             <Text style={styles.progBenefItemSub}>
                               DNI: <Text style={{ fontWeight: '700', color: '#0f172a' }}>{b.dni}</Text> • 📍 {b.sector || 'Sector'}
                             </Text>
+
+                            {/* AVANCE SEMANAL INDIVIDUAL DEL BENEFICIARIO */}
+                            <View style={{ marginTop: 5 }}>
+                              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+                                <Text style={{ fontSize: 9.5, fontWeight: '700', color: '#64748b' }}>
+                                  Avance Semanal: <Text style={{ color: atendido ? '#15803d' : '#0284c7' }}>{entregado} / {cuota} L</Text>
+                                </Text>
+                                <Text style={{ fontSize: 9.5, fontWeight: '800', color: atendido ? '#15803d' : (entregado > 0 ? '#b45309' : '#64748b') }}>
+                                  {pctBenef}%
+                                </Text>
+                              </View>
+                              <View style={styles.benefMiniProgressBarBg}>
+                                <View style={[styles.benefMiniProgressBarFill, { width: `${Math.max(pctBenef, 3)}%`, backgroundColor: atendido ? '#10b981' : (entregado > 0 ? '#f59e0b' : '#cbd5e1') }]} />
+                              </View>
+                            </View>
                           </View>
 
                           <View style={{ alignItems: 'flex-end', gap: 4 }}>
@@ -1631,6 +1689,63 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
             </View>
           </View>
 
+          {/* TARJETA DE AVANCE SEMANAL DEL SECTOR */}
+          {(() => {
+            const secFiltrados = beneficiariosSector.filter((b) => {
+              if (sectorSeleccionado === 'TODOS') return true;
+              return (b.sector || b.sector_aahh || '').toLowerCase().includes(sectorSeleccionado.toLowerCase());
+            });
+            const totalFamilias = secFiltrados.length;
+            const atendidas = secFiltrados.filter(b => b.atendido_esta_semana).length;
+            const pendientes = totalFamilias - atendidas;
+            const cuotaTotalLts = secFiltrados.reduce((acc, b) => acc + Number(b.cuota_semanal || 700), 0);
+            const entregadosLts = secFiltrados.reduce((acc, b) => acc + Number(b.litros_esta_semana || 0), 0);
+            const saldoLts = Math.max(0, cuotaTotalLts - entregadosLts);
+            const pct = cuotaTotalLts > 0 ? Math.min(100, Math.round((entregadosLts / cuotaTotalLts) * 100)) : (totalFamilias > 0 ? Math.round((atendidas / totalFamilias) * 100) : 0);
+
+            return (
+              <View style={[styles.sectorWeeklyProgressBox, { marginHorizontal: 0, marginBottom: 10 }]}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                    <Ionicons name="stats-chart" size={13} color="#0369a1" />
+                    <Text style={styles.sectorWeeklyTitle}>
+                      Avance Semanal: <Text style={{ fontWeight: '800', color: '#0369a1' }}>{sectorSeleccionado === 'TODOS' ? 'General' : sectorSeleccionado}</Text>
+                    </Text>
+                  </View>
+                  <View style={[styles.sectorWeeklyBadge, { backgroundColor: pct >= 100 ? '#dcfce7' : (pct > 0 ? '#e0f2fe' : '#f1f5f9') }]}>
+                    <Text style={[styles.sectorWeeklyBadgeText, { color: pct >= 100 ? '#15803d' : (pct > 0 ? '#0369a1' : '#64748b') }]}>
+                      {pct}% Cubierto
+                    </Text>
+                  </View>
+                </View>
+
+                {/* BARRA DE PROGRESO VISUAL DEL SECTOR */}
+                <View style={styles.sectorProgressBarBg}>
+                  <View style={[styles.sectorProgressBarFill, { width: `${Math.max(pct, 2)}%`, backgroundColor: pct >= 100 ? '#10b981' : '#0284c7' }]} />
+                </View>
+
+                {/* 3 INDICADORES CLAVE DEL SECTOR */}
+                <View style={styles.sectorMetricsRow}>
+                  <View style={styles.sectorMetricBox}>
+                    <Text style={styles.sectorMetricLabel}>ENTREGADO SEMANA</Text>
+                    <Text style={[styles.sectorMetricVal, { color: '#0284c7' }]}>{entregadosLts.toLocaleString()} L</Text>
+                    <Text style={styles.sectorMetricSub}>Meta: {cuotaTotalLts.toLocaleString()} L</Text>
+                  </View>
+                  <View style={styles.sectorMetricBox}>
+                    <Text style={styles.sectorMetricLabel}>FAMILIAS ATENDIDAS</Text>
+                    <Text style={[styles.sectorMetricVal, { color: '#15803d' }]}>{atendidas}/{totalFamilias}</Text>
+                    <Text style={styles.sectorMetricSub}>{pendientes} pendientes</Text>
+                  </View>
+                  <View style={styles.sectorMetricBox}>
+                    <Text style={styles.sectorMetricLabel}>SALDO POR REPARTIR</Text>
+                    <Text style={[styles.sectorMetricVal, { color: pendientes > 0 ? '#b45309' : '#15803d' }]}>{saldoLts.toLocaleString()} L</Text>
+                    <Text style={styles.sectorMetricSub}>{(saldoLts / 1000).toFixed(1)} m³ resta</Text>
+                  </View>
+                </View>
+              </View>
+            );
+          })()}
+
           {/* LISTADO DE TARJETAS */}
           {loadingBeneficiarios ? (
             <View style={{ padding: 30, alignItems: 'center' }}>
@@ -1680,6 +1795,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                   const cuota = Number(b.cuota_semanal || 700);
                   const entregado = Number(b.litros_esta_semana || 0);
                   const pendiente = Math.max(0, cuota - entregado);
+                  const pctBenef = cuota > 0 ? Math.min(100, Math.round((entregado / cuota) * 100)) : 0;
 
                   return (
                     <View key={b.id || b.dni} style={styles.benefCardItem}>
@@ -1715,6 +1831,21 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                           <Text style={atendido ? styles.benefStatusOkText : styles.benefStatusPendingText}>
                             {atendido ? 'Atendido' : 'Pendiente'}
                           </Text>
+                        </View>
+                      </View>
+
+                      {/* BARRA Y PORCENTAJE DE AVANCE SEMANAL INDIVIDUAL */}
+                      <View style={{ marginTop: 8, marginBottom: 8 }}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+                          <Text style={{ fontSize: 10, fontWeight: '700', color: '#64748b' }}>
+                            Avance Semanal de Cuota: <Text style={{ color: atendido ? '#15803d' : '#0284c7' }}>{entregado} de {cuota} Litros</Text>
+                          </Text>
+                          <Text style={{ fontSize: 10, fontWeight: '800', color: atendido ? '#15803d' : (entregado > 0 ? '#b45309' : '#64748b') }}>
+                            {pctBenef}% Cubierto
+                          </Text>
+                        </View>
+                        <View style={styles.benefMiniProgressBarBg}>
+                          <View style={[styles.benefMiniProgressBarFill, { width: `${Math.max(pctBenef, 3)}%`, backgroundColor: atendido ? '#10b981' : (entregado > 0 ? '#f59e0b' : '#cbd5e1') }]} />
                         </View>
                       </View>
 
@@ -4876,5 +5007,86 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#64748b',
+  },
+
+  // AVANCE SEMANAL POR SECTOR
+  sectorWeeklyProgressBox: {
+    backgroundColor: '#ffffff',
+    borderWidth: 1.5,
+    borderColor: '#e0f2fe',
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 10,
+    shadowColor: '#0284c7',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    elevation: 2,
+  },
+  sectorWeeklyTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  sectorWeeklyBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2.5,
+    borderRadius: 12,
+  },
+  sectorWeeklyBadgeText: {
+    fontSize: 10.5,
+    fontWeight: '800',
+  },
+  sectorProgressBarBg: {
+    height: 7,
+    backgroundColor: '#e2e8f0',
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: 10,
+  },
+  sectorProgressBarFill: {
+    height: '100%',
+    borderRadius: 4,
+  },
+  sectorMetricsRow: {
+    flexDirection: 'row',
+    gap: 6,
+    backgroundColor: '#f8fafc',
+    borderRadius: 10,
+    padding: 8,
+  },
+  sectorMetricBox: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  sectorMetricLabel: {
+    fontSize: 8.5,
+    fontWeight: '800',
+    color: '#64748b',
+    marginBottom: 2,
+    textAlign: 'center',
+  },
+  sectorMetricVal: {
+    fontSize: 12,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  sectorMetricSub: {
+    fontSize: 8.5,
+    color: '#94a3b8',
+    marginTop: 1,
+    textAlign: 'center',
+  },
+
+  // AVANCE SEMANAL INDIVIDUAL BENEFICIARIO
+  benefMiniProgressBarBg: {
+    height: 5,
+    backgroundColor: '#e2e8f0',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  benefMiniProgressBarFill: {
+    height: '100%',
+    borderRadius: 3,
   },
 });
