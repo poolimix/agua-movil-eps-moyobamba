@@ -202,25 +202,32 @@ export const despacharValesProgramacion = async (req: Request, res: Response) =>
            RETURNING *`,
           [programacion.id, b.id, litros, qrData, codigoUnico, vale.id]
         );
-        vale = upd.rows[0];
       } else {
-        const ins = await query(
-          `INSERT INTO vales_entrega (
-            programacion_id, beneficiario_id, codigo_unico, codigo_vale, litros_sugeridos, litros_asignados, qr_data, estado
-          )
-          VALUES ($1, $2, $3, $3, $4, $4, $5, 'EMITIDO')
-          ON CONFLICT (codigo_unico) DO UPDATE 
-          SET programacion_id = EXCLUDED.programacion_id,
-              beneficiario_id = EXCLUDED.beneficiario_id,
-              codigo_vale = EXCLUDED.codigo_vale,
-              litros_sugeridos = EXCLUDED.litros_sugeridos,
-              litros_asignados = EXCLUDED.litros_asignados,
-              qr_data = EXCLUDED.qr_data,
-              estado = 'EMITIDO'
-          RETURNING *`,
-          [programacion.id, b.id, codigoUnico, litros, qrData]
-        );
-        vale = ins.rows[0];
+        try {
+          const ins = await query(
+            `INSERT INTO vales_entrega (
+              programacion_id, beneficiario_id, codigo_unico, codigo_vale, litros_sugeridos, litros_asignados, qr_data, estado
+            )
+            VALUES ($1, $2, $3, $3, $4, $4, $5, 'EMITIDO')
+            RETURNING *`,
+            [programacion.id, b.id, codigoUnico, litros, qrData]
+          );
+          vale = ins.rows[0];
+        } catch (insErr: any) {
+          // Si ya existía por ejecución paralela, recuperar el vale existente
+          const recovery = await query(
+            `SELECT * FROM vales_entrega 
+             WHERE (programacion_id = $1 AND beneficiario_id = $2) 
+                OR codigo_unico = $3 
+             LIMIT 1`,
+            [programacion.id, b.id, codigoUnico]
+          );
+          if (recovery.rows.length > 0) {
+            vale = recovery.rows[0];
+          } else {
+            throw insErr;
+          }
+        }
       }
 
       valesToProcess.push({
