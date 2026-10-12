@@ -686,190 +686,305 @@ export default function CalidadPage() {
 
         {/* Modal Nuevo Test */}
         {modalOpen && (
-          <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-            <div style={{ background: '#fff', borderRadius: 12, padding: 24, width: '100%', maxWidth: 520, boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>🧪 Nuevo Registro de Control de Calidad</h2>
-                <button onClick={() => setModalOpen(false)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer' }}>✕</button>
+          <div 
+            className="modal-overlay" 
+            style={{ 
+              position: 'fixed', 
+              inset: 0, 
+              background: 'rgba(15, 23, 42, 0.65)', 
+              backdropFilter: 'blur(5px)',
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center', 
+              zIndex: 1000,
+              padding: '16px'
+            }}
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setModalOpen(false);
+            }}
+          >
+            <div 
+              style={{ 
+                background: '#fff', 
+                borderRadius: 16, 
+                width: '100%', 
+                maxWidth: 860, 
+                maxHeight: '92vh',
+                display: 'flex',
+                flexDirection: 'column',
+                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+                overflow: 'hidden'
+              }}
+            >
+              {/* Header Fijo */}
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center', 
+                padding: '18px 24px', 
+                borderBottom: '1px solid #e2e8f0',
+                background: '#f8fafc'
+              }}>
+                <div>
+                  <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    🧪 Nuevo Registro de Control de Calidad del Agua
+                  </h2>
+                  <p style={{ margin: '3px 0 0', fontSize: 12, color: '#64748b' }}>
+                    Control Sanitario según TDR y D.S. N.° 031-2010-SA (Convenio PNSU N.° 023-2026/VIVIENDA)
+                  </p>
+                </div>
+                <button 
+                  type="button"
+                  onClick={() => setModalOpen(false)} 
+                  style={{ 
+                    background: '#f1f5f9', 
+                    border: 'none', 
+                    width: 32, 
+                    height: 32, 
+                    borderRadius: 8, 
+                    fontSize: 16, 
+                    cursor: 'pointer',
+                    color: '#64748b',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                >
+                  ✕
+                </button>
               </div>
 
-              <form onSubmit={handleSubmit}>
-                <div style={{ marginBottom: 14 }}>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>
-                    ETAPA DEL CONTROL SANITARIO (TDR):
-                  </label>
-                  <select 
-                    value={formData.etapa_control} 
-                    onChange={(e) => {
-                      const etapa = e.target.value;
-                      setFormData({ 
-                        ...formData, 
-                        etapa_control: etapa,
-                        punto_muestreo: etapa === 'CARGA' 
-                          ? 'Surtidor / Planta de Carga EPS Moyobamba' 
-                          : (etapa === 'RUTA' ? 'En Ruta - Grifo Cisterna en Sector' : 'Control Adicional / Muestreo Libre')
-                      });
-                    }}
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1.5px solid #0284c7', fontWeight: 600 }}
-                  >
-                    <option value="CARGA">💧 1. Al Cargar Cisterna (Surtidor / Planta) [MÍNIMO OBLIGATORIO 1]</option>
-                    <option value="RUTA">🚚 2. En el Transcurso de la Entrega (En Ruta) [MÍNIMO OBLIGATORIO 2]</option>
-                    <option value="ADICIONAL">➕ 3. Control Adicional / Muestreo Libre [OPCIONAL TDR]</option>
-                  </select>
-                </div>
+              {/* Formulario con Scroll interno */}
+              <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+                <div style={{ padding: '20px 24px', overflowY: 'auto', flex: 1 }}>
+                  <div style={{ 
+                    display: 'grid', 
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', 
+                    gap: '16px 24px' 
+                  }}>
+                    {/* Columna Izquierda: Información de Operación & Cisterna */}
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 800, color: '#0284c7', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>
+                        📍 1. Datos Operativos y Muestreo
+                      </div>
 
-                <div style={{ marginBottom: 14 }}>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
-                    LUGAR O PUNTO EXACTO DE MUESTREO:
-                  </label>
-                  <input 
-                    type="text"
-                    value={formData.punto_muestreo}
-                    onChange={(e) => setFormData({ ...formData, punto_muestreo: e.target.value })}
-                    placeholder="Ej: Surtidor Central o Grifo Cisterna en Sector Sol de Indañe"
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid #cbd5e1' }}
-                  />
-                </div>
+                      <div style={{ marginBottom: 14 }}>
+                        <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>
+                          ETAPA DEL CONTROL SANITARIO (TDR):
+                        </label>
+                        <select 
+                          value={formData.etapa_control} 
+                          onChange={(e) => {
+                            const etapa = e.target.value;
+                            setFormData({ 
+                              ...formData, 
+                              etapa_control: etapa,
+                              punto_muestreo: etapa === 'CARGA' 
+                                ? 'Surtidor / Planta de Carga EPS Moyobamba' 
+                                : (etapa === 'RUTA' ? 'En Ruta - Grifo Cisterna en Sector' : 'Control Adicional / Muestreo Libre')
+                            });
+                          }}
+                          style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1.5px solid #0284c7', fontWeight: 600, fontSize: 13 }}
+                        >
+                          <option value="CARGA">💧 1. Al Cargar Cisterna (Surtidor / Planta) [MÍNIMO 1]</option>
+                          <option value="RUTA">🚚 2. En Entrega de Ruta (Grifo Cisterna) [MÍNIMO 2]</option>
+                          <option value="ADICIONAL">➕ 3. Control Adicional / Muestreo Libre [OPCIONAL]</option>
+                        </select>
+                      </div>
 
-                <div style={{ marginBottom: 14 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                    <label style={{ fontSize: 12, fontWeight: 700, color: '#0f172a' }}>
-                      CISTERNA EVALUADA:
-                    </label>
-                    {cisternas.length === 0 && (
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          try {
-                            const res = await api.get('/cisternas');
-                            if (Array.isArray(res.data) && res.data.length > 0) {
-                              setCisternas(res.data);
-                              setFormData(prev => ({
-                                ...prev,
-                                cisterna_id: String(res.data[0].id),
-                                conductor_nombre: res.data[0].conductor_habitual_nombre || prev.conductor_nombre
-                              }));
-                            }
-                          } catch (e) {
-                            console.error(e);
-                          }
-                        }}
-                        style={{ fontSize: 11, color: '#0284c7', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}
-                      >
-                        🔄 Reintentar Cargar
-                      </button>
-                    )}
-                  </div>
-                  <select 
-                    value={formData.cisterna_id} 
-                    onChange={(e) => {
-                      const selectedId = e.target.value;
-                      const found = cisternas.find(c => String(c.id) === String(selectedId));
-                      setFormData(prev => ({ 
-                        ...prev, 
-                        cisterna_id: selectedId,
-                        conductor_nombre: found?.conductor_habitual_nombre || prev.conductor_nombre
-                      }));
-                    }}
-                    style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1.5px solid #0284c7', fontSize: 13, fontWeight: 700, background: '#f8fafc' }}
-                    required
-                  >
-                    <option value="">{cisternas.length === 0 ? '⚠️ No hay cisternas disponibles' : '-- Seleccionar Cisterna --'}</option>
-                    {cisternas.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        🚛 Placa {c.placa} — {c.marca_modelo} ({c.capacidad_m3} m³ / {Number(c.capacidad_m3) * 1000} Lts)
-                      </option>
-                    ))}
-                  </select>
-                  {cisternas.length === 0 && (
-                    <div style={{ marginTop: 6, padding: '8px 10px', background: '#fffbeb', border: '1px solid #fef3c7', borderRadius: 6, fontSize: 12, color: '#92400e' }}>
-                      ⚠️ No se detectaron cisternas registradas en la base de datos.
+                      <div style={{ marginBottom: 14 }}>
+                        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
+                          LUGAR O PUNTO EXACTO DE MUESTREO:
+                        </label>
+                        <input 
+                          type="text"
+                          value={formData.punto_muestreo}
+                          onChange={(e) => setFormData({ ...formData, punto_muestreo: e.target.value })}
+                          placeholder="Ej: Surtidor Central o Grifo Cisterna en Sector Sol de Indañe"
+                          style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13 }}
+                        />
+                      </div>
+
+                      <div style={{ marginBottom: 14 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                          <label style={{ fontSize: 12, fontWeight: 700, color: '#0f172a' }}>
+                            CISTERNA EVALUADA:
+                          </label>
+                          {cisternas.length === 0 && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  const res = await api.get('/cisternas');
+                                  if (Array.isArray(res.data) && res.data.length > 0) {
+                                    setCisternas(res.data);
+                                    setFormData(prev => ({
+                                      ...prev,
+                                      cisterna_id: String(res.data[0].id),
+                                      conductor_nombre: res.data[0].conductor_habitual_nombre || prev.conductor_nombre
+                                    }));
+                                  }
+                                } catch (e) {
+                                  console.error(e);
+                                }
+                              }}
+                              style={{ fontSize: 11, color: '#0284c7', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700 }}
+                            >
+                              🔄 Reintentar Cargar
+                            </button>
+                          )}
+                        </div>
+                        <select 
+                          value={formData.cisterna_id} 
+                          onChange={(e) => {
+                            const selectedId = e.target.value;
+                            const found = cisternas.find(c => String(c.id) === String(selectedId));
+                            setFormData(prev => ({ 
+                              ...prev, 
+                              cisterna_id: selectedId,
+                              conductor_nombre: found?.conductor_habitual_nombre || prev.conductor_nombre
+                            }));
+                          }}
+                          style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1.5px solid #0284c7', fontSize: 13, fontWeight: 700, background: '#f8fafc' }}
+                          required
+                        >
+                          <option value="">{cisternas.length === 0 ? '⚠️ No hay cisternas disponibles' : '-- Seleccionar Cisterna --'}</option>
+                          {cisternas.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              🚛 Placa {c.placa} — {c.marca_modelo} ({c.capacidad_m3} m³ / {Number(c.capacidad_m3) * 1000} Lts)
+                            </option>
+                          ))}
+                        </select>
+                        {cisternas.length === 0 && (
+                          <div style={{ marginTop: 6, padding: '8px 10px', background: '#fffbeb', border: '1px solid #fef3c7', borderRadius: 6, fontSize: 12, color: '#92400e' }}>
+                            ⚠️ No se detectaron cisternas registradas en la base de datos.
+                          </div>
+                        )}
+                      </div>
+
+                      <div style={{ marginBottom: 14 }}>
+                        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
+                          CONDUCTOR / CHOFER DE LA CISTERNA:
+                        </label>
+                        <input 
+                          type="text" 
+                          value={formData.conductor_nombre} 
+                          onChange={(e) => setFormData({ ...formData, conductor_nombre: e.target.value })}
+                          placeholder="Ej: Manuel Rojas Tapia / Conductor Operativo"
+                          style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13 }}
+                        />
+                      </div>
                     </div>
-                  )}
-                </div>
 
-                <div style={{ marginBottom: 14 }}>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
-                    CONDUCTOR / CHOFER DE LA CISTERNA:
-                  </label>
-                  <input 
-                    type="text" 
-                    value={formData.conductor_nombre} 
-                    onChange={(e) => setFormData({ ...formData, conductor_nombre: e.target.value })}
-                    placeholder="Ej: Conductor Operativo EPS Moyobamba"
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid #cbd5e1' }}
-                  />
-                </div>
+                    {/* Columna Derecha: Parámetros Fisicoquímicos y Ensayo */}
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 800, color: '#059669', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>
+                        💧 2. Parámetros Fisicoquímicos y Sanitarios
+                      </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 }}>CLORO RESIDUAL (ppm):</label>
-                    <input 
-                      type="number" 
-                      step="0.01" 
-                      min="0" 
-                      max="5"
-                      value={formData.cloro_residual_ppm} 
-                      onChange={(e) => setFormData({ ...formData, cloro_residual_ppm: e.target.value })}
-                      style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid #cbd5e1' }}
-                      required 
-                    />
-                    <span style={{ fontSize: 10, color: '#64748b' }}>Rango: 0.5 a 2.0 ppm</span>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+                        <div>
+                          <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>
+                            CLORO RESIDUAL (ppm):
+                          </label>
+                          <input 
+                            type="number" 
+                            step="0.01" 
+                            min="0" 
+                            max="5"
+                            value={formData.cloro_residual_ppm} 
+                            onChange={(e) => setFormData({ ...formData, cloro_residual_ppm: e.target.value })}
+                            style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1.5px solid #059669', fontSize: 14, fontWeight: 700 }}
+                            required 
+                          />
+                          <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>Rango: {configCalidad.cloro_min_ppm} a {configCalidad.cloro_max_ppm} ppm</div>
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>
+                            TURBIEDAD (NTU):
+                          </label>
+                          <input 
+                            type="number" 
+                            step="0.01" 
+                            min="0" 
+                            max="20"
+                            value={formData.turbiedad_ntu} 
+                            onChange={(e) => setFormData({ ...formData, turbiedad_ntu: e.target.value })}
+                            style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1.5px solid #059669', fontSize: 14, fontWeight: 700 }}
+                            required 
+                          />
+                          <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>Máximo: &lt; {configCalidad.turbiedad_max_ntu} NTU</div>
+                        </div>
+                      </div>
+
+                      <div style={{ marginBottom: 14 }}>
+                        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
+                          ASPECTO ORGANOLÉPTICO:
+                        </label>
+                        <select 
+                          value={formData.aspecto_organoleptico} 
+                          onChange={(e) => setFormData({ ...formData, aspecto_organoleptico: e.target.value })}
+                          style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13 }}
+                        >
+                          <option value="Límpido / Incoloro">Límpido / Incoloro (Óptimo)</option>
+                          <option value="Aceptable">Aceptable</option>
+                          <option value="Ligeramente turbio">Ligeramente turbio</option>
+                          <option value="Con olor / sabor perceptible">Con olor / sabor perceptible</option>
+                        </select>
+                      </div>
+
+                      <div style={{ marginBottom: 14 }}>
+                        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
+                          SUPERVISOR / EVALUADOR:
+                        </label>
+                        <input 
+                          type="text" 
+                          value={formData.registrado_por} 
+                          onChange={(e) => setFormData({ ...formData, registrado_por: e.target.value })}
+                          placeholder="Ej: Ing. Supervisor de Calidad"
+                          style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13 }}
+                          required 
+                        />
+                      </div>
+
+                      <div style={{ marginBottom: 6 }}>
+                        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
+                          OBSERVACIONES / LUGAR DE MUESTRA:
+                        </label>
+                        <textarea 
+                          value={formData.observaciones} 
+                          onChange={(e) => setFormData({ ...formData, observaciones: e.target.value })}
+                          placeholder="Ej. Muestra tomada en el grifo de salida de la cisterna en planta de captación..."
+                          style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, minHeight: 62, resize: 'vertical' }}
+                        />
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 }}>TURBIEDAD (NTU):</label>
-                    <input 
-                      type="number" 
-                      step="0.01" 
-                      min="0" 
-                      max="20"
-                      value={formData.turbiedad_ntu} 
-                      onChange={(e) => setFormData({ ...formData, turbiedad_ntu: e.target.value })}
-                      style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid #cbd5e1' }}
-                      required 
-                    />
-                    <span style={{ fontSize: 10, color: '#64748b' }}>Máximo: &lt; 5.0 NTU</span>
-                  </div>
                 </div>
 
-                <div style={{ marginBottom: 14 }}>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 }}>ASPECTO ORGANOLÉPTICO:</label>
-                  <select 
-                    value={formData.aspecto_organoleptico} 
-                    onChange={(e) => setFormData({ ...formData, aspecto_organoleptico: e.target.value })}
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid #cbd5e1' }}
+                {/* Footer Fijo con Botones */}
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'flex-end', 
+                  gap: 12, 
+                  padding: '16px 24px', 
+                  borderTop: '1px solid #e2e8f0',
+                  background: '#f8fafc'
+                }}>
+                  <button 
+                    type="button" 
+                    className="btn-secondary" 
+                    onClick={() => setModalOpen(false)}
+                    style={{ padding: '9px 18px', fontSize: 13 }}
                   >
-                    <option value="Límpido / Incoloro">Límpido / Incoloro (Óptimo)</option>
-                    <option value="Aceptable">Aceptable</option>
-                    <option value="Ligeramente turbio">Ligeramente turbio</option>
-                    <option value="Con olor / sabor perceptible">Con olor / sabor perceptible</option>
-                  </select>
-                </div>
-
-                <div style={{ marginBottom: 14 }}>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 }}>SUPERVISOR / EVALUADOR:</label>
-                  <input 
-                    type="text" 
-                    value={formData.registrado_por} 
-                    onChange={(e) => setFormData({ ...formData, registrado_por: e.target.value })}
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid #cbd5e1' }}
-                    required 
-                  />
-                </div>
-
-                <div style={{ marginBottom: 20 }}>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 }}>OBSERVACIONES / LUGAR DE MUESTRA:</label>
-                  <textarea 
-                    value={formData.observaciones} 
-                    onChange={(e) => setFormData({ ...formData, observaciones: e.target.value })}
-                    placeholder="Ej. Muestra tomada en el grifo de salida de la cisterna en planta de captación..."
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid #cbd5e1', minHeight: 60 }}
-                  />
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-                  <button type="button" className="btn-secondary" onClick={() => setModalOpen(false)}>Cancelar</button>
-                  <button type="submit" className="btn-primary" disabled={submitting}>
+                    Cancelar
+                  </button>
+                  <button 
+                    type="submit" 
+                    className="btn-primary" 
+                    disabled={submitting}
+                    style={{ padding: '9px 20px', fontSize: 13, fontWeight: 700 }}
+                  >
                     {submitting ? 'Guardando...' : '✓ Guardar Test de Calidad'}
                   </button>
                 </div>
