@@ -162,43 +162,15 @@ class VolvoConnectService {
       const vehicles = await this.fetchVehicles();
       const details: Array<{ placa: string; vin: string; lat?: number; lng?: number; estado: string }> = [];
 
-      // 2. Asegurar que los camiones existan en la tabla cisternas
+      // 2. Solo actualizar metadatos en cisternas existentes (NO auto-insertar vehículos eliminados o no autorizados)
       for (const v of vehicles) {
-        // La placa puede venir en el nombre del vehículo (ej: 'CAT-849') o usamos el VIN
-        const placaSugerida = (v.name && v.name.length <= 15 && v.name !== v.vin) ? v.name : v.vin.substring(0, 10);
-
-        // Verificar si ya existe por VIN o por placa
-        const existingRes = await query(
-          `SELECT id, placa, codigo_gps FROM cisternas WHERE codigo_gps = $1 OR placa = $2 LIMIT 1;`,
-          [v.vin, placaSugerida]
-        );
-
-        if (existingRes.rows.length === 0) {
-          // Registrar la cisterna automáticamente con datos de Volvo
-          await query(
-            `INSERT INTO cisternas (placa, marca_modelo, capacidad_m3, capacidad_litros, estado, codigo_gps, enlace_gps_tracking)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)
-             ON CONFLICT (placa) DO UPDATE SET codigo_gps = EXCLUDED.codigo_gps;`,
-            [
-              placaSugerida,
-              `${v.model} (${v.emissionLevel || 'EURO_V'})`,
-              15.00,
-              15000.00,
-              'OPERATIVO',
-              v.vin,
-              'https://volvoconnect.com/',
-            ]
-          );
-          console.log(`🚛 [Volvo Connect] Cisterna registrada automáticamente: ${placaSugerida} (VIN: ${v.vin})`);
-        } else {
-          // Actualizar código GPS si aún no estaba asignado
+        if (v.vin) {
           await query(
             `UPDATE cisternas 
-             SET codigo_gps = COALESCE(codigo_gps, $1),
-                 enlace_gps_tracking = COALESCE(enlace_gps_tracking, 'https://volvoconnect.com/')
-             WHERE id = $2;`,
-            [v.vin, existingRes.rows[0].id]
-          );
+             SET enlace_gps_tracking = COALESCE(enlace_gps_tracking, 'https://volvoconnect.com/')
+             WHERE codigo_gps = $1;`,
+            [v.vin]
+          ).catch(() => {});
         }
       }
 

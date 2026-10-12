@@ -209,10 +209,10 @@ export const bootstrapSchema = async () => {
       ALTER TABLE cisternas ADD COLUMN IF NOT EXISTS ultima_actualizacion_gps TIMESTAMP;
       ALTER TABLE cisternas ADD COLUMN IF NOT EXISTS conductor_habitual_id INT REFERENCES personal_operativo(id) ON DELETE SET NULL;
 
-      -- Purgar cisternas de prueba demo para dejar exclusivamente la cisterna oficial CAT-849
-      DELETE FROM control_calidad WHERE cisterna_id IN (SELECT id FROM cisternas WHERE placa IN ('EGA-401', 'EGB-502', 'EGC-108'));
-      DELETE FROM programaciones WHERE cisterna_id IN (SELECT id FROM cisternas WHERE placa IN ('EGA-401', 'EGB-502', 'EGC-108'));
-      DELETE FROM cisternas WHERE placa IN ('EGA-401', 'EGB-502', 'EGC-108');
+      -- Purgar cisternas no deseadas o de prueba para dejar exclusivamente la cisterna oficial CAT-849
+      DELETE FROM control_calidad WHERE cisterna_id IN (SELECT id FROM cisternas WHERE placa IN ('EGA-401', 'EGB-502', 'EGC-108') OR placa LIKE '93KP0S1D8%');
+      DELETE FROM programaciones WHERE cisterna_id IN (SELECT id FROM cisternas WHERE placa IN ('EGA-401', 'EGB-502', 'EGC-108') OR placa LIKE '93KP0S1D8%');
+      DELETE FROM cisternas WHERE placa IN ('EGA-401', 'EGB-502', 'EGC-108') OR placa LIKE '93KP0S1D8%' OR codigo_gps LIKE '93KP0S1D8%';
 
       -- Asegurar exclusivamente la cisterna oficial de EPS Moyobamba: CAT-849
       INSERT INTO cisternas (placa, marca_modelo, capacidad_m3, capacidad_litros, soat_vencimiento, revision_tecnica_vencimiento, estado)
