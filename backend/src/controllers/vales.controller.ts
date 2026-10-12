@@ -147,6 +147,24 @@ export const despacharValesProgramacion = async (req: Request, res: Response) =>
       ? fechaObj.toISOString().slice(0, 10).replace(/-/g, '')
       : new Date().toISOString().slice(0, 10).replace(/-/g, '');
 
+    // Asegurar esquema seguro de vales_entrega en tiempo de ejecución
+    await query(`
+      ALTER TABLE vales_entrega ADD COLUMN IF NOT EXISTS codigo_unico VARCHAR(50);
+      ALTER TABLE vales_entrega ADD COLUMN IF NOT EXISTS codigo_vale VARCHAR(50);
+      ALTER TABLE vales_entrega ADD COLUMN IF NOT EXISTS litros_sugeridos NUMERIC(10,2) DEFAULT 0;
+      ALTER TABLE vales_entrega ADD COLUMN IF NOT EXISTS litros_asignados NUMERIC(10,2) DEFAULT 0;
+      ALTER TABLE vales_entrega ADD COLUMN IF NOT EXISTS qr_data TEXT;
+      ALTER TABLE vales_entrega ADD COLUMN IF NOT EXISTS whatsapp_enviado BOOLEAN DEFAULT FALSE;
+      ALTER TABLE vales_entrega ADD COLUMN IF NOT EXISTS sms_enviado BOOLEAN DEFAULT FALSE;
+      ALTER TABLE vales_entrega ADD COLUMN IF NOT EXISTS correo_enviado BOOLEAN DEFAULT FALSE;
+      ALTER TABLE vales_entrega ADD COLUMN IF NOT EXISTS fecha_despacho TIMESTAMP;
+      ALTER TABLE vales_entrega ADD COLUMN IF NOT EXISTS errores_notificacion JSONB DEFAULT '{}'::jsonb;
+      ALTER TABLE vales_entrega ADD COLUMN IF NOT EXISTS estado VARCHAR(30) DEFAULT 'EMITIDO';
+      ALTER TABLE vales_entrega ALTER COLUMN codigo_vale DROP NOT NULL;
+      ALTER TABLE vales_entrega ALTER COLUMN litros_asignados DROP NOT NULL;
+      ALTER TABLE vales_entrega DROP CONSTRAINT IF EXISTS vales_entrega_codigo_vale_key;
+    `).catch(() => {});
+
     // 3. Generate or retrieve Vouchers (vales_entrega)
     const valesToProcess: any[] = [];
     const config = await getConfiguracion();
@@ -155,13 +173,16 @@ export const despacharValesProgramacion = async (req: Request, res: Response) =>
     for (const b of beneficiarios) {
       // Regla de Negocio: Dotación familiar semanal según configuración del sistema
       const litros = (b.num_miembros || 1) * dotacionSemanal;
-      const codigoUnico = `VALE-${dateSlug}-${String(b.id).padStart(3, '0')}`;
+      const codigoUnico = `VALE-P${programacion.id}-${dateSlug}-${String(b.id).padStart(3, '0')}`;
       const qrData = `${codigoUnico}|${b.dni}|${litros}L|${programacion.id}`;
 
-      // Check if already exists for this programming and beneficiary
+      // Check if already exists for this programming and beneficiary or matching code
       const existing = await query(
-        'SELECT * FROM vales_entrega WHERE programacion_id = $1 AND beneficiario_id = $2',
-        [programacion.id, b.id]
+        `SELECT * FROM vales_entrega 
+         WHERE (programacion_id = $1 AND beneficiario_id = $2) 
+            OR codigo_unico = $3
+         LIMIT 1`,
+        [programacion.id, b.id, codigoUnico]
       );
 
       let vale;
@@ -169,14 +190,17 @@ export const despacharValesProgramacion = async (req: Request, res: Response) =>
         vale = existing.rows[0];
         const upd = await query(
           `UPDATE vales_entrega 
-           SET litros_sugeridos = $1,
-               litros_asignados = $1,
-               qr_data = $2,
-               codigo_unico = COALESCE(codigo_unico, $3),
-               codigo_vale = COALESCE(codigo_vale, $3)
-           WHERE id = $4 
+           SET programacion_id = $1,
+               beneficiario_id = $2,
+               litros_sugeridos = $3,
+               litros_asignados = $3,
+               qr_data = $4,
+               codigo_unico = $5,
+               codigo_vale = $5,
+               estado = 'EMITIDO'
+           WHERE id = $6 
            RETURNING *`,
-          [litros, qrData, codigoUnico, vale.id]
+          [programacion.id, b.id, litros, qrData, codigoUnico, vale.id]
         );
         vale = upd.rows[0];
       } else {
@@ -185,6 +209,14 @@ export const despacharValesProgramacion = async (req: Request, res: Response) =>
             programacion_id, beneficiario_id, codigo_unico, codigo_vale, litros_sugeridos, litros_asignados, qr_data, estado
           )
           VALUES ($1, $2, $3, $3, $4, $4, $5, 'EMITIDO')
+          ON CONFLICT (codigo_unico) DO UPDATE 
+          SET programacion_id = EXCLUDED.programacion_id,
+              beneficiario_id = EXCLUDED.beneficiario_id,
+              codigo_vale = EXCLUDED.codigo_vale,
+              litros_sugeridos = EXCLUDED.litros_sugeridos,
+              litros_asignados = EXCLUDED.litros_asignados,
+              qr_data = EXCLUDED.qr_data,
+              estado = 'EMITIDO'
           RETURNING *`,
           [programacion.id, b.id, codigoUnico, litros, qrData]
         );
@@ -291,7 +323,10 @@ export const despacharValesProgramacion = async (req: Request, res: Response) =>
     });
   } catch (error: any) {
     console.error('Error despachando vales:', error);
-    res.status(500).json({ message: 'Error interno en el despacho masivo de vales', error: error.message });
+    res.status(500).json({ 
+      message: `Error al despachar vales: ${error.message || 'Error interno'}`, 
+      error: error.message 
+    });
   }
 };
 

@@ -112,6 +112,7 @@ export const bootstrapSchema = async () => {
       ALTER TABLE vales_entrega ALTER COLUMN codigo_vale DROP NOT NULL;
       ALTER TABLE vales_entrega ALTER COLUMN litros_asignados DROP NOT NULL;
       ALTER TABLE vales_entrega ALTER COLUMN estado SET DEFAULT 'EMITIDO';
+      ALTER TABLE vales_entrega DROP CONSTRAINT IF EXISTS vales_entrega_codigo_vale_key;
 
       CREATE INDEX IF NOT EXISTS idx_vales_prog ON vales_entrega(programacion_id);
       CREATE INDEX IF NOT EXISTS idx_vales_benef ON vales_entrega(beneficiario_id);
