@@ -1,19 +1,54 @@
-import { useEffect, useState } from 'react';
-import { StyleSheet, View, Text, ActivityIndicator, SafeAreaView, Platform, Image } from 'react-native';
+import { useEffect, useState, useCallback } from 'react';
+import { StyleSheet, View, Text, ActivityIndicator, SafeAreaView, Platform, Image, AppState } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import RepartoScreen from './src/screens/RepartoScreen';
 import ConductorScreen from './src/screens/ConductorScreen';
 import LoginScreen from './src/screens/LoginScreen';
+import ForceUpdateModal from './src/components/ForceUpdateModal';
 import { initDatabase, getDatabase } from './src/database/schema';
+import {
+  checkServerAppVersion,
+  checkAndApplyEASUpdate,
+  AppVersionInfo,
+} from './src/services/UpdateService';
 
 export default function App() {
   const [dbReady, setDbReady] = useState(false);
   const [user, setUser] = useState<any>(null);
 
+  // Estados de actualización
+  const [updateInfo, setUpdateInfo] = useState<AppVersionInfo | null>(null);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [easDownloading, setEasDownloading] = useState(false);
+
+  // Verificación de versiones obligatorias (Backend + EAS)
+  const verifyUpdates = useCallback(async () => {
+    setCheckingUpdate(true);
+    try {
+      // 1. Revisar si hay actualización OTA en EAS Update
+      const otaApplied = await checkAndApplyEASUpdate((downloading) => {
+        setEasDownloading(downloading);
+      });
+      if (otaApplied) return;
+
+      // 2. Revisar si hay versión mínima obligatoria requerida por el backend
+      const serverVersion = await checkServerAppVersion();
+      if (serverVersion && serverVersion.needsUpdate && serverVersion.isMandatory) {
+        setUpdateInfo(serverVersion);
+      } else {
+        setUpdateInfo(null);
+      }
+    } catch (err) {
+      console.warn('Error verificando actualizaciones:', err);
+    } finally {
+      setCheckingUpdate(false);
+    }
+  }, []);
+
   useEffect(() => {
+    // Inicializar base de datos y sesión
     initDatabase()
       .then(async () => {
-        // Check existing session
         try {
           const db = await getDatabase();
           const session = await db.getAllAsync('SELECT * FROM sesion_usuario LIMIT 1');
@@ -26,7 +61,21 @@ export default function App() {
         setDbReady(true);
       })
       .catch((e) => console.error('Error initializing DB:', e));
-  }, []);
+
+    // Ejecutar verificación de actualización al ingresar
+    verifyUpdates();
+
+    // Re-verificar cuando la app vuelve al primer plano
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active') {
+        verifyUpdates();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [verifyUpdates]);
 
   const handleLogout = async () => {
     try {
@@ -38,13 +87,33 @@ export default function App() {
     setUser(null);
   };
 
+  // Pantalla de carga mientras se descarga actualización EAS OTA
+  if (easDownloading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <View style={styles.logoWrapper}>
+          <Image
+            source={require('./assets/icon.png')}
+            style={styles.logoImage}
+            resizeMode="cover"
+          />
+        </View>
+        <ActivityIndicator size="large" color="#38bdf8" />
+        <Text style={styles.loadingTitle}>⚡ Actualizando AguaTrack...</Text>
+        <Text style={styles.loadingSubtext}>
+          Instalando la versión más reciente en segundo plano. La app se reiniciará en unos segundos.
+        </Text>
+      </View>
+    );
+  }
+
   if (!dbReady) {
     return (
       <View style={styles.loadingContainer}>
-        <View style={{ width: 80, height: 80, borderRadius: 22, overflow: 'hidden', borderWidth: 2, borderColor: '#38bdf8', marginBottom: 12 }}>
+        <View style={styles.logoWrapper}>
           <Image
             source={require('./assets/icon.png')}
-            style={{ width: '100%', height: '100%' }}
+            style={styles.logoImage}
             resizeMode="cover"
           />
         </View>
@@ -70,6 +139,15 @@ export default function App() {
           <LoginScreen onLoginSuccess={(loggedInUser) => setUser(loggedInUser)} />
         )}
       </View>
+
+      {/* MODAL BLOQUEANTE DE ACTUALIZACIÓN OBLIGATORIA */}
+      <ForceUpdateModal
+        visible={Boolean(updateInfo?.needsUpdate && updateInfo?.isMandatory)}
+        updateInfo={updateInfo}
+        onRecheck={verifyUpdates}
+        isChecking={checkingUpdate}
+      />
+
       <StatusBar style={user ? 'dark' : 'light'} />
     </SafeAreaView>
   );
@@ -96,5 +174,32 @@ const styles = StyleSheet.create({
     color: '#94a3b8',
     fontSize: 14,
     fontWeight: '600',
+  },
+  loadingTitle: {
+    color: '#38bdf8',
+    fontSize: 18,
+    fontWeight: '800',
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  loadingSubtext: {
+    color: '#94a3b8',
+    fontSize: 13,
+    textAlign: 'center',
+    paddingHorizontal: 30,
+    lineHeight: 18,
+  },
+  logoWrapper: {
+    width: 80,
+    height: 80,
+    borderRadius: 22,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: '#38bdf8',
+    marginBottom: 8,
+  },
+  logoImage: {
+    width: '100%',
+    height: '100%',
   },
 });

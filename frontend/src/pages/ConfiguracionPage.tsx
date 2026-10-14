@@ -26,6 +26,16 @@ interface ConfigState {
   ph_max: number;
 }
 
+interface AppVersionState {
+  version_actual: string;
+  version_minima: string;
+  force_update: boolean;
+  update_url: string;
+  release_notes: string;
+  updated_at?: string;
+  updated_by?: string;
+}
+
 export default function ConfiguracionPage() {
   const [config, setConfig] = useState<ConfigState>({
     dotacion_diaria_litros: 50,
@@ -38,21 +48,40 @@ export default function ConfiguracionPage() {
     ph_max: 8.5
   });
 
+  const [appVersion, setAppVersion] = useState<AppVersionState>({
+    version_actual: '1.0.1',
+    version_minima: '1.0.1',
+    force_update: true,
+    update_url: 'https://expo.dev/artifacts/eas/aguatrack.apk',
+    release_notes: 'Actualización obligatoria con mejoras operativas.'
+  });
+
   const [parametros, setParametros] = useState<ParametroSistema[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingDotacion, setSavingDotacion] = useState(false);
   const [savingCalidad, setSavingCalidad] = useState(false);
+  const [savingAppVersion, setSavingAppVersion] = useState(false);
   const [recalcularVales, setRecalcularVales] = useState(true);
 
   const fetchConfig = async () => {
     try {
       setLoading(true);
-      const res = await api.get('/configuracion');
-      if (res.data?.config) {
-        setConfig(res.data.config);
+      const [resConfig, resVersion] = await Promise.allSettled([
+        api.get('/configuracion'),
+        api.get('/configuracion/app-version')
+      ]);
+
+      if (resConfig.status === 'fulfilled') {
+        if (resConfig.value.data?.config) {
+          setConfig(resConfig.value.data.config);
+        }
+        if (resConfig.value.data?.parametros) {
+          setParametros(resConfig.value.data.parametros);
+        }
       }
-      if (res.data?.parametros) {
-        setParametros(res.data.parametros);
+
+      if (resVersion.status === 'fulfilled' && resVersion.value.data?.data) {
+        setAppVersion(resVersion.value.data.data);
       }
     } catch (err: any) {
       console.warn('Configuración cargada con valores normativos estándar (SUNASS):', err);
@@ -151,6 +180,41 @@ export default function ConfiguracionPage() {
       });
     } finally {
       setSavingCalidad(false);
+    }
+  };
+
+  // Guardado de Versión y Actualizaciones Obligatorias de la App Móvil (Play Store / App Store)
+  const handleSaveAppVersion = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    const ok = await dialogConfirm({
+      title: 'Confirmar Actualización de la App Móvil',
+      message: `¿Desea actualizar los parámetros de versiones para la app móvil en Google Play y App Store?\n\n• Versión Actual: v${appVersion.version_actual}\n• Versión Mínima Requerida: v${appVersion.version_minima}\n• Bloqueo Obligatorio: ${appVersion.force_update ? 'ACTIVADO (Bloqueará choferes con versión anterior)' : 'DESACTIVADO'}\n\nLos celulares que tengan una versión anterior a la v${appVersion.version_minima} serán bloqueados al ingresar y se les pedirá actualizar en la tienda oficial.`,
+      type: 'warning',
+      confirmText: 'Sí, Guardar Configuración Móvil',
+      cancelText: 'Cancelar'
+    });
+
+    if (!ok) return;
+
+    try {
+      setSavingAppVersion(true);
+      const res = await api.put('/configuracion/app-version', appVersion);
+      await dialogAlert({
+        title: 'Versión Móvil Actualizada',
+        message: res.data?.message || 'Configuración de actualización de la app móvil guardada exitosamente.',
+        type: 'success'
+      });
+      fetchConfig();
+    } catch (err: any) {
+      console.error('Error guardando versión móvil:', err);
+      dialogAlert({
+        title: 'Error al Guardar Versión',
+        message: err.response?.data?.message || 'Error al guardar parámetros de actualización móvil.',
+        type: 'danger'
+      });
+    } finally {
+      setSavingAppVersion(false);
     }
   };
 
@@ -516,6 +580,181 @@ export default function ConfiguracionPage() {
                     }}
                   >
                     {savingCalidad ? '⏳ Guardando Calidad...' : '💾 Guardar Parámetros de Calidad'}
+                  </button>
+                </div>
+              </form>
+
+              {/* CARD 3: CONTROL DE VERSIONES Y ACTUALIZACIONES DE LA APP MÓVIL */}
+              <form
+                onSubmit={handleSaveAppVersion}
+                style={{ 
+                  background: '#fff', 
+                  padding: 24, 
+                  borderRadius: 14, 
+                  border: '1px solid #e2e8f0', 
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+                  gridColumn: '1 / -1',
+                  marginTop: 8
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18, borderBottom: '1px solid #f1f5f9', paddingBottom: 14, flexWrap: 'wrap', gap: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <span style={{ fontSize: 28 }}>📱</span>
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: 18, color: '#0f172a', fontWeight: 800 }}>
+                        Control de Versiones y Actualizaciones Obligatorias (Play Store & App Store)
+                      </h3>
+                      <p style={{ margin: 0, fontSize: 12.5, color: '#64748b' }}>
+                        Gestiona la obligatoriedad de actualización de la app móvil para choferes de cisternas y repartidores
+                      </p>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <span style={{ 
+                      background: appVersion.force_update ? '#fef2f2' : '#f1f5f9', 
+                      color: appVersion.force_update ? '#b91c1c' : '#64748b',
+                      fontSize: 12,
+                      fontWeight: 800,
+                      padding: '4px 10px',
+                      borderRadius: 8,
+                      border: `1px solid ${appVersion.force_update ? '#fecaca' : '#e2e8f0'}`
+                    }}>
+                      {appVersion.force_update ? '🔒 BLOQUEO OBLIGATORIO ACTIVO' : '🔓 ACTUALIZACIÓN OPCIONAL'}
+                    </span>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 20 }}>
+                  {/* COLUMNA 1: VERSIONES */}
+                  <div>
+                    <div className="form-group" style={{ marginBottom: 16 }}>
+                      <label style={{ fontWeight: 700, fontSize: 13.5, color: '#1e293b' }}>
+                        Versión Actual Publicada en Tiendas:
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        className="form-input"
+                        placeholder="ej. 1.0.1"
+                        style={{ fontSize: 15, fontWeight: 700, marginTop: 6 }}
+                        value={appVersion.version_actual}
+                        onChange={(e) => setAppVersion({ ...appVersion, version_actual: e.target.value })}
+                      />
+                      <span style={{ fontSize: 11.5, color: '#64748b', marginTop: 4, display: 'block' }}>
+                        Versión oficial más reciente en Google Play Store o Apple App Store.
+                      </span>
+                    </div>
+
+                    <div className="form-group" style={{ marginBottom: 16 }}>
+                      <label style={{ fontWeight: 700, fontSize: 13.5, color: '#1e293b' }}>
+                        Versión Mínima Requerida (Obligatoria):
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        className="form-input"
+                        placeholder="ej. 1.0.1"
+                        style={{ fontSize: 15, fontWeight: 700, marginTop: 6 }}
+                        value={appVersion.version_minima}
+                        onChange={(e) => setAppVersion({ ...appVersion, version_minima: e.target.value })}
+                      />
+                      <span style={{ fontSize: 11.5, color: '#64748b', marginTop: 4, display: 'block' }}>
+                        ⚠️ Cualquier chofer con una versión inferior será <strong>bloqueado al abrir la app</strong> hasta que actualice.
+                      </span>
+                    </div>
+
+                    <div style={{ marginTop: 12, background: '#f8fafc', padding: 12, borderRadius: 10, border: '1px solid #e2e8f0' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 13, fontWeight: 700, color: '#1e293b' }}>
+                        <input
+                          type="checkbox"
+                          checked={appVersion.force_update}
+                          onChange={(e) => setAppVersion({ ...appVersion, force_update: e.target.checked })}
+                          style={{ width: 18, height: 18 }}
+                        />
+                        <span>Exigir actualización obligatoria al ingresar</span>
+                      </label>
+                      <span style={{ fontSize: 11.5, color: '#64748b', marginLeft: 28, display: 'block', marginTop: 4 }}>
+                        Si está activado, la pantalla de bloqueo no se puede cerrar hasta instalar la versión mínima.
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* COLUMNA 2: TIENDA Y NOVEDADES */}
+                  <div>
+                    <div className="form-group" style={{ marginBottom: 16 }}>
+                      <label style={{ fontWeight: 700, fontSize: 13.5, color: '#1e293b' }}>
+                        URL Personalizada de Tienda o Descarga (Opcional):
+                      </label>
+                      <input
+                        type="text"
+                        className="form-input"
+                        placeholder="Dejar vacío para abrir Play Store / App Store automáticamente"
+                        style={{ fontSize: 13.5, marginTop: 6 }}
+                        value={appVersion.update_url}
+                        onChange={(e) => setAppVersion({ ...appVersion, update_url: e.target.value })}
+                      />
+                      <span style={{ fontSize: 11.5, color: '#64748b', marginTop: 4, display: 'block' }}>
+                        Por defecto redirige al paquete <code>com.epsmoyobamba.aguatrack</code> en Play Store / App Store.
+                      </span>
+                    </div>
+
+                    <div className="form-group" style={{ marginBottom: 16 }}>
+                      <label style={{ fontWeight: 700, fontSize: 13.5, color: '#1e293b' }}>
+                        Novedades y Motivo de la Actualización:
+                      </label>
+                      <textarea
+                        className="form-input"
+                        rows={3}
+                        placeholder="Mensaje explicativo para el chofer o repartidor..."
+                        style={{ fontSize: 13, marginTop: 6, resize: 'vertical' }}
+                        value={appVersion.release_notes}
+                        onChange={(e) => setAppVersion({ ...appVersion, release_notes: e.target.value })}
+                      />
+                      <span style={{ fontSize: 11.5, color: '#64748b', marginTop: 4, display: 'block' }}>
+                        Este mensaje aparece en la pantalla del celular cuando se solicita la actualización.
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* BANNER INFORMATIVO EAS UPDATE */}
+                <div style={{ background: '#f0fdf4', padding: '14px 18px', borderRadius: 10, border: '1px solid #bbf7d0', marginTop: 18, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ fontSize: 22 }}>⚡</span>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#166534' }}>
+                        Actualizaciones Instantáneas sin pasar por revisión de Tiendas (EAS OTA):
+                      </div>
+                      <div style={{ fontSize: 12, color: '#15803d', marginTop: 2 }}>
+                        Para cambios rápidos de código o corrección de errores, puedes lanzar una actualización instantánea con:
+                        <code style={{ background: '#dcfce7', padding: '2px 6px', borderRadius: 4, marginLeft: 6, fontWeight: 700 }}>
+                          npx eas update --branch production --message "Actualización obligatoria"
+                        </code>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* BOTÓN GUARDAR VERSIÓN */}
+                <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
+                  <button
+                    type="submit"
+                    className="btn-primary"
+                    disabled={savingAppVersion}
+                    style={{
+                      padding: '10px 24px',
+                      fontSize: 14,
+                      fontWeight: 700,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      background: '#0284c7',
+                      borderColor: '#0369a1',
+                      borderRadius: 10,
+                      boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)'
+                    }}
+                  >
+                    {savingAppVersion ? '⏳ Guardando Configuración Móvil...' : '💾 Guardar Parámetros de la App Móvil'}
                   </button>
                 </div>
               </form>

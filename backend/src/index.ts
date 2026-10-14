@@ -17,6 +17,7 @@ import informesRoutes from './routes/informes.routes';
 import balanceRoutes from './routes/balance.routes';
 import configuracionRoutes from './routes/configuracion.routes';
 import usuariosRoutes from './routes/usuarios.routes';
+import presupuestoRoutes from './routes/presupuesto.routes';
 import { bootstrapSuperAdmin } from './controllers/usuarios.controller';
 import { bootstrapSchema } from './db/bootstrapSchema';
 import { volvoConnectService } from './services/VolvoConnectService';
@@ -85,6 +86,7 @@ app.use('/api/v1/informes', informesRoutes);
 app.use('/api/v1/balance', balanceRoutes);
 app.use('/api/v1/configuracion', configuracionRoutes);
 app.use('/api/v1/usuarios', usuariosRoutes);
+app.use('/api/v1/presupuesto', presupuestoRoutes);
 app.use('/api/v1', valesRoutes);
 
 app.get('/', (req, res) => {

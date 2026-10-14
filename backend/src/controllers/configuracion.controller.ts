@@ -3,7 +3,9 @@ import { query } from '../db';
 import { 
   getConfiguracion, 
   updateParametrosConfiguracion,
-  ensureConfiguracionSchema
+  ensureConfiguracionSchema,
+  getAppVersionConfig,
+  updateAppVersionConfig
 } from '../services/configuracion.service';
 
 /**
@@ -122,3 +124,56 @@ export const updateConfiguracionHandler = async (req: Request, res: Response) =>
     res.status(500).json({ message: 'Error interno al actualizar configuración', error: error.message });
   }
 };
+
+/**
+ * Obtener versión móvil requerida y parámetros de actualización de la APK
+ * (Endpoint público para la app móvil al iniciar)
+ */
+export const getAppVersionHandler = async (_req: Request, res: Response) => {
+  try {
+    const versionConfig = await getAppVersionConfig();
+    res.json({
+      success: true,
+      data: versionConfig
+    });
+  } catch (error: any) {
+    console.error('Error al consultar versión de la app móvil:', error);
+    res.status(500).json({ success: false, message: 'Error al consultar versión de la app' });
+  }
+};
+
+/**
+ * Actualizar versión móvil requerida y parámetros de obligatoriedad
+ * (Solo administradores y supervisores desde el panel web)
+ */
+export const updateAppVersionHandler = async (req: Request, res: Response) => {
+  try {
+    const {
+      version_actual,
+      version_minima,
+      force_update,
+      update_url,
+      release_notes
+    } = req.body;
+
+    const userEmail = (req as any).user?.email || 'ADMIN';
+
+    const updated = await updateAppVersionConfig({
+      version_actual,
+      version_minima,
+      force_update,
+      update_url,
+      release_notes
+    }, userEmail);
+
+    res.json({
+      success: true,
+      message: '✅ Configuración de actualización de la app móvil guardada exitosamente.',
+      data: updated
+    });
+  } catch (error: any) {
+    console.error('Error al actualizar versión de la app móvil:', error);
+    res.status(500).json({ success: false, message: 'Error al actualizar versión de la app móvil' });
+  }
+};
+

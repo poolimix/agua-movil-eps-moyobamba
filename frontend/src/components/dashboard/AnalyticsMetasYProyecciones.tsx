@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import api from '../../config/api';
 import {
   ResponsiveContainer,
   BarChart,
@@ -122,7 +123,21 @@ export default function AnalyticsMetasYProyecciones({
   ejecucionPresupuestal
 }: Props) {
   const [sectorViewMode, setSectorViewMode] = useState<'semanal' | 'mensual'>('semanal');
-  const presupuestoActual = ejecucionPresupuestal || DEFAULT_PRESUPUESTO;
+  const [dynamicBudget, setDynamicBudget] = useState<EjecucionPresupuestal | null>(null);
+
+  useEffect(() => {
+    if (!ejecucionPresupuestal) {
+      api.get('/presupuesto?anio=2026')
+        .then(res => {
+          if (res.data?.data) {
+            setDynamicBudget(res.data.data);
+          }
+        })
+        .catch(err => console.warn('Error loading dashboard budget:', err));
+    }
+  }, [ejecucionPresupuestal]);
+
+  const presupuestoActual = ejecucionPresupuestal || dynamicBudget || DEFAULT_PRESUPUESTO;
 
   const currentSectoresData = sectorViewMode === 'semanal' ? sectoresSemanal : sectoresMensual;
 
@@ -240,6 +255,24 @@ export default function AnalyticsMetasYProyecciones({
             <span style={{ fontSize: 11, fontWeight: 800, background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0', padding: '4px 12px', borderRadius: 20 }}>
               Convenio N° 023-2026/VIVIENDA/VMCS/PNSU/DE
             </span>
+            <a
+              href="/informes"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '5px 12px',
+                background: '#0284c7',
+                color: '#ffffff',
+                borderRadius: 8,
+                fontSize: 12,
+                fontWeight: 700,
+                textDecoration: 'none',
+                boxShadow: '0 2px 4px rgba(2, 132, 199, 0.25)'
+              }}
+            >
+              💼 Gestionar Presupuesto (CRUD)
+            </a>
           </div>
         </div>
 

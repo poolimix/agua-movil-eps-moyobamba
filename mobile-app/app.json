@@ -4,6 +4,14 @@
     "slug": "aguatrack",
     "scheme": "aguatrack",
     "version": "1.0.1",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/a2d50ddf-6917-41eb-a72b-2d33d2a4288f",
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    },
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",

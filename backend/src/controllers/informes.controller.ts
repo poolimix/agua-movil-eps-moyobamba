@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { query } from '../db';
 import PDFDocument from 'pdfkit';
 import * as xlsx from 'xlsx';
+import { getEjecucionPresupuestal } from '../services/presupuesto.service';
 
 const MESES_NOMBRES: { [key: string]: string } = {
   '01': 'ENERO', '02': 'FEBRERO', '03': 'MARZO', '04': 'ABRIL',
@@ -173,34 +174,7 @@ export const getInformeMensual = async (req: Request, res: Response) => {
       cuadro7_agua_repartida_semanal: info.cuadro7,
       cuadro8_registro_cloro: info.cuadro8,
       panel_fotografico: info.panelFotos,
-      ejecucion_presupuestal: {
-        total_programado: 323926.82,
-        total_comprometido: 87466.64,
-        total_girado: 20200.00,
-        saldo_por_ejecutar: 236460.18,
-        pct_comprometido: 27.0,
-        pct_girado: 6.2,
-        meses: [
-          { mes: 'MARZO', programado: 0.00, comprometido: 0.00, girado: 0.00 },
-          { mes: 'ABRIL', programado: 0.00, comprometido: 0.00, girado: 0.00 },
-          { mes: 'MAYO', programado: 4000.00, comprometido: 4000.00, girado: 0.00 },
-          { mes: 'JUNIO', programado: 4000.00, comprometido: 4000.00, girado: 4000.00 },
-          { mes: 'JULIO', programado: 4000.00, comprometido: 4000.00, girado: 4000.00 },
-          { mes: 'AGOSTO', programado: 14051.78, comprometido: 9005.75, girado: 4000.00 },
-          { mes: 'SETIEMBRE', programado: 102791.68, comprometido: 66460.89, girado: 8200.00 },
-          { mes: 'OCTUBRE', programado: 65645.84, comprometido: 0.00, girado: 0.00 },
-          { mes: 'NOVIEMBRE', programado: 63791.68, comprometido: 0.00, girado: 0.00 },
-          { mes: 'DICIEMBRE', programado: 65645.84, comprometido: 0.00, girado: 0.00 },
-        ],
-        partidas: [
-          { partida: 'Alquiler de camión cisterna y equipos', programado: 219531.02, unidad: 'meses', cantidad: 4, devengado: 16000.00 },
-          { partida: 'Gastos de personal (chofer, ayudante, supervisor)', programado: 48000.00, unidad: 'meses', cantidad: 4, devengado: 0.00 },
-          { partida: 'Repuestos, accesorios e insumos químicos', programado: 4200.00, unidad: 'caja', cantidad: 3, devengado: 4200.00 },
-          { partida: 'Gastos administrativos y seguros', programado: 40495.62, unidad: 'glb', cantidad: 1, devengado: 0.00 },
-          { partida: 'Equipos de protección personal (EPP)', programado: 2743.00, unidad: 'glb', cantidad: 1, devengado: 0.00 },
-          { partida: 'Costo de producción de agua (PTAP San Mateo)', programado: 8957.19, unidad: 'm³', cantidad: 2.22, devengado: 0.00 },
-        ]
-      }
+      ejecucion_presupuestal: await getEjecucionPresupuestal(parseInt(anioParam, 10) || 2026),
     });
   } catch (error: any) {
     console.error('Error generando informe mensual oficial:', error);
@@ -318,23 +292,36 @@ export const exportarInformeExcel = async (req: Request, res: Response) => {
     xlsx.utils.book_append_sheet(wb, wsC8, 'Cuadro 8 - Cloro y Calidad');
 
     // 6. Hoja Ejecución Presupuestal (Convenio PNSU)
+    const presupuestoData = await getEjecucionPresupuestal(parseInt(info.anioParam, 10) || 2026);
     const cPresupuestoRows: any[][] = [
       ['EJECUCIÓN PRESUPUESTAL MENSUAL — CONVENIO PNSU / EPS MOYOBAMBA S.A.'],
-      ['MONTO TOTAL PROGRAMADO: S/. 323,926.82 • COMPROMETIDO: S/. 87,466.64 • GIRADO: S/. 20,200.00'],
+      [`MONTO TOTAL PROGRAMADO: S/. ${presupuestoData.total_programado.toLocaleString('es-PE', { minimumFractionDigits: 2 })} • COMPROMETIDO: S/. ${presupuestoData.total_comprometido.toLocaleString('es-PE', { minimumFractionDigits: 2 })} • GIRADO: S/. ${presupuestoData.total_girado.toLocaleString('es-PE', { minimumFractionDigits: 2 })}`],
       [],
-      ['MES', 'PROGRAMADO (S/.)', 'COMPROMETIDO (S/.)', 'GIRADO (S/.)', 'SALDO PENDIENTE (S/.)', '% COMPROMETIDO', '% GIRADO'],
-      ['MARZO', 0.00, 0.00, 0.00, 0.00, '0.0%', '0.0%'],
-      ['ABRIL', 0.00, 0.00, 0.00, 0.00, '0.0%', '0.0%'],
-      ['MAYO', 4000.00, 4000.00, 0.00, 4000.00, '100.0%', '0.0%'],
-      ['JUNIO', 4000.00, 4000.00, 4000.00, 0.00, '100.0%', '100.0%'],
-      ['JULIO', 4000.00, 4000.00, 4000.00, 0.00, '100.0%', '100.0%'],
-      ['AGOSTO', 14051.78, 9005.75, 4000.00, 10051.78, '64.1%', '28.5%'],
-      ['SETIEMBRE', 102791.68, 66460.89, 8200.00, 94591.68, '64.7%', '8.0%'],
-      ['OCTUBRE', 65645.84, 0.00, 0.00, 65645.84, '0.0%', '0.0%'],
-      ['NOVIEMBRE', 63791.68, 0.00, 0.00, 63791.68, '0.0%', '0.0%'],
-      ['DICIEMBRE', 65645.84, 0.00, 0.00, 65645.84, '0.0%', '0.0%'],
-      ['TOTAL GENERAL', 323926.82, 87466.64, 20200.00, 303726.82, '27.0%', '6.2%']
+      ['MES', 'PROGRAMADO (S/.)', 'COMPROMETIDO (S/.)', 'GIRADO (S/.)', 'SALDO PENDIENTE (S/.)', '% COMPROMETIDO', '% GIRADO']
     ];
+
+    presupuestoData.meses.forEach((m) => {
+      cPresupuestoRows.push([
+        m.mes,
+        m.programado,
+        m.comprometido,
+        m.girado,
+        m.saldo_pendiente,
+        `${m.pct_comprometido}%`,
+        `${m.pct_girado}%`
+      ]);
+    });
+
+    cPresupuestoRows.push([
+      'TOTAL GENERAL',
+      presupuestoData.total_programado,
+      presupuestoData.total_comprometido,
+      presupuestoData.total_girado,
+      presupuestoData.saldo_por_ejecutar,
+      `${presupuestoData.pct_comprometido}%`,
+      `${presupuestoData.pct_girado}%`
+    ]);
+
     const wsPresupuesto = xlsx.utils.aoa_to_sheet(cPresupuestoRows);
     wsPresupuesto['!cols'] = [{ wch: 16 }, { wch: 20 }, { wch: 22 }, { wch: 18 }, { wch: 24 }, { wch: 18 }, { wch: 16 }];
     xlsx.utils.book_append_sheet(wb, wsPresupuesto, 'Ejecución Presupuestal');

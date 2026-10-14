@@ -1,4 +1,6 @@
 import { query } from './index';
+import { ensurePresupuestoSchema } from '../services/presupuesto.service';
+import { ensureConfiguracionSchema } from '../services/configuracion.service';
 
 /**
  * Auto-inicialización del esquema de base de datos en producción
@@ -304,6 +306,10 @@ export const bootstrapSchema = async () => {
       )
       WHERE cisterna_id IS NULL;
     `);
+
+    // Asegurar esquema de configuración móvil y presupuesto dinámico
+    await ensureConfiguracionSchema();
+    await ensurePresupuestoSchema();
 
     console.log('✅ [DB Bootstrap] Todas las tablas y parámetros operativos verificados con éxito.');
   } catch (err: any) {
