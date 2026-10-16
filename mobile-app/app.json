@@ -3,7 +3,7 @@
     "name": "AguaTrack",
     "slug": "aguatrack",
     "scheme": "aguatrack",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "runtimeVersion": {
       "policy": "appVersion"
     },
@@ -21,7 +21,7 @@
     },
     "android": {
       "package": "com.epsmoyobamba.aguatrack",
-      "versionCode": 2,
+      "versionCode": 3,
       "adaptiveIcon": {
         "backgroundColor": "#0284c7",
         "foregroundImage": "./assets/android-icon-foreground.png"
