@@ -66,7 +66,7 @@ export const ensureConfiguracionSchema = async () => {
         ('APP_VERSION_MINIMA', '1.0.1', 'Versión mínima obligatoria requerida para ingresar a la app', 'v', 'MOVIL'),
         ('APP_FORCE_UPDATE', '1', 'Forzar actualización obligatoria al ingresar (1=Sí, 0=No)', 'flag', 'MOVIL'),
         ('APP_UPDATE_URL', 'https://expo.dev/artifacts/eas/aguatrack.apk', 'URL de descarga del nuevo APK o enlace a Play Store', 'url', 'MOVIL'),
-        ('APP_UPDATE_NOTAS', 'Versión obligatoria con mejoras en sincronización de reparto y geolocalización.', 'texto', 'MOVIL')
+        ('APP_UPDATE_NOTAS', 'Versión obligatoria con mejoras en sincronización de reparto y geolocalización.', 'Notas o resumen de cambios de la actualización', 'texto', 'MOVIL')
       ON CONFLICT (clave) DO NOTHING;
     `);
   } catch (err) {
