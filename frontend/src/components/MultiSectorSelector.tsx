@@ -23,32 +23,56 @@ export default function MultiSectorSelector({
   onChange,
 }: MultiSectorSelectorProps) {
   const isSelected = (nombre: string) => {
-    return selectedSectores.includes(nombre);
+    if (selectedSectores.includes(nombre)) return true;
+    const n = nombre.toUpperCase().trim();
+    return selectedSectores.some((s) => {
+      const sUpper = s.toUpperCase().trim();
+      if (sUpper === n) return true;
+      if (sUpper.includes(n) || n.includes(sUpper)) return true;
+      if (n.includes('SANTIAGO') && (sUpper.includes('SANTIAGO') || sUpper.includes('8 VALLES'))) return true;
+      if (n.includes('EUCALIPTOS') && sUpper.includes('EUCALIPTOS')) return true;
+      if (n.includes('BRISAS') && sUpper.includes('BRISAS')) return true;
+      if (n.includes('INDAÑE') && (sUpper.includes('INDAÑE') || sUpper.includes('INDANE'))) return true;
+      if (n.includes('SAN BORJA') && sUpper.includes('SAN BORJA')) return true;
+      return false;
+    });
   };
 
   const toggleSector = (nombre: string) => {
     let updated: string[];
     if (isSelected(nombre)) {
-      updated = selectedSectores.filter((s) => s !== nombre);
+      // Remove this sector
+      updated = selectedSectores.filter((s) => {
+        const sUpper = s.toUpperCase().trim();
+        const nUpper = nombre.toUpperCase().trim();
+        if (sUpper === nUpper || sUpper.includes(nUpper) || nUpper.includes(sUpper)) return false;
+        if (nUpper.includes('SANTIAGO') && (sUpper.includes('SANTIAGO') || sUpper.includes('8 VALLES'))) return false;
+        if (nUpper.includes('EUCALIPTOS') && sUpper.includes('EUCALIPTOS')) return false;
+        if (nUpper.includes('BRISAS') && sUpper.includes('BRISAS')) return false;
+        if (nUpper.includes('INDAÑE') && (sUpper.includes('INDAÑE') || sUpper.includes('INDANE'))) return false;
+        if (nUpper.includes('SAN BORJA') && sUpper.includes('SAN BORJA')) return false;
+        return true;
+      });
     } else {
       updated = [...selectedSectores, nombre];
     }
-    
+
     // Calculate total demand of updated sectors
-    const sumLitros = updated.reduce((acc, secName) => {
-      const sec = sectores.find((s) => s.nombre === secName);
-      const litros = sec?.meta_semanal_litros || (Number(sec?.total_habitantes || 1) * 50 * 7);
-      return acc + (litros || 15000);
-    }, 0);
+    const sumLitros = sectores
+      .filter((s) => updated.includes(s.nombre))
+      .reduce((acc, s) => acc + (Number(s.meta_semanal_litros) || (Number(s.total_habitantes || 1) * 50 * 7)), 0);
 
     onChange(updated, sumLitros);
   };
 
   const handleSelectAll = () => {
-    const allNames = sectores.map((s) => s.nombre);
-    const sumLitros = sectores.reduce((acc, s) => {
-      const litros = s.meta_semanal_litros || (Number(s.total_habitantes || 1) * 50 * 7);
-      return acc + (litros || 15000);
+    // Select active sectors with population/demand
+    const activeSectores = sectores.filter((s) => Number(s.meta_semanal_litros || 0) > 0 || Number(s.total_habitantes || 0) > 0);
+    const targetSectores = activeSectores.length > 0 ? activeSectores : sectores;
+    const allNames = targetSectores.map((s) => s.nombre);
+    const sumLitros = targetSectores.reduce((acc, s) => {
+      const litros = Number(s.meta_semanal_litros) || (Number(s.total_habitantes || 1) * 50 * 7);
+      return acc + (litros || 0);
     }, 0);
     onChange(allNames, sumLitros);
   };
@@ -57,12 +81,13 @@ export default function MultiSectorSelector({
     onChange([], 0);
   };
 
-  // Calculate current total
-  const currentTotalLitros = selectedSectores.reduce((acc, secName) => {
-    const sec = sectores.find((s) => s.nombre === secName);
-    const litros = sec?.meta_semanal_litros || (Number(sec?.total_habitantes || 1) * 50 * 7);
-    return acc + (litros || 15000);
-  }, 0);
+  // Calculate current total from all sectors that are checked
+  const currentTotalLitros = sectores
+    .filter((s) => isSelected(s.nombre))
+    .reduce((acc, s) => {
+      const litros = Number(s.meta_semanal_litros) || (Number(s.total_habitantes || 1) * 50 * 7);
+      return acc + (litros || 0);
+    }, 0);
   const currentTotalM3 = parseFloat((currentTotalLitros / 1000).toFixed(2));
 
   return (
@@ -168,12 +193,20 @@ export default function MultiSectorSelector({
         flexWrap: 'wrap',
         gap: 6,
       }}>
-        <span style={{ fontSize: 12, color: selectedSectores.length > 0 ? '#166534' : '#991b1b', fontWeight: 600 }}>
-          📍 {selectedSectores.length} {selectedSectores.length === 1 ? 'Sector Seleccionado' : 'Sectores Seleccionados'}: {selectedSectores.length > 0 ? selectedSectores.join(', ') : 'Ninguno'}
-        </span>
-        <span style={{ fontSize: 12, color: '#166534', fontWeight: 800 }}>
-          💧 Total Demanda: {currentTotalLitros.toLocaleString()} Lts ({currentTotalM3} m³)
-        </span>
+        {(() => {
+          const checkedSectores = sectores.filter((s) => isSelected(s.nombre));
+          const count = checkedSectores.length;
+          return (
+            <>
+              <span style={{ fontSize: 12, color: count > 0 ? '#166534' : '#991b1b', fontWeight: 600 }}>
+                📍 {count} {count === 1 ? 'Sector Seleccionado' : 'Sectores Seleccionados'}: {count > 0 ? checkedSectores.map((s) => s.nombre).join(', ') : 'Ninguno'}
+              </span>
+              <span style={{ fontSize: 12, color: '#166534', fontWeight: 800 }}>
+                💧 Total Demanda: {currentTotalLitros.toLocaleString()} Lts ({currentTotalM3} m³)
+              </span>
+            </>
+          );
+        })()}
       </div>
     </div>
   );

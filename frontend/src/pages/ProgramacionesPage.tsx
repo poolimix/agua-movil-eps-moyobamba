@@ -266,10 +266,56 @@ export default function ProgramacionesPage() {
   const handleOpenEditModal = (p: Programacion) => {
     setEditingProg(p);
 
-    // Parse existing sectors from zona string
-    const parsedSectores = p.zona
-      ? p.zona.split(',').map((s) => s.trim()).filter(Boolean)
-      : [];
+    // Identify which sectors belong to this programming
+    const rawText = `${p.sectores_seleccionados || ''} ${p.zona || ''}`.toUpperCase();
+
+    // Match against official sectors list
+    const matchedSectores: string[] = [];
+    sectores.forEach((sec) => {
+      const secUpper = sec.nombre.toUpperCase();
+      // If it's the official Convenio Meta 228 / PNSU multi-sector programming, include the 5 official sectors
+      if ((rawText.includes('META 228') || rawText.includes('CONVENIO') || rawText.includes('TODOS')) && !secUpper.includes('SAN LORENZO')) {
+        matchedSectores.push(sec.nombre);
+        return;
+      }
+      if (rawText.includes(secUpper)) {
+        matchedSectores.push(sec.nombre);
+        return;
+      }
+      if (secUpper.includes('SANTIAGO') && (rawText.includes('SANTIAGO') || rawText.includes('8 VALLES'))) {
+        matchedSectores.push(sec.nombre);
+        return;
+      }
+      if (secUpper.includes('EUCALIPTOS') && rawText.includes('EUCALIPTOS')) {
+        matchedSectores.push(sec.nombre);
+        return;
+      }
+      if (secUpper.includes('BRISAS') && rawText.includes('BRISAS')) {
+        matchedSectores.push(sec.nombre);
+        return;
+      }
+      if (secUpper.includes('INDAÑE') && (rawText.includes('INDAÑE') || rawText.includes('INDANE'))) {
+        matchedSectores.push(sec.nombre);
+        return;
+      }
+      if (secUpper.includes('SAN BORJA') && rawText.includes('SAN BORJA')) {
+        matchedSectores.push(sec.nombre);
+        return;
+      }
+    });
+
+    const parsedSectores = matchedSectores.length > 0
+      ? matchedSectores
+      : (p.zona ? p.zona.split(',').map((s) => s.trim()).filter(Boolean) : []);
+
+    // Calculate total demand of matched sectors
+    const totalDemand = parsedSectores.reduce((acc, secName) => {
+      const sec = sectores.find((s) => s.nombre === secName);
+      return acc + (Number(sec?.meta_semanal_litros) || 0);
+    }, 0);
+
+    const progLitros = Number(p.litros_programados) || totalDemand || 894000;
+    const trips = p.viajes_estimados || calculateTrips(progLitros, p.cisterna_id || cisternas[0]?.id || 1);
 
     setFormData({
       fecha: new Date(p.fecha).toISOString().split('T')[0],
@@ -281,9 +327,9 @@ export default function ProgramacionesPage() {
       cisterna_id: p.cisterna_id || (cisternas[0]?.id || ''),
       conductor_id: p.conductor_id || (conductores[0]?.id || ''),
       ayudante_id: p.ayudante_id || '',
-      litros_programados: p.litros_programados || 15000,
-      viajes_estimados: p.viajes_estimados || 1,
-      dias_semana: p.dias_semana || 'Lunes, Miércoles, Viernes',
+      litros_programados: progLitros,
+      viajes_estimados: trips,
+      dias_semana: p.dias_semana || 'Lunes, Martes, Miércoles, Jueves, Viernes, Sábado',
     });
     setModalOpen(true);
   };
