@@ -315,7 +315,8 @@ export const runMigration = async () => {
     { sector: 'LAS BRISAS DEL MAYO', fecha: '2026-09-29 15:30:00', litros: 196500, lat: -6.074017, lng: -76.973760, obs: 'Matriz Quincenal Set-26: Volumen acumulado Las Brisas del Mayo (196.50 m³)' }
   ];
 
-  // Limpiar entregas de prueba previas si existían con local_id MATRIZ_
+  // Asegurar columna local_id y limpiar entregas de prueba previas si existían con local_id MATRIZ_
+  await query("ALTER TABLE entregas_agua ADD COLUMN IF NOT EXISTS local_id VARCHAR(100)");
   await query("DELETE FROM entregas_agua WHERE local_id LIKE 'MATRIZ_HISTORICA_%'");
 
   for (let i = 0; i < entregasMatriz.length; i++) {
@@ -337,10 +338,6 @@ export const runMigration = async () => {
         observaciones_entrega, observaciones, sincronizado
       )
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'COMPLETA', $10, $10, 1)
-      ON CONFLICT (local_id) DO UPDATE SET
-        litros_entregados = EXCLUDED.litros_entregados,
-        fecha_hora = EXCLUDED.fecha_hora,
-        observaciones = EXCLUDED.observaciones;
     `, [
       localId,
       benId,
