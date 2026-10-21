@@ -14,6 +14,7 @@ import MetasPage from './pages/MetasPage';
 import CalidadPage from './pages/CalidadPage';
 import ValesPage from './pages/ValesPage';
 import InformesOficialesPage from './pages/InformesOficialesPage';
+import PresupuestoPage from './pages/PresupuestoPage';
 import BalanceHidricoPage from './pages/BalanceHidricoPage';
 import ConfiguracionPage from './pages/ConfiguracionPage';
 import UsuariosPage from './pages/UsuariosPage';
@@ -43,6 +44,7 @@ function AppRoutes() {
       <Route path="/programaciones" element={<ProtectedRoute><ProgramacionesPage /></ProtectedRoute>} />
       <Route path="/entregas" element={<ProtectedRoute><EntregasPage /></ProtectedRoute>} />
       <Route path="/informes" element={<ProtectedRoute><InformesOficialesPage /></ProtectedRoute>} />
+      <Route path="/presupuesto" element={<ProtectedRoute><PresupuestoPage /></ProtectedRoute>} />
       <Route path="/balance" element={<ProtectedRoute><BalanceHidricoPage /></ProtectedRoute>} />
       <Route path="/cisternas" element={<ProtectedRoute><CisternasPage /></ProtectedRoute>} />
       <Route path="/personal" element={<ProtectedRoute><PersonalPage /></ProtectedRoute>} />
