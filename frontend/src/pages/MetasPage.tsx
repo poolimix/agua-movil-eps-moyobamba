@@ -22,6 +22,125 @@ interface SectorMeta {
   estado_cumplimiento: 'CUMPLIDO' | 'EN_PROGRESO' | 'PENDIENTE';
 }
 
+const renderDiasReparto = (diasStr?: string) => {
+  const fullText = diasStr || 'Lunes, Miércoles, Viernes';
+  const lower = fullText.toLowerCase();
+  const diasRaw = fullText.split(',').map((d) => d.trim()).filter(Boolean);
+
+  const mapAbrev: Record<string, string> = {
+    lunes: 'Lun',
+    martes: 'Mar',
+    miércoles: 'Mié',
+    miercoles: 'Mié',
+    jueves: 'Jue',
+    viernes: 'Vie',
+    sábado: 'Sáb',
+    sabado: 'Sáb',
+    domingo: 'Dom',
+  };
+
+  const abreviados = diasRaw.map((d) => mapAbrev[d.toLowerCase()] || d.slice(0, 3));
+
+  // Caso 1: Todos los 7 días (Lunes a Domingo / Diario)
+  if (lower.includes('lunes a domingo') || (abreviados.length >= 7 && lower.includes('lunes') && lower.includes('domingo'))) {
+    return (
+      <div style={{ whiteSpace: 'nowrap' }} title={fullText}>
+        <span
+          style={{
+            background: '#ecfdf5',
+            color: '#065f46',
+            border: '1px solid #a7f3d0',
+            borderRadius: 6,
+            fontSize: 12,
+            fontWeight: 800,
+            padding: '3px 8px',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4,
+          }}
+        >
+          🗓️ Lun - Dom <span style={{ fontSize: 10.5, fontWeight: 700, color: '#047857' }}>(Diario)</span>
+        </span>
+      </div>
+    );
+  }
+
+  // Caso 2: 6 días (Lunes a Sábado)
+  if (lower.includes('lunes a sábado') || lower.includes('lunes a sabado') || (abreviados.length === 6 && lower.includes('lunes') && lower.includes('sábado'))) {
+    return (
+      <div style={{ whiteSpace: 'nowrap' }} title={fullText}>
+        <span
+          style={{
+            background: '#eff6ff',
+            color: '#1e40af',
+            border: '1px solid #bfdbfe',
+            borderRadius: 6,
+            fontSize: 12,
+            fontWeight: 800,
+            padding: '3px 8px',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4,
+          }}
+        >
+          🗓️ Lun - Sáb <span style={{ fontSize: 10.5, fontWeight: 700, color: '#2563eb' }}>(6 días)</span>
+        </span>
+      </div>
+    );
+  }
+
+  // Caso 3: 5 días (Lunes a Viernes)
+  if (lower.includes('lunes a viernes') || (abreviados.length === 5 && lower.includes('lunes') && lower.includes('viernes') && !lower.includes('sábado') && !lower.includes('domingo'))) {
+    return (
+      <div style={{ whiteSpace: 'nowrap' }} title={fullText}>
+        <span
+          style={{
+            background: '#f8fafc',
+            color: '#334155',
+            border: '1px solid #cbd5e1',
+            borderRadius: 6,
+            fontSize: 12,
+            fontWeight: 800,
+            padding: '3px 8px',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4,
+          }}
+        >
+          🗓️ Lun - Vie <span style={{ fontSize: 10.5, fontWeight: 700, color: '#64748b' }}>(5 días)</span>
+        </span>
+      </div>
+    );
+  }
+
+  // Caso 4: Días específicos alternos -> Mini-pastillas horizontales compactas
+  return (
+    <div
+      style={{ display: 'flex', flexWrap: 'wrap', gap: 3, maxWidth: 160, alignItems: 'center' }}
+      title={fullText}
+    >
+      {abreviados.map((abrev, idx) => (
+        <span
+          key={idx}
+          style={{
+            background: '#f1f5f9',
+            color: '#334155',
+            border: '1px solid #e2e8f0',
+            borderRadius: 4,
+            fontSize: 11,
+            fontWeight: 700,
+            padding: '1px 5px',
+            lineHeight: '16px',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {abrev}
+        </span>
+      ))}
+    </div>
+  );
+};
+
 export default function MetasPage() {
   const [sectores, setSectores] = useState<SectorMeta[]>([]);
   const [loading, setLoading] = useState(true);
@@ -302,26 +421,7 @@ export default function MetasPage() {
                     </div>
                   </td>
                   <td>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, maxWidth: 210 }}>
-                      {(s.dias_entrega || 'Lunes, Miércoles, Viernes')
-                        .split(',')
-                        .map((dia, dIdx) => (
-                          <span
-                            key={dIdx}
-                            className="badge-count"
-                            style={{
-                              background: '#f8fafc',
-                              color: '#334155',
-                              fontSize: 11.5,
-                              fontWeight: 600,
-                              padding: '3px 8px',
-                              borderColor: '#e2e8f0',
-                            }}
-                          >
-                            {dia.trim()}
-                          </span>
-                        ))}
-                    </div>
+                    {renderDiasReparto(s.dias_entrega)}
                   </td>
                   <td>
                     <div style={{ whiteSpace: 'nowrap' }}>
