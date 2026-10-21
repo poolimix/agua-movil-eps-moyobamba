@@ -91,7 +91,76 @@ interface Vale {
   email: string | null;
 }
 
+const formatDiasReparto = (diasStr?: string) => {
+  const fullText = diasStr || 'Lunes, Miércoles, Viernes';
+  const lower = fullText.toLowerCase();
+  const diasRaw = fullText.split(',').map((d) => d.trim()).filter(Boolean);
+
+  const mapAbrev: Record<string, string> = {
+    lunes: 'Lun',
+    martes: 'Mar',
+    miércoles: 'Mié',
+    miercoles: 'Mié',
+    jueves: 'Jue',
+    viernes: 'Vie',
+    sábado: 'Sáb',
+    sabado: 'Sáb',
+    domingo: 'Dom',
+  };
+
+  const abreviados = diasRaw.map((d) => mapAbrev[d.toLowerCase()] || d.slice(0, 3));
+
+  if (lower.includes('lunes a domingo') || (abreviados.length >= 7 && lower.includes('lunes') && lower.includes('domingo'))) {
+    return '🗓️ Lun - Dom (Diario)';
+  }
+  if (lower.includes('lunes a sábado') || lower.includes('lunes a sabado') || (abreviados.length === 6 && lower.includes('lunes') && lower.includes('sábado'))) {
+    return '🗓️ Lun - Sáb (6 días)';
+  }
+  if (lower.includes('lunes a viernes') || (abreviados.length === 5 && lower.includes('lunes') && lower.includes('viernes') && !lower.includes('sábado') && !lower.includes('domingo'))) {
+    return '🗓️ Lun - Vie (5 días)';
+  }
+  return `🗓️ ${abreviados.join(' • ')}`;
+};
+
+const dropdownItemStyle: React.CSSProperties = {
+  background: 'transparent',
+  border: 'none',
+  padding: '7px 10px',
+  borderRadius: 6,
+  fontSize: 12.5,
+  fontWeight: 600,
+  color: '#334155',
+  cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  width: '100%',
+  textAlign: 'left',
+  transition: 'background 0.15s ease',
+};
+
+const dropdownItemLinkStyle: React.CSSProperties = {
+  textDecoration: 'none',
+  padding: '7px 10px',
+  borderRadius: 6,
+  fontSize: 12.5,
+  fontWeight: 600,
+  color: '#334155',
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  transition: 'background 0.15s ease',
+};
+
 export default function ProgramacionesPage() {
+  const [activeDropdownId, setActiveDropdownId] = useState<number | null>(null);
+
+  useEffect(() => {
+    const handleClickOutside = () => setActiveDropdownId(null);
+    window.addEventListener('click', handleClickOutside);
+    return () => window.removeEventListener('click', handleClickOutside);
+  }, []);
+
   const [programaciones, setProgramaciones] = useState<Programacion[]>([]);
   const [sectores, setSectores] = useState<SectorItem[]>([]);
   const [cisternas, setCisternas] = useState<Cisterna[]>([]);
@@ -682,7 +751,7 @@ export default function ProgramacionesPage() {
                 </td>
               </tr>
             ) : (
-              paginatedData.map((p) => (
+              paginatedData.map((p, pIdx) => (
                 <tr key={p.id}>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -700,35 +769,67 @@ export default function ProgramacionesPage() {
                       )}
                     </div>
                   </td>
-                  <td style={{ minWidth: 260 }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                        {p.zona.split(',').map((sec, idx) => (
-                          <span
-                            key={idx}
-                            className="badge-count"
-                            style={{
-                              background: '#e0f2fe',
-                              color: '#0369a1',
-                              fontSize: 11.5,
-                              fontWeight: 700,
-                              whiteSpace: 'normal',
-                              lineHeight: 1.35,
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              maxWidth: '100%',
-                              wordBreak: 'break-word',
-                              padding: '4px 10px'
-                            }}
-                          >
-                            📍 {sec.trim()}
-                          </span>
-                        ))}
-                      </div>
-                      <div style={{ fontSize: 11, color: '#64748b', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
-                        🗓️ {p.dias_semana || 'Lunes, Miércoles, Viernes'}
-                      </div>
-                    </div>
+                  <td style={{ minWidth: 240 }}>
+                    {(() => {
+                      // Parse individual clean sector names
+                      const rawSectores = (p.sectores_seleccionados || p.zona || '')
+                        .split(',')
+                        .map(s => s.trim().replace(/^(ZONAS CONVENIO META 228 \()?/i, '').replace(/\)$/, '').trim())
+                        .filter(Boolean);
+                      const count = rawSectores.length;
+                      const diasResumen = formatDiasReparto(p.dias_semana);
+
+                      return (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }} title={`Sectores Asignados (${count}):\n${rawSectores.join('\n')}\n\nFrecuencia:\n${p.dias_semana || 'Lunes a Domingo'}`}>
+                          {count > 2 ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                              <span
+                                style={{
+                                  background: '#e0f2fe',
+                                  color: '#0369a1',
+                                  border: '1px solid #bae6fd',
+                                  fontSize: 11.5,
+                                  fontWeight: 800,
+                                  padding: '2px 8px',
+                                  borderRadius: 6,
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 4
+                                }}
+                              >
+                                📍 {count} Sectores
+                              </span>
+                              <span style={{ fontSize: 11.5, color: '#475569', fontWeight: 600 }}>
+                                {rawSectores[0]}, {rawSectores[1]}... <span style={{ color: '#0284c7', fontWeight: 700 }}>+{count - 2}</span>
+                              </span>
+                            </div>
+                          ) : (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                              {rawSectores.map((sec, idx) => (
+                                <span
+                                  key={idx}
+                                  style={{
+                                    background: '#f0f9ff',
+                                    color: '#0369a1',
+                                    border: '1px solid #bae6fd',
+                                    fontSize: 11.5,
+                                    fontWeight: 700,
+                                    padding: '2px 7px',
+                                    borderRadius: 6
+                                  }}
+                                >
+                                  📍 {sec}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
+                          <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>
+                            {diasResumen}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </td>
                   <td style={{ minWidth: 220 }}>
                     {p.cisterna_placa ? (
@@ -824,144 +925,173 @@ export default function ProgramacionesPage() {
                       )}
                     </a>
                   </td>
-                  <td>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, justifyContent: 'center', alignItems: 'center' }}>
+                  <td style={{ position: 'relative', textAlign: 'center', minWidth: 195 }}>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      {/* ACCIÓN PRINCIPAL 1: CALENDARIO */}
                       <button
-                        style={{
-                          background: '#f0f9ff',
-                          color: '#0369a1',
-                          border: '1.5px solid #bae6fd',
-                          padding: '6px 10px',
-                          borderRadius: 6,
-                          fontSize: 12,
-                          fontWeight: 800,
-                          cursor: 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 4
-                        }}
+                        type="button"
                         onClick={() => handleOpenCalendarView(p)}
-                        title="Ver desglose tipo calendario y avances por semana y por mes"
-                      >
-                        📅 Calendario & Avances
-                      </button>
-
-                      <button
                         style={{
                           background: '#eff6ff',
-                          color: '#1d4ed8',
-                          border: '1.5px solid #bfdbfe',
-                          padding: '6px 10px',
-                          borderRadius: 6,
+                          color: '#0284c7',
+                          border: '1px solid #bae6fd',
+                          padding: '5px 10px',
+                          borderRadius: 8,
                           fontSize: 12,
-                          fontWeight: 800,
-                          cursor: 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 4
-                        }}
-                        onClick={() => handleOpenEditModal(p)}
-                        title="Editar los datos de esta Programación"
-                      >
-                        ✏️ Editar
-                      </button>
-
-                      <button
-                        style={{
-                          background: '#fef2f2',
-                          color: '#dc2626',
-                          border: '1.5px solid #fecaca',
-                          padding: '6px 10px',
-                          borderRadius: 6,
-                          fontSize: 12,
-                          fontWeight: 800,
-                          cursor: 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 4
-                        }}
-                        onClick={() => handleDelete(p.id)}
-                        title="Eliminar esta Programación"
-                      >
-                        🗑️ Eliminar
-                      </button>
-
-                      <a
-                        href={`/calidad?programacion_id=${p.id}`}
-                        style={{
-                          background: '#f0fdf4',
-                          color: '#166534',
-                          border: '1.5px solid #bbf7d0',
-                          padding: '6px 10px',
-                          borderRadius: 6,
-                          fontSize: 12,
-                          fontWeight: 800,
+                          fontWeight: 700,
                           cursor: 'pointer',
                           display: 'inline-flex',
                           alignItems: 'center',
                           gap: 4,
-                          textDecoration: 'none'
+                          transition: 'all 0.15s ease'
                         }}
-                        title={`Evaluar Control Sanitario (Cloro y Turbiedad) para la Programación #${p.id}`}
+                        title="Ver desglose tipo calendario y avances por semana y por mes"
                       >
-                        🧪 Calidad
-                      </a>
-
-                      <button
-                        className="btn-secondary"
-                        style={{
-                          padding: '5px 9px',
-                          fontSize: 11.5,
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 3,
-                          borderColor: '#0284c7',
-                          color: '#0284c7',
-                          borderRadius: 6,
-                          fontWeight: 700
-                        }}
-                        onClick={() => handleOpenDespachoModal(p)}
-                        title="Gestionar Vales y Notificaciones"
-                      >
-                        📨 Vales
+                        <span>📅</span> Calendario
                       </button>
 
-                      <a
-                        href={`${API_BASE_URL}/api/v1/programaciones/${p.id}/pdf`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="btn-pdf"
+                      {/* ACCIÓN PRINCIPAL 2: VALES */}
+                      <button
+                        type="button"
+                        onClick={() => handleOpenDespachoModal(p)}
                         style={{
-                          padding: '5px 9px',
-                          fontSize: 11.5,
-                          borderRadius: 6,
-                          fontWeight: 700,
-                          textDecoration: 'none'
-                        }}
-                        title="Descargar Hoja de Ruta ANEXO 2 (PDF)"
-                      >
-                        📄 PDF
-                      </a>
-
-                      <a
-                        href={`${API_BASE_URL}/api/v1/programaciones/${p.id}/excel`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="btn-action-compact"
-                        style={{
-                          padding: '5px 9px',
-                          fontSize: 11.5,
-                          borderRadius: 6,
-                          fontWeight: 700,
-                          textDecoration: 'none',
-                          color: '#15803d',
                           background: '#f0fdf4',
-                          border: '1px solid #bbf7d0'
+                          color: '#15803d',
+                          border: '1px solid #bbf7d0',
+                          padding: '5px 10px',
+                          borderRadius: 8,
+                          fontSize: 12,
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          transition: 'all 0.15s ease'
                         }}
-                        title="Descargar Hoja de Ruta ANEXO 2 (Excel)"
+                        title="Gestionar emisión y despacho de vales"
                       >
-                        📊 Excel
-                      </a>
+                        <span>📨</span> Vales
+                      </button>
+
+                      {/* BOTÓN DESPLEGABLE ••• */}
+                      <div style={{ position: 'relative' }}>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveDropdownId(activeDropdownId === p.id ? null : p.id);
+                          }}
+                          style={{
+                            background: activeDropdownId === p.id ? '#e2e8f0' : '#f8fafc',
+                            color: '#334155',
+                            border: '1px solid #cbd5e1',
+                            padding: '5px 9px',
+                            borderRadius: 8,
+                            fontSize: 13,
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            transition: 'all 0.15s ease',
+                            lineHeight: 1
+                          }}
+                          title="Más opciones de gestión y descargas"
+                        >
+                          •••
+                        </button>
+
+                        {/* MENÚ DESPLEGABLE */}
+                        {activeDropdownId === p.id && (
+                          <div
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                              position: 'absolute',
+                              right: 0,
+                              ...(pIdx >= paginatedData.length - 2 && paginatedData.length > 2
+                                ? { bottom: 'calc(100% + 6px)' }
+                                : { top: 'calc(100% + 6px)' }),
+                              background: '#ffffff',
+                              borderRadius: 12,
+                              boxShadow: '0 12px 30px rgba(0, 0, 0, 0.15), 0 4px 6px rgba(0, 0, 0, 0.05)',
+                              border: '1px solid #e2e8f0',
+                              minWidth: 215,
+                              padding: '6px',
+                              zIndex: 100,
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: 2,
+                              textAlign: 'left'
+                            }}
+                          >
+                            <div style={{ padding: '6px 10px 4px', fontSize: 10.5, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                              Opciones Prog #{p.id}
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveDropdownId(null);
+                                handleOpenEditModal(p);
+                              }}
+                              style={dropdownItemStyle}
+                              onMouseEnter={(e) => (e.currentTarget.style.background = '#f1f5f9')}
+                              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                            >
+                              <span style={{ fontSize: 14 }}>✏️</span> Editar Programación
+                            </button>
+
+                            <a
+                              href={`${API_BASE_URL}/api/v1/programaciones/${p.id}/pdf`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={() => setActiveDropdownId(null)}
+                              style={dropdownItemLinkStyle}
+                              onMouseEnter={(e) => (e.currentTarget.style.background = '#f1f5f9')}
+                              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                            >
+                              <span style={{ fontSize: 14 }}>📄</span> Hoja de Ruta (PDF)
+                            </a>
+
+                            <a
+                              href={`${API_BASE_URL}/api/v1/programaciones/${p.id}/excel`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={() => setActiveDropdownId(null)}
+                              style={dropdownItemLinkStyle}
+                              onMouseEnter={(e) => (e.currentTarget.style.background = '#f1f5f9')}
+                              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                            >
+                              <span style={{ fontSize: 14 }}>📊</span> Padrón Oficial (Excel)
+                            </a>
+
+                            <a
+                              href={`/calidad?programacion_id=${p.id}`}
+                              onClick={() => setActiveDropdownId(null)}
+                              style={dropdownItemLinkStyle}
+                              onMouseEnter={(e) => (e.currentTarget.style.background = '#f1f5f9')}
+                              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                            >
+                              <span style={{ fontSize: 14 }}>🧪</span> Control de Calidad
+                            </a>
+
+                            <div style={{ height: 1, background: '#f1f5f9', margin: '4px 0' }} />
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveDropdownId(null);
+                                handleDelete(p.id);
+                              }}
+                              style={{ ...dropdownItemStyle, color: '#dc2626' }}
+                              onMouseEnter={(e) => (e.currentTarget.style.background = '#fef2f2')}
+                              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                            >
+                              <span style={{ fontSize: 14 }}>🗑️</span> Eliminar Programación
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </td>
                 </tr>
