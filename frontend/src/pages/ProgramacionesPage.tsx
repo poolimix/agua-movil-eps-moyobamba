@@ -154,11 +154,19 @@ const dropdownItemLinkStyle: React.CSSProperties = {
 
 export default function ProgramacionesPage() {
   const [activeDropdownId, setActiveDropdownId] = useState<number | null>(null);
+  const [dropdownCoords, setDropdownCoords] = useState<{ top: number; right: number } | null>(null);
 
   useEffect(() => {
-    const handleClickOutside = () => setActiveDropdownId(null);
-    window.addEventListener('click', handleClickOutside);
-    return () => window.removeEventListener('click', handleClickOutside);
+    const handleClose = () => {
+      setActiveDropdownId(null);
+      setDropdownCoords(null);
+    };
+    window.addEventListener('click', handleClose);
+    window.addEventListener('scroll', handleClose, true);
+    return () => {
+      window.removeEventListener('click', handleClose);
+      window.removeEventListener('scroll', handleClose, true);
+    };
   }, []);
 
   const [programaciones, setProgramaciones] = useState<Programacion[]>([]);
@@ -723,7 +731,7 @@ export default function ProgramacionesPage() {
         <span className="badge-count">Total: {filtered.length} programaciones</span>
       </div>
 
-      <div className="table-card">
+      <div className="table-card" style={{ minHeight: 250 }}>
         <table className="custom-table" style={{ minWidth: 1260 }}>
           <thead>
             <tr>
@@ -751,7 +759,7 @@ export default function ProgramacionesPage() {
                 </td>
               </tr>
             ) : (
-              paginatedData.map((p, pIdx) => (
+              paginatedData.map((p) => (
                 <tr key={p.id}>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -974,56 +982,66 @@ export default function ProgramacionesPage() {
                       </button>
 
                       {/* BOTÓN DESPLEGABLE ••• */}
-                      <div style={{ position: 'relative' }}>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setActiveDropdownId(activeDropdownId === p.id ? null : p.id);
-                          }}
-                          style={{
-                            background: activeDropdownId === p.id ? '#e2e8f0' : '#f8fafc',
-                            color: '#334155',
-                            border: '1px solid #cbd5e1',
-                            padding: '5px 9px',
-                            borderRadius: 8,
-                            fontSize: 13,
-                            fontWeight: 800,
-                            cursor: 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            transition: 'all 0.15s ease',
-                            lineHeight: 1
-                          }}
-                          title="Más opciones de gestión y descargas"
-                        >
-                          •••
-                        </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (activeDropdownId === p.id) {
+                            setActiveDropdownId(null);
+                            setDropdownCoords(null);
+                          } else {
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            const spaceBelow = window.innerHeight - rect.bottom;
+                            const menuHeight = 220;
+                            const topPos = spaceBelow < menuHeight ? rect.top - menuHeight - 4 : rect.bottom + 6;
+                            setDropdownCoords({
+                              top: Math.max(10, topPos),
+                              right: Math.max(10, window.innerWidth - rect.right),
+                            });
+                            setActiveDropdownId(p.id);
+                          }
+                        }}
+                        style={{
+                          background: activeDropdownId === p.id ? '#e2e8f0' : '#f8fafc',
+                          color: '#334155',
+                          border: '1px solid #cbd5e1',
+                          padding: '5px 9px',
+                          borderRadius: 8,
+                          fontSize: 13,
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          transition: 'all 0.15s ease',
+                          lineHeight: 1
+                        }}
+                        title="Más opciones de gestión y descargas"
+                      >
+                        •••
+                      </button>
 
-                        {/* MENÚ DESPLEGABLE */}
-                        {activeDropdownId === p.id && (
-                          <div
-                            onClick={(e) => e.stopPropagation()}
-                            style={{
-                              position: 'absolute',
-                              right: 0,
-                              ...(pIdx >= paginatedData.length - 2 && paginatedData.length > 2
-                                ? { bottom: 'calc(100% + 6px)' }
-                                : { top: 'calc(100% + 6px)' }),
-                              background: '#ffffff',
-                              borderRadius: 12,
-                              boxShadow: '0 12px 30px rgba(0, 0, 0, 0.15), 0 4px 6px rgba(0, 0, 0, 0.05)',
-                              border: '1px solid #e2e8f0',
-                              minWidth: 215,
-                              padding: '6px',
-                              zIndex: 100,
-                              display: 'flex',
-                              flexDirection: 'column',
-                              gap: 2,
-                              textAlign: 'left'
-                            }}
-                          >
+                      {/* MENÚ DESPLEGABLE CON POSITION FIXED (ESCAPA TOTALMENTE DEL OVERFLOW Y DEL SCROLLBAR) */}
+                      {activeDropdownId === p.id && dropdownCoords && (
+                        <div
+                          onClick={(e) => e.stopPropagation()}
+                          style={{
+                            position: 'fixed',
+                            top: dropdownCoords.top,
+                            right: dropdownCoords.right,
+                            background: '#ffffff',
+                            borderRadius: 12,
+                            boxShadow: '0 20px 40px rgba(15, 23, 42, 0.24), 0 6px 14px rgba(15, 23, 42, 0.08)',
+                            border: '1px solid #cbd5e1',
+                            minWidth: 220,
+                            padding: '6px',
+                            zIndex: 99999,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 2,
+                            textAlign: 'left'
+                          }}
+                        >
                             <div style={{ padding: '6px 10px 4px', fontSize: 10.5, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 }}>
                               Opciones Prog #{p.id}
                             </div>
@@ -1091,7 +1109,6 @@ export default function ProgramacionesPage() {
                             </button>
                           </div>
                         )}
-                      </div>
                     </div>
                   </td>
                 </tr>
