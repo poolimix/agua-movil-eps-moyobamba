@@ -294,8 +294,10 @@ export default function ProgramacionesPage() {
       const m = mes !== undefined ? mes : selectedMesCalendario;
       const y = anio !== undefined ? anio : selectedAnioCalendario;
       const res = await api.get(`/programaciones/${progId}/avances-calendario?mes=${m}&anio=${y}`);
-      if (res.data?.success) {
+      if (res.data?.success && res.data?.data) {
         setCalendarData(res.data.data);
+      } else if (res.data?.programacion || res.data?.diasCalendarioMes) {
+        setCalendarData(res.data);
       }
     } catch (err) {
       console.error('Error cargando avances calendario:', err);
@@ -303,6 +305,16 @@ export default function ProgramacionesPage() {
       setCalendarLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (viewMode === 'CALENDARIO') {
+      const target = selectedProgCalendar || (programaciones.length > 0 ? programaciones[0] : null);
+      if (target) {
+        if (!selectedProgCalendar) setSelectedProgCalendar(target);
+        loadCalendarAvances(target.id, selectedMesCalendario, selectedAnioCalendario);
+      }
+    }
+  }, [viewMode, selectedProgCalendar?.id]);
 
   const handleOpenCalendarView = (p?: Programacion) => {
     const target = p || selectedProgCalendar || (programaciones.length > 0 ? programaciones[0] : null);
@@ -548,9 +560,10 @@ export default function ProgramacionesPage() {
             <button
               type="button"
               onClick={() => {
-                if (!selectedProgCalendar && programaciones.length > 0) {
-                  setSelectedProgCalendar(programaciones[0]);
-                  loadCalendarAvances(programaciones[0].id);
+                const target = selectedProgCalendar || (programaciones.length > 0 ? programaciones[0] : null);
+                if (target) {
+                  setSelectedProgCalendar(target);
+                  loadCalendarAvances(target.id, selectedMesCalendario, selectedAnioCalendario);
                 }
                 setViewMode('CALENDARIO');
               }}

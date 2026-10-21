@@ -564,59 +564,31 @@ export const getAvancesCalendario = async (req: Request, res: Response) => {
     const anio = parseInt(req.query.anio as string, 10) || 2026;
     const mes = parseInt(req.query.mes as string, 10) || (new Date().getMonth() + 1);
 
-    const progRes = await query('SELECT * FROM programaciones WHERE id = $1', [id]);
+    const progRes = await query(`
+      SELECT 
+        p.*,
+        c.placa as cisterna_placa,
+        c.marca_modelo as cisterna_marca,
+        c.capacidad_litros as cisterna_capacidad_litros,
+        CONCAT(pers.nombres, ' ', pers.apellidos) as conductor_nombre,
+        CONCAT(ayud.nombres, ' ', ayud.apellidos) as ayudante_nombre
+      FROM programaciones p
+      LEFT JOIN cisternas c ON p.cisterna_id = c.id
+      LEFT JOIN personal_operativo pers ON p.conductor_id = pers.id
+      LEFT JOIN personal_operativo ayud ON p.ayudante_id = ayud.id
+      WHERE p.id = $1
+    `, [id]);
+
     if (progRes.rows.length === 0) {
-      return res.status(404).json({ message: 'Programación no encontrada' });
+      return res.status(404).json({ success: false, message: 'Programación no encontrada' });
     }
     const prog = progRes.rows[0];
 
-    // Entregas por día de la semana (1 = Lunes ... 7 = Domingo)
-    const diasSemanaRes = await query(`
-      SELECT 
-        EXTRACT(ISODOW FROM fecha_hora)::int as dia_num,
-        COUNT(id)::int as total_entregas,
-        COALESCE(SUM(litros_entregados), 0)::numeric as total_litros,
-        COUNT(DISTINCT beneficiario_id)::int as familias_atendidas
-      FROM entregas_agua
-      WHERE programacion_id = $1
-        AND EXTRACT(YEAR FROM fecha_hora) = $2
-        AND EXTRACT(MONTH FROM fecha_hora) = $3
-      GROUP BY EXTRACT(ISODOW FROM fecha_hora)
-      ORDER BY dia_num ASC
-    `, [id, anio, mes]);
+    // Nombres de meses en español
+    const nombresMeses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Setiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    const nombreMesActual = `${nombresMeses[mes - 1]} ${anio}`;
 
-    // Entregas por semanas del mes
-    const semanasRes = await query(`
-      SELECT 
-        EXTRACT(WEEK FROM fecha_hora)::int as semana_anio,
-        COUNT(id)::int as total_entregas,
-        COALESCE(SUM(litros_entregados), 0)::numeric as total_litros,
-        COUNT(DISTINCT beneficiario_id)::int as familias_atendidas,
-        MIN(fecha_hora)::date as fecha_inicio_semana,
-        MAX(fecha_hora)::date as fecha_fin_semana
-      FROM entregas_agua
-      WHERE programacion_id = $1
-        AND EXTRACT(YEAR FROM fecha_hora) = $2
-        AND EXTRACT(MONTH FROM fecha_hora) = $3
-      GROUP BY EXTRACT(WEEK FROM fecha_hora)
-      ORDER BY semana_anio ASC
-    `, [id, anio, mes]);
-
-    // Entregas por meses del año
-    const mesesAnioRes = await query(`
-      SELECT 
-        EXTRACT(MONTH FROM fecha_hora)::int as mes_num,
-        COUNT(id)::int as total_entregas,
-        COALESCE(SUM(litros_entregados), 0)::numeric as total_litros,
-        COUNT(DISTINCT beneficiario_id)::int as familias_atendidas
-      FROM entregas_agua
-      WHERE programacion_id = $1
-        AND EXTRACT(YEAR FROM fecha_hora) = $2
-      GROUP BY EXTRACT(MONTH FROM fecha_hora)
-      ORDER BY mes_num ASC
-    `, [id, anio]);
-
-    // Resumen acumulado
+    // 1. Entregas acumuladas globales de la programación
     const totalProgRes = await query(`
       SELECT 
         COUNT(id)::int as total_entregas,
@@ -626,28 +598,188 @@ export const getAvancesCalendario = async (req: Request, res: Response) => {
       WHERE programacion_id = $1
     `, [id]);
 
-    const totalLitros = parseFloat(totalProgRes.rows[0]?.total_litros || '0');
-    const metaLitros = parseFloat(prog.litros_programados || '15000');
-    const pctAvance = metaLitros > 0 ? Math.min(100, Math.round((totalLitros / metaLitros) * 100)) : 0;
+    const totalLitrosEntregados = parseFloat(totalProgRes.rows[0]?.total_litros || '0');
+    const metaLitrosTotal = parseFloat(prog.litros_programados || '3666750');
+    const pctAvanceGlobal = metaLitrosTotal > 0 ? Math.min(100, Math.round((totalLitrosEntregados / metaLitrosTotal) * 100)) : 0;
+
+    // 2. Entregas del mes seleccionado agrupadas por fecha (YYYY-MM-DD)
+    const entregasPorDiaRes = await query(`
+      SELECT 
+        TO_CHAR(fecha_hora, 'YYYY-MM-DD') as fecha_str,
+        COALESCE(SUM(litros_entregados), 0)::numeric as litros,
+        COUNT(DISTINCT beneficiario_id)::int as familias,
+        COUNT(id)::int as entregas
+      FROM entregas_agua
+      WHERE programacion_id = $1
+        AND EXTRACT(YEAR FROM fecha_hora) = $2
+        AND EXTRACT(MONTH FROM fecha_hora) = $3
+      GROUP BY TO_CHAR(fecha_hora, 'YYYY-MM-DD')
+    `, [id, anio, mes]);
+
+    const mapaDiasEntregas = new Map<string, { litros: number; familias: number; entregas: number }>();
+    let totalLitrosMes = 0;
+    let totalFamiliasMesSet = new Set<number>();
+
+    entregasPorDiaRes.rows.forEach(r => {
+      mapaDiasEntregas.set(r.fecha_str, {
+        litros: parseFloat(r.litros) || 0,
+        familias: parseInt(r.familias, 10) || 0,
+        entregas: parseInt(r.entregas, 10) || 0
+      });
+      totalLitrosMes += parseFloat(r.litros) || 0;
+    });
+
+    // 3. Generar la matriz completa de días del mes (1 al fin de mes)
+    const diasEnElMes = new Date(anio, mes, 0).getDate();
+    const hoyStr = new Date().toISOString().slice(0, 10);
+    const diasAtencionConfig = (prog.dias_semana || 'Lunes, Martes, Miércoles, Jueves, Viernes, Sábado').toLowerCase();
+
+    const diasNombresSemana = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+    const diasCalendarioMes: any[] = [];
+    let diasConRepartoCount = 0;
+
+    for (let d = 1; d <= diasEnElMes; d++) {
+      const fechaObj = new Date(anio, mes - 1, d);
+      const diaSemNum = fechaObj.getDay(); // 0 = Dom, 1 = Lun ... 6 = Sab
+      const diaNom = diasNombresSemana[diaSemNum];
+      const fechaStr = `${anio}-${String(mes).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const dataEntrega = mapaDiasEntregas.get(fechaStr);
+
+      const hasReparto = dataEntrega && dataEntrega.litros > 0;
+      if (hasReparto) diasConRepartoCount++;
+
+      // Determinar si es día de atención según la pauta
+      const esDiaAtencion = diasAtencionConfig.includes(diaNom.toLowerCase()) || diasAtencionConfig.includes('lunes a domingo') || diasAtencionConfig.includes('todos');
+
+      diasCalendarioMes.push({
+        fecha: fechaStr,
+        diaNumero: d,
+        diaSemana: diaNom,
+        esHoy: fechaStr === hoyStr,
+        esDiaAtencion: Boolean(esDiaAtencion),
+        litrosEntregados: dataEntrega ? dataEntrega.litros : 0,
+        familiasAtendidas: dataEntrega ? dataEntrega.familias : 0,
+        entregasCount: dataEntrega ? dataEntrega.entregas : 0
+      });
+    }
+
+    // Cuota mensual aproximada (si es anual, dividir la meta en los meses programados)
+    const cuotaMesLitros = prog.es_anual ? Math.round(metaLitrosTotal / 5) : metaLitrosTotal;
+    const pctAvanceMes = cuotaMesLitros > 0 ? Math.min(100, Math.round((totalLitrosMes / cuotaMesLitros) * 100)) : 0;
+
+    // 4. Resumen de la semana en curso (Lunes a Domingo)
+    const hoy = new Date();
+    const diaHoy = hoy.getDay();
+    const diffToMonday = (diaHoy + 6) % 7;
+    const lunesEstaSemana = new Date(hoy);
+    lunesEstaSemana.setDate(hoy.getDate() - diffToMonday);
+    const domingoEstaSemana = new Date(lunesEstaSemana);
+    domingoEstaSemana.setDate(lunesEstaSemana.getDate() + 6);
+
+    const semRes = await query(`
+      SELECT 
+        COALESCE(SUM(litros_entregados), 0)::numeric as litros_semana,
+        COUNT(DISTINCT beneficiario_id)::int as familias_semana
+      FROM entregas_agua
+      WHERE programacion_id = $1
+        AND fecha_hora >= $2 AND fecha_hora <= $3
+    `, [id, `${lunesEstaSemana.toISOString().slice(0, 10)} 00:00:00`, `${domingoEstaSemana.toISOString().slice(0, 10)} 23:59:59`]);
+
+    const inicioSemStr = lunesEstaSemana.toLocaleDateString('es-PE', { day: '2-digit', month: 'short' });
+    const finSemStr = domingoEstaSemana.toLocaleDateString('es-PE', { day: '2-digit', month: 'short' });
+
+    // 5. Desglose de Semanas del Mes (Semana 1 a 5)
+    const desgloseSemanasMes: any[] = [];
+    let weekIndex = 1;
+    for (let i = 0; i < diasCalendarioMes.length; i += 7) {
+      const slice = diasCalendarioMes.slice(i, i + 7);
+      const ltsSem = slice.reduce((acc, curr) => acc + curr.litrosEntregados, 0);
+      const famSem = slice.reduce((acc, curr) => acc + curr.familiasAtendidas, 0);
+      const metaSemanalLts = Math.round(cuotaMesLitros / 4);
+      const pctSem = metaSemanalLts > 0 ? Math.min(100, Math.round((ltsSem / metaSemanalLts) * 100)) : 0;
+
+      desgloseSemanasMes.push({
+        numeroSemana: weekIndex,
+        etiqueta: `Semana ${weekIndex} (${slice[0]?.diaNumero} al ${slice[slice.length - 1]?.diaNumero} de ${nombresMeses[mes - 1]})`,
+        entregadoLitros: ltsSem,
+        familiasAtendidas: famSem,
+        metaLitros: metaSemanalLts,
+        pctAvance: pctSem
+      });
+      weekIndex++;
+    }
+
+    // 6. Desglose Anual Mes a Mes (Enero a Diciembre)
+    const mesesAnioRes = await query(`
+      SELECT 
+        EXTRACT(MONTH FROM fecha_hora)::int as mes_num,
+        COALESCE(SUM(litros_entregados), 0)::numeric as total_litros,
+        COUNT(DISTINCT beneficiario_id)::int as familias
+      FROM entregas_agua
+      WHERE programacion_id = $1
+        AND EXTRACT(YEAR FROM fecha_hora) = $2
+      GROUP BY EXTRACT(MONTH FROM fecha_hora)
+    `, [id, anio]);
+
+    const mapaMeses = new Map<number, number>();
+    mesesAnioRes.rows.forEach(r => mapaMeses.set(r.mes_num, parseFloat(r.total_litros) || 0));
+
+    const desgloseMeses = nombresMeses.map((mNom, idx) => {
+      const mNum = idx + 1;
+      const lts = mapaMeses.get(mNum) || 0;
+      const pct = cuotaMesLitros > 0 ? Math.min(100, Math.round((lts / cuotaMesLitros) * 100)) : 0;
+      return {
+        mes: mNum,
+        anio,
+        mesNombre: mNom,
+        entregadoLitros: lts,
+        pctAvance: pct
+      };
+    });
+
+    const payload = {
+      programacion: {
+        id: prog.id,
+        zona: prog.zona,
+        estado: prog.estado,
+        es_anual: prog.es_anual,
+        dias_semana: prog.dias_semana || 'Lunes a Sábado',
+        cisterna_placa: prog.cisterna_placa || 'CAT-849',
+        conductor_nombre: prog.conductor_nombre || 'Asignado',
+        ayudante_nombre: prog.ayudante_nombre || 'Asignado',
+        totalLitrosEntregados,
+        metaLitrosTotal,
+        pctAvanceGlobal
+      },
+      resumenMesActual: {
+        nombreMes: nombreMesActual,
+        mesNumero: mes,
+        anio,
+        entregadoMesLitros: totalLitrosMes,
+        familiasAtendidasMes: Array.from(totalFamiliasMesSet).length || mapaDiasEntregas.size,
+        diasAtencionMes: diasConRepartoCount,
+        pctAvanceMes
+      },
+      resumenSemanaActual: {
+        inicioSemana: inicioSemStr,
+        finSemana: finSemStr,
+        entregadoSemanaLitros: parseFloat(semRes.rows[0]?.litros_semana || '0'),
+        familiasSemana: parseInt(semRes.rows[0]?.familias_semana || '0', 10)
+      },
+      diasCalendarioMes,
+      desgloseSemanasMes,
+      desgloseMeses
+    };
 
     res.json({
-      programacion: prog,
-      mesSeleccionado: mes,
-      anioSeleccionado: anio,
-      diasSemana: diasSemanaRes.rows,
-      semanasMes: semanasRes.rows,
-      mesesAnio: mesesAnioRes.rows,
-      resumenAcumulado: {
-        totalLitros,
-        metaLitros,
-        pctAvance,
-        totalEntregas: parseInt(totalProgRes.rows[0]?.total_entregas || '0', 10),
-        familiasAtendidas: parseInt(totalProgRes.rows[0]?.familias_atendidas || '0', 10)
-      }
+      success: true,
+      data: payload,
+      // Retrocompatibilidad
+      ...payload
     });
   } catch (error: any) {
     console.error('Error obteniendo avances de calendario:', error);
-    res.status(500).json({ message: 'Error interno al obtener avances', error: error.message });
+    res.status(500).json({ success: false, message: 'Error interno al obtener avances', error: error.message });
   }
 };
 
