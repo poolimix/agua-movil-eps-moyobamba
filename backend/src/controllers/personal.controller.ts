@@ -173,8 +173,30 @@ export const updatePersonal = async (req: Request, res: Response) => {
 export const deletePersonal = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+
+    // 1. Obtener email y datos del personal a eliminar
+    const persRes = await query('SELECT id, email, dni FROM personal_operativo WHERE id = $1', [id]);
+    if (persRes.rows.length === 0) {
+      return res.status(404).json({ message: 'Personal no encontrado' });
+    }
+    const { email, dni } = persRes.rows[0];
+
+    // 2. Desvincular llaves foráneas para evitar error 23503
+    await query('UPDATE cisternas SET conductor_habitual_id = NULL WHERE conductor_habitual_id = $1', [id]);
+    await query('UPDATE programaciones SET conductor_id = NULL WHERE conductor_id = $1', [id]);
+    await query('UPDATE programaciones SET ayudante_id = NULL WHERE ayudante_id = $1', [id]);
+    await query('UPDATE control_calidad SET conductor_id = NULL WHERE conductor_id = $1', [id]);
+    await query('UPDATE entregas_agua SET conductor_id = NULL WHERE conductor_id = $1', [id]);
+
+    // 3. Eliminar de personal_operativo
     await query('DELETE FROM personal_operativo WHERE id = $1', [id]);
-    res.json({ message: 'Personal eliminado correctamente' });
+
+    // 4. Si tenía cuenta de usuario vinculada, eliminarla también de usuarios para que no se re-sincronice
+    if (email) {
+      await query('DELETE FROM usuarios WHERE LOWER(TRIM(email)) = LOWER(TRIM($1))', [email]);
+    }
+
+    res.json({ message: `Personal ${dni || ''} eliminado correctamente.` });
   } catch (error: any) {
     console.error('Error deleting personal:', error);
     res.status(500).json({ message: 'Error al eliminar personal', error: error.message });

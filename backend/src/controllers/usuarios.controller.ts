@@ -195,10 +195,21 @@ export const deleteUsuario = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Usuario no encontrado' });
     }
 
-    // Desactivar o eliminar
+    const emailToDel = check.rows[0].email;
+    // Desvincular llaves foráneas en personal_operativo si existía
+    const persRes = await query('SELECT id FROM personal_operativo WHERE LOWER(TRIM(email)) = LOWER(TRIM($1))', [emailToDel]);
+    if (persRes.rows.length > 0) {
+      const pId = persRes.rows[0].id;
+      await query('UPDATE cisternas SET conductor_habitual_id = NULL WHERE conductor_habitual_id = $1', [pId]);
+      await query('UPDATE programaciones SET conductor_id = NULL WHERE conductor_id = $1', [pId]);
+      await query('UPDATE programaciones SET ayudante_id = NULL WHERE ayudante_id = $1', [pId]);
+      await query('DELETE FROM personal_operativo WHERE id = $1', [pId]);
+    }
+
+    // Desactivar o eliminar de usuarios
     await query('DELETE FROM usuarios WHERE id = $1', [id]);
 
-    res.json({ message: `Usuario ${check.rows[0].email} eliminado del sistema correctamente.` });
+    res.json({ message: `Usuario ${emailToDel} eliminado del sistema correctamente.` });
   } catch (error: any) {
     console.error('Error al eliminar usuario:', error);
     res.status(500).json({ message: 'Error al eliminar usuario', error: error.message });
