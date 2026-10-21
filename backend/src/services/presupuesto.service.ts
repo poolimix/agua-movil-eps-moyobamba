@@ -113,11 +113,15 @@ export const ensurePresupuestoSchema = async () => {
       await query(`
         INSERT INTO presupuesto_partidas (anio, codigo_partida, partida, unidad, cantidad, costo_unitario, programado, devengado, girado, estado)
         VALUES 
-          (2026, '2.3.2.7.11', 'Alquiler de camión cisterna y equipos de bombeo', 'meses', 4, 54882.75, 219531.02, 16000.00, 16000.00, 'EN_EJECUCION'),
-          (2026, '2.3.2.1.2', 'Gastos de personal operativo (choferes y ayudantes)', 'meses', 4, 12000.00, 48000.00, 0.00, 0.00, 'EN_EJECUCION'),
-          (2026, '2.3.1.3.1', 'Combustible y lubricantes (Diesel B5 para cisternas)', 'galones', 2500, 18.88, 47195.80, 0.00, 0.00, 'PROGRAMADO'),
-          (2026, '2.3.1.99.1', 'Repuestos, accesorios e insumos químicos de cloración', 'caja', 3, 1400.00, 4200.00, 4200.00, 4200.00, 'COMPLETADO'),
-          (2026, '2.3.2.6.3', 'Seguro contra accidentes, SOAT y pólizas de cisterna', 'póliza', 2, 2500.00, 5000.00, 0.00, 0.00, 'PROGRAMADO')
+          (2026, '2.3.2.7.11', 'Alquiler de camión cisterna y equipos :', 'M3', 3665.40, 60.00, 219924.00, 0.00, 0.00, 'EN_EJECUCION'),
+          (2026, '2.3.2.1.2', 'Gastos de personal:', 'glb', 1.00, 46000.00, 46000.00, 16000.00, 16000.00, 'EN_EJECUCION'),
+          (2026, '2.3.1.3.1', 'Combustible y lubricante', 'mensual', 0.00, 0.00, 0.00, 0.00, 0.00, 'NO_APLICA'),
+          (2026, '2.3.1.99.1', 'Mantenimiento y reparación de Maq. y Equipo', 'glb', 0.00, 0.00, 0.00, 0.00, 0.00, 'NO_APLICA'),
+          (2026, '2.3.1.99.2', 'Repuestos, accesorios e insumos químicos', 'caja', 3.00, 1400.00, 4200.00, 4200.00, 4200.00, 'COMPLETADO'),
+          (2026, '2.3.2.6.3', 'Gastos administrativos', 'glb', 1.00, 42485.62, 42485.62, 0.00, 0.00, 'PROGRAMADO'),
+          (2026, '2.3.2.2.4', 'Equipos de protección personal (EPP)', 'glb', 1.00, 3180.00, 3180.00, 0.00, 0.00, 'PROGRAMADO'),
+          (2026, '2.3.2.9.1', 'Costo de producción de agua', 'm3', 3665.40, 2.22, 8137.19, 0.00, 0.00, 'EN_EJECUCION'),
+          (2026, '2.3.2.9.9', 'Saldo presupuestal no ejecutado por reprogramación temporal ', 'glb', 1.00, 262985.93, 262985.93, 0.00, 0.00, 'REPROGRAMADO')
         ON CONFLICT DO NOTHING;
       `);
     }
@@ -209,10 +213,12 @@ export const getEjecucionPresupuestal = async (anio: number = 2026): Promise<Res
     };
   });
 
-  totalProgramado = Number(totalProgramado.toFixed(2));
+  const totalPartidasProg = partidas.reduce((acc, p) => acc + p.programado, 0);
+  const totalProgFinal = Math.max(totalProgramado, Number(totalPartidasProg.toFixed(2)));
+  totalProgramado = totalProgFinal;
   totalComprometido = Number(totalComprometido.toFixed(2));
   totalGirado = Number(totalGirado.toFixed(2));
-  const saldoPorEjecutar = Math.max(0, Number((totalProgramado - totalComprometido).toFixed(2)));
+  const saldoPorEjecutar = Math.max(0, Number((totalProgramado - totalGirado).toFixed(2)));
   const pctComprometido = totalProgramado > 0 ? Number(((totalComprometido / totalProgramado) * 100).toFixed(1)) : 0;
   const pctGirado = totalProgramado > 0 ? Number(((totalGirado / totalProgramado) * 100).toFixed(1)) : 0;
 

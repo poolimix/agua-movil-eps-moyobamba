@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { query } from '../db';
 import { getConfiguracion } from '../services/configuracion.service';
+import { getEjecucionPresupuestal } from '../services/presupuesto.service';
 
 export const getStats = async (req: Request, res: Response) => {
   try {
@@ -486,17 +487,21 @@ export const getStats = async (req: Request, res: Response) => {
     const poblacionBeneficiadaAtendida = parseInt(entregasRes.rows[0]?.poblacion_beneficiada, 10) || (familiasAtendidas * 4);
     const totalPersonasPadron = parseInt(beneficiariosRes.rows[0]?.total_personas, 10) || 0;
 
-    const metaConvenioTotalM3 = 15000; // 15,000 m³ meta global convenio PNSU
+    // Meta oficial Convenio Meta 228 / PNSU: 3,666.75 m³ (conforme a Matriz Quincenal)
+    const metaConvenioTotalM3 = 3666.75;
     const totalM3 = Number((totalLitros / 1000).toFixed(2));
     const saldoConvenioM3 = Math.max(0, Number((metaConvenioTotalM3 - totalM3).toFixed(2)));
     const avanceGlobalPct = Math.min(100, Math.round((totalM3 / metaConvenioTotalM3) * 100));
 
-    // Tarifa operativa de referencia SUNASS / PNSU: S/. 39.13 por m³ distribuido en camión cisterna
+    // Tarifa operativa de referencia SUNASS / PNSU: S/ 39.13 por m³ distribuido en camión cisterna
     const tarifaRefM3 = 39.13;
     const montoTotalSoles = Number((totalM3 * tarifaRefM3).toFixed(2));
     const volPromedioFamilia = familiasAtendidas > 0 ? Math.round(totalLitros / familiasAtendidas) : 0;
     const volPromedioPersona = poblacionBeneficiadaAtendida > 0 ? Math.round(totalLitros / poblacionBeneficiadaAtendida) : 0;
     const montoPorFamiliaSoles = familiasAtendidas > 0 ? Number((montoTotalSoles / familiasAtendidas).toFixed(2)) : 0;
+
+    // Presupuesto oficial dinámico desde la base de datos (Meta 228)
+    const ejecucionPresupuesto = await getEjecucionPresupuestal(2026);
 
     res.json({
       timestamp: new Date().toISOString(),
@@ -541,7 +546,7 @@ export const getStats = async (req: Request, res: Response) => {
           total_soles: montoTotalSoles,
           tarifa_m3: tarifaRefM3,
           por_familia_soles: montoPorFamiliaSoles,
-          formato: `S/. ${montoTotalSoles.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+          formato: `S/ ${montoTotalSoles.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
         },
         poblacion_beneficiada: {
           personas_atendidas: poblacionBeneficiadaAtendida,
@@ -563,42 +568,24 @@ export const getStats = async (req: Request, res: Response) => {
         total_entregado_m3: totalM3,
         saldo_m3: saldoConvenioM3,
         avance_pct: avanceGlobalPct,
-        presupuesto_total_soles: 323926.82,
-        presupuesto_programado_soles: 323926.82,
-        presupuesto_comprometido_soles: 87466.64,
-        presupuesto_girado_soles: 20200.00,
-        presupuesto_saldo_soles: 236460.18,
+        presupuesto_total_soles: ejecucionPresupuesto.total_programado,
+        presupuesto_programado_soles: ejecucionPresupuesto.total_programado,
+        presupuesto_comprometido_soles: ejecucionPresupuesto.total_comprometido,
+        presupuesto_girado_soles: ejecucionPresupuesto.total_girado,
+        presupuesto_saldo_soles: ejecucionPresupuesto.saldo_por_ejecutar,
         dotacion_diaria_litros: config.dotacion_diaria_litros,
         dias_entrega_semanal: config.dias_entrega_semanal,
         dotacion_semanal_por_habitante: config.dotacion_semanal_por_habitante
       },
       ejecucion_presupuestal: {
-        total_programado: 323926.82,
-        total_comprometido: 87466.64,
-        total_girado: 20200.00,
-        saldo_por_ejecutar: 236460.18,
-        pct_comprometido: 27.0,
-        pct_girado: 6.2,
-        meses: [
-          { mes: 'MARZO', programado: 0.00, comprometido: 0.00, girado: 0.00 },
-          { mes: 'ABRIL', programado: 0.00, comprometido: 0.00, girado: 0.00 },
-          { mes: 'MAYO', programado: 4000.00, comprometido: 4000.00, girado: 0.00 },
-          { mes: 'JUNIO', programado: 4000.00, comprometido: 4000.00, girado: 4000.00 },
-          { mes: 'JULIO', programado: 4000.00, comprometido: 4000.00, girado: 4000.00 },
-          { mes: 'AGOSTO', programado: 14051.78, comprometido: 9005.75, girado: 4000.00 },
-          { mes: 'SETIEMBRE', programado: 102791.68, comprometido: 66460.89, girado: 8200.00 },
-          { mes: 'OCTUBRE', programado: 65645.84, comprometido: 0.00, girado: 0.00 },
-          { mes: 'NOVIEMBRE', programado: 63791.68, comprometido: 0.00, girado: 0.00 },
-          { mes: 'DICIEMBRE', programado: 65645.84, comprometido: 0.00, girado: 0.00 },
-        ],
-        partidas: [
-          { partida: 'Alquiler de camión cisterna y equipos', programado: 219531.02, unidad: 'meses', cantidad: 4, devengado: 16000.00 },
-          { partida: 'Gastos de personal (chofer, ayudante, supervisor)', programado: 48000.00, unidad: 'meses', cantidad: 4, devengado: 0.00 },
-          { partida: 'Repuestos, accesorios e insumos químicos', programado: 4200.00, unidad: 'caja', cantidad: 3, devengado: 4200.00 },
-          { partida: 'Gastos administrativos y seguros', programado: 40495.62, unidad: 'glb', cantidad: 1, devengado: 0.00 },
-          { partida: 'Equipos de protección personal (EPP)', programado: 2743.00, unidad: 'glb', cantidad: 1, devengado: 0.00 },
-          { partida: 'Costo de producción de agua (PTAP San Mateo)', programado: 8957.19, unidad: 'm³', cantidad: 2.22, devengado: 0.00 },
-        ]
+        total_programado: ejecucionPresupuesto.total_programado,
+        total_comprometido: ejecucionPresupuesto.total_comprometido,
+        total_girado: ejecucionPresupuesto.total_girado,
+        saldo_por_ejecutar: ejecucionPresupuesto.saldo_por_ejecutar,
+        pct_comprometido: ejecucionPresupuesto.pct_comprometido,
+        pct_girado: ejecucionPresupuesto.pct_girado,
+        meses: ejecucionPresupuesto.meses,
+        partidas: ejecucionPresupuesto.partidas
       },
       programaciones_avance: programacionesAvance,
       tendencia: tendenciaData,
