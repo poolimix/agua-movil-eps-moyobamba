@@ -185,11 +185,15 @@ export const bootstrapSchema = async () => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
 
+      -- Purgar personal demo si existiese
+      DELETE FROM personal_operativo WHERE dni IN ('45892134', '72109845', '41238976');
+      DELETE FROM usuarios WHERE email IN ('carlos.mendoza@gmail.com', 'manuel.rojas@gmail.com', 'segundo.vasquez@gmail.com');
+
+      -- Asegurar personal operativo oficial
       INSERT INTO personal_operativo (dni, nombres, apellidos, tipo_personal, licencia_conducir, categoria_licencia, telefono, email, estado)
       VALUES 
-        ('45892134', 'Carlos', 'Mendoza Ríos', 'CONDUCTOR', 'Q45892134', 'A-IIIc', '942123456', 'carlos.mendoza@gmail.com', 'ACTIVO'),
-        ('72109845', 'Manuel', 'Rojas Tapia', 'CONDUCTOR', 'Q72109845', 'A-IIIb', '942789123', 'manuel.rojas@gmail.com', 'ACTIVO'),
-        ('41238976', 'Segundo', 'Vásquez Gómez', 'AYUDANTE', NULL, NULL, '942456789', 'segundo.vasquez@gmail.com', 'ACTIVO')
+        ('43654016', 'CARLOS IVAN', 'RUIZ CHUPILLON', 'CONDUCTOR', 'Q43654016', 'A-IIIc', NULL, 'conductor@gmail.com', 'ACTIVO'),
+        ('45892100', 'CARLOS MANUEL', 'DEL AGUILA RIVA', 'GESTOR_ENTREGA', NULL, NULL, NULL, 'carlosmanueldelaguilariva@gmail.com', 'ACTIVO')
       ON CONFLICT (dni) DO NOTHING;
 
       CREATE TABLE IF NOT EXISTS cisternas (
