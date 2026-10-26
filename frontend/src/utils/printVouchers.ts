@@ -51,11 +51,15 @@ export async function imprimirValeIndividual(v: ValePrintData, config?: ConfigPr
   const nombre = v.beneficiario_nombre || v.nombres_apellidos || 'Beneficiario Empadronado';
   const sector = v.sector || v.sector_aahh || 'Moyobamba';
   const direccion = v.calle_direccion || v.direccion || '-';
-  const miembros = Number(v.num_miembros) || 1;
-  const litros = Number(v.litros_sugeridos) || (miembros * 350);
+  const dotDiaria = Number(config?.dotacion_diaria_litros) || 50;
+  const dias = Number(config?.dias_entrega_semanal) || 7;
+  const dotPorPersona = dotDiaria * dias;
+
+  const rawMiembros = Number(v.num_miembros) || 0;
+  const rawLitros = Number(v.litros_sugeridos) || 0;
+  const miembros = rawMiembros > 0 ? rawMiembros : (rawLitros > 0 ? Math.max(1, Math.round(rawLitros / dotPorPersona)) : 1);
+  const litros = rawLitros > 0 ? rawLitros : (miembros * dotPorPersona);
   const m3 = (litros / 1000).toFixed(2);
-  const dotDiaria = config?.dotacion_diaria_litros || 50;
-  const dias = config?.dias_entrega_semanal || 7;
   const qrPayload = `${v.codigo_unico}|${dni}|${litros}L`;
   const qrUrl = await generateQr(qrPayload);
 
@@ -329,14 +333,18 @@ export async function imprimirValesLote(
 ) {
   if (!vales || vales.length === 0) return;
 
-  const dotDiaria = config?.dotacion_diaria_litros || 50;
-  const dias = config?.dias_entrega_semanal || 7;
+  const dotDiaria = Number(config?.dotacion_diaria_litros) || 50;
+  const dias = Number(config?.dias_entrega_semanal) || 7;
+  const dotPorPersona = dotDiaria * dias;
 
   // Generar QRs para todos en paralelo
   const qrs = await Promise.all(
     vales.map((v) => {
       const dni = v.beneficiario_dni || v.dni || '';
-      const litros = Number(v.litros_sugeridos) || 350;
+      const rawMiembros = Number(v.num_miembros) || 0;
+      const rawLitros = Number(v.litros_sugeridos) || 0;
+      const miembros = rawMiembros > 0 ? rawMiembros : (rawLitros > 0 ? Math.max(1, Math.round(rawLitros / dotPorPersona)) : 1);
+      const litros = rawLitros > 0 ? rawLitros : (miembros * dotPorPersona);
       const payload = `${v.codigo_unico}|${dni}|${litros}L`;
       return generateQr(payload);
     })
@@ -350,8 +358,10 @@ export async function imprimirValesLote(
     const nombre = v.beneficiario_nombre || v.nombres_apellidos || 'Beneficiario';
     const sector = v.sector || v.sector_aahh || 'Moyobamba';
     const direccion = v.calle_direccion || v.direccion || '-';
-    const miembros = Number(v.num_miembros) || 1;
-    const litros = Number(v.litros_sugeridos) || (miembros * 350);
+    const rawMiembros = Number(v.num_miembros) || 0;
+    const rawLitros = Number(v.litros_sugeridos) || 0;
+    const miembros = rawMiembros > 0 ? rawMiembros : (rawLitros > 0 ? Math.max(1, Math.round(rawLitros / dotPorPersona)) : 1);
+    const litros = rawLitros > 0 ? rawLitros : (miembros * dotPorPersona);
     const m3 = (litros / 1000).toFixed(2);
     const qrUrl = qrs[i];
 

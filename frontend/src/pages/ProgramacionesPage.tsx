@@ -89,6 +89,7 @@ interface Vale {
   direccion: string;
   telefono: string | null;
   email: string | null;
+  num_miembros?: number | string;
 }
 
 const formatDiasReparto = (diasStr?: string) => {
@@ -1572,7 +1573,7 @@ export default function ProgramacionesPage() {
                 <button
                   type="button"
                   className="btn-secondary"
-                  onClick={() => imprimirValesLote(filteredVales, undefined, `Vales de Consumo - Programación N° ${selectedProgForVales?.id} (${selectedProgForVales?.zona})`)}
+                  onClick={() => imprimirValesLote(filteredVales, { dotacion_diaria_litros: 50, dias_entrega_semanal: 7 }, `Vales de Consumo - Programación N° ${selectedProgForVales?.id} (${selectedProgForVales?.zona})`)}
                   disabled={filteredVales.length === 0}
                   style={{
                     display: 'inline-flex',
@@ -1645,7 +1646,9 @@ export default function ProgramacionesPage() {
                         </td>
                         <td>
                           <strong>{v.nombres_apellidos}</strong>
-                          <div style={{ fontSize: 11, color: '#64748b' }}>DNI: {v.dni}</div>
+                          <div style={{ fontSize: 11, color: '#64748b' }}>
+                            DNI: {v.dni} • 👥 {v.num_miembros || 1} hab.
+                          </div>
                         </td>
                         <td>{v.telefono || '-'}</td>
                         <td style={{ fontSize: 11.5 }}>
@@ -1656,8 +1659,8 @@ export default function ProgramacionesPage() {
                           )}
                         </td>
                         <td>
-                          <strong style={{ color: '#0369a1' }}>{v.litros_sugeridos} Lts</strong>
-                          <span style={{ fontSize: 10, color: '#64748b', display: 'block' }}>Semanal (7d)</span>
+                          <strong style={{ color: '#0369a1' }}>{Number(v.litros_sugeridos).toLocaleString('es-PE')} Lts</strong>
+                          <span style={{ fontSize: 10, color: '#64748b', display: 'block' }}>{v.num_miembros || 1} hab. × 350 L</span>
                         </td>
                         <td style={{ textAlign: 'center' }}>
                           {v.whatsapp_enviado ? (
@@ -1700,10 +1703,13 @@ export default function ProgramacionesPage() {
                                 beneficiario_dni: v.dni,
                                 beneficiario_nombre: v.nombres_apellidos,
                                 telefono: v.telefono,
+                                sector: v.sector_aahh,
+                                direccion: v.direccion,
+                                num_miembros: v.num_miembros,
                                 litros_sugeridos: v.litros_sugeridos,
                                 programacion_fecha: selectedProgForVales?.fecha,
                                 programacion_zona: selectedProgForVales?.zona
-                              })}
+                              }, { dotacion_diaria_litros: 50, dias_entrega_semanal: 7 })}
                               title="Imprimir vale individual"
                             >
                               🖨️

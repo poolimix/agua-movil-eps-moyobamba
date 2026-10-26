@@ -375,7 +375,10 @@ export const getValesProgramacion = async (req: Request, res: Response) => {
         b.dni,
         b.nombres_apellidos,
         COALESCE(b.sector_aahh, b.sector, '') as sector_aahh,
+        COALESCE(b.sector_aahh, b.sector, '') as sector,
         COALESCE(b.calle_direccion, b.direccion, '') as direccion,
+        COALESCE(b.calle_direccion, b.direccion, '') as calle_direccion,
+        COALESCE(b.num_miembros, 1) as num_miembros,
         b.telefono,
         b.email
       FROM vales_entrega v
@@ -520,6 +523,10 @@ export const despacharCorreoIndividual = async (req: Request, res: Response) => 
         b.dni,
         b.nombres_apellidos,
         COALESCE(b.sector_aahh, b.sector, '') as sector_aahh,
+        COALESCE(b.sector_aahh, b.sector, '') as sector,
+        COALESCE(b.calle_direccion, b.direccion, '') as direccion,
+        COALESCE(b.calle_direccion, b.direccion, '') as calle_direccion,
+        COALESCE(b.num_miembros, 1) as num_miembros,
         b.telefono,
         b.email,
         p.fecha as programacion_fecha
@@ -605,6 +612,10 @@ export const getAllVales = async (req: Request, res: Response) => {
         b.dni as beneficiario_dni,
         b.nombres_apellidos as beneficiario_nombre,
         COALESCE(b.sector_aahh, b.sector, '') as sector,
+        COALESCE(b.sector_aahh, b.sector, '') as sector_aahh,
+        COALESCE(b.calle_direccion, b.direccion, '') as direccion,
+        COALESCE(b.calle_direccion, b.direccion, '') as calle_direccion,
+        COALESCE(b.num_miembros, 1) as num_miembros,
         b.telefono as beneficiario_telefono,
         p.fecha as programacion_fecha,
         p.zona as programacion_zona
@@ -688,7 +699,8 @@ export const recalcularValesSemana = async (_req: Request, res: Response) => {
     const result = await query(`
       UPDATE vales_entrega v
       SET litros_sugeridos = (COALESCE(b.num_miembros, 1) * ${dotacionSemanal}),
-          qr_data = v.codigo_unico || '|' || b.dni || '|' || (COALESCE(b.num_miembros, 1) * ${dotacionSemanal}) || 'L|' || v.programacion_id
+          litros_asignados = (COALESCE(b.num_miembros, 1) * ${dotacionSemanal}),
+          qr_data = v.codigo_unico || '|' || b.dni || '|' || (COALESCE(b.num_miembros, 1) * ${dotacionSemanal}) || 'L|' || COALESCE(v.programacion_id::text, '')
       FROM beneficiarios b
       WHERE v.beneficiario_id = b.id
       RETURNING v.id, v.codigo_unico, v.litros_sugeridos;

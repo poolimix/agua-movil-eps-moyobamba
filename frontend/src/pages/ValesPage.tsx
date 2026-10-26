@@ -19,6 +19,9 @@ interface Vale {
   programacion_zona?: string;
   litros_sugeridos: number;
   estado: string;
+  num_miembros?: number | string;
+  direccion?: string;
+  calle_direccion?: string;
   whatsapp_enviado?: boolean;
   sms_enviado?: boolean;
   correo_enviado?: boolean;
@@ -167,6 +170,8 @@ export default function ValesPage() {
       beneficiario_dni: v.beneficiario_dni,
       beneficiario_nombre: v.beneficiario_nombre,
       sector: v.sector,
+      direccion: v.direccion || v.calle_direccion,
+      num_miembros: v.num_miembros,
       litros_sugeridos: v.litros_sugeridos,
       estado: v.estado,
       programacion_fecha: v.programacion_fecha,
@@ -334,14 +339,16 @@ export default function ValesPage() {
                       </td>
                       <td style={{ padding: '12px 16px' }}>
                         <div style={{ fontWeight: 600 }}>{v.beneficiario_nombre || 'Beneficiario no asignado'}</div>
-                        <div style={{ fontSize: 11, color: '#64748b' }}>DNI: {v.beneficiario_dni || 'S/N'}</div>
+                        <div style={{ fontSize: 11, color: '#64748b' }}>
+                          DNI: {v.beneficiario_dni || 'S/N'} • 👥 {v.num_miembros || 1} hab.
+                        </div>
                       </td>
                       <td style={{ padding: '12px 16px', color: '#475569' }}>
                         {v.sector || 'Moyobamba'}
                       </td>
                       <td style={{ padding: '12px 16px' }}>
-                        <strong style={{ color: '#0284c7' }}>{v.litros_sugeridos} Lts</strong>
-                        <div style={{ fontSize: 10.5, color: '#64748b' }}>Vale 7 días</div>
+                        <strong style={{ color: '#0284c7' }}>{Number(v.litros_sugeridos).toLocaleString('es-PE')} Lts</strong>
+                        <div style={{ fontSize: 10.5, color: '#64748b' }}>{v.num_miembros || 1} hab. × 350 L/sem</div>
                       </td>
                       <td style={{ padding: '12px 16px', fontSize: 12, color: '#64748b' }}>
                         {v.programacion_fecha ? new Date(v.programacion_fecha).toLocaleDateString('es-PE') : 'Programación Genérica'}
