@@ -31,6 +31,42 @@ const DIAS_ENTREGA_SEMANAL = 7; // Ciclo de entrega periódica semanal (7 días)
 const DOTACION_SEMANAL_POR_HABITANTE = DOTACION_POR_HABITANTE * DIAS_ENTREGA_SEMANAL; // 350 Litros semanales por habitante
 const PROGRAMACION_ACTUAL_ID = 1;
 
+// Generador de los 7 días del ciclo de reparto semanal EPS Moyobamba
+export const getDiasCicloSemanal = () => {
+  const hoy = new Date();
+  const dayOfWeek = hoy.getDay(); // 0 = Domingo, 1 = Lunes, ..., 6 = Sábado
+  const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+
+  const lunes = new Date(hoy);
+  lunes.setDate(hoy.getDate() + diffToMonday);
+  lunes.setHours(0, 0, 0, 0);
+
+  const nombres = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+  const cortos = ['LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB', 'DOM'];
+
+  return [0, 1, 2, 3, 4, 5, 6].map((i) => {
+    const d = new Date(lunes);
+    d.setDate(lunes.getDate() + i);
+    const esHoy = d.toDateString() === hoy.toDateString();
+    const diaNum = d.getDate();
+    const mesNum = d.getMonth() + 1;
+    const mesCorto = d.toLocaleString('es-PE', { month: 'short' }).replace('.', '');
+    const fechaIso = d.toISOString().split('T')[0];
+    const fechaCorta = `${diaNum} ${mesCorto}`;
+
+    return {
+      id: i,
+      codigo: cortos[i],
+      nombre: nombres[i],
+      diaNum,
+      fechaIso,
+      fechaCorta,
+      fechaDisplay: `${nombres[i]} ${diaNum}/${mesNum < 10 ? '0' + mesNum : mesNum}`,
+      esHoy,
+    };
+  });
+};
+
 interface RepartoScreenProps {
   user?: any;
   onLogout?: () => void;
@@ -43,6 +79,14 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
   const [litrosEntregar, setLitrosEntregar] = useState('350');
   const [cuotaTotal, setCuotaTotal] = useState(350);
   const [entregadoPrevio, setEntregadoPrevio] = useState(0);
+
+  // Selector de Día de Reparto (7 días del ciclo semanal, por defecto día y fecha actual)
+  const [diasSemana, setDiasSemana] = useState(getDiasCicloSemanal);
+  const [diaSeleccionado, setDiaSeleccionado] = useState<any>(() => {
+    const list = getDiasCicloSemanal();
+    return list.find((d) => d.esHoy) || list[0];
+  });
+  const [diaPickerModalVisible, setDiaPickerModalVisible] = useState(false);
   const [saldoPendiente, setSaldoPendiente] = useState(350);
   const [tieneEntregaPrevia, setTieneEntregaPrevia] = useState(false);
   const [hasSignature, setHasSignature] = useState(false);
@@ -269,6 +313,8 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
     setLitrosEntregar(String(saldoResta > 0 ? saldoResta : cuotaFamiliar));
     setHasSignature(false);
     setPhotoUri(null);
+    const hoyDia = getDiasCicloSemanal().find((d) => d.esHoy) || getDiasCicloSemanal()[0];
+    setDiaSeleccionado(hoyDia);
     signatureRef.current?.clearSignature();
 
     setActiveTab('REPARTO');
@@ -424,11 +470,11 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
   const handleSearchDNI = async (searchQuery?: string) => {
     const raw = (searchQuery !== undefined ? searchQuery : dni).trim();
     if (!raw) {
-      Alert.alert('Atención', 'Ingrese Nombre, Apellido, DNI o Código de Vale para buscar.');
+      Alert.alert('Atención', 'Ingrese DNI, Código de Vale o Nombre del beneficiario para buscar.');
       return;
     }
 
-    // Extract parts if structured QR: "VALE-20260826-001|47891234|200L"
+    // Extraer partes si es QR estructurado: "VALE-20260826-001|47891234|200L"
     let codigoVale = '';
     let queryTerm = raw;
     let qrLitros = '';
@@ -446,25 +492,46 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
     try {
       const db = await getDatabase();
       let matches: any[] = [];
-      const termUpper = queryTerm.toUpperCase();
+      const termClean = queryTerm.trim();
+      const termUpper = termClean.toUpperCase();
+      const tokens = termClean.split(/\s+/).filter((t) => t.length > 0).map((t) => t.toUpperCase());
 
-      // 1. In-memory check against loaded beneficiariosSector
+      // 1. Verificación en memoria contra beneficiarios del sector cargados
       if (beneficiariosSector && beneficiariosSector.length > 0) {
         const memMatches = beneficiariosSector.filter((b: any) => {
-          const dniMatch = b.dni && b.dni.includes(queryTerm);
-          const nameMatch = (b.nombres || b.nombres_apellidos || '').toUpperCase().includes(termUpper);
-          const valeMatch = (b.vale_codigo || '').toUpperCase().includes(termUpper) || (codigoVale && (b.vale_codigo || '').toUpperCase().includes(codigoVale.toUpperCase()));
-          return dniMatch || nameMatch || valeMatch;
+          const bDni = String(b.dni || '');
+          const bName = String(b.nombres_apellidos || b.nombres || '').toUpperCase();
+          const bVale = String(b.vale_codigo || '').toUpperCase();
+
+          const dniMatch = bDni.includes(termClean);
+          const valeMatch =
+            bVale.includes(termUpper) ||
+            (codigoVale && bVale.includes(codigoVale.toUpperCase()));
+          const nameMatch =
+            tokens.length > 0 && tokens.every((token) => bName.includes(token));
+
+          return dniMatch || valeMatch || nameMatch;
         });
         if (memMatches.length > 0) {
           matches = memMatches;
         }
       }
 
-      // 2. Local SQLite search if no in-memory matches
+      // 2. Búsqueda local en SQLite con tokens de nombre, DNI y código de vale
       if (matches.length === 0) {
         try {
-          const likePattern = `%${queryTerm}%`;
+          const likePattern = `%${termClean}%`;
+          let whereSql = `(b.dni LIKE ? OR UPPER(COALESCE(b.nombres_apellidos, b.nombres, '')) LIKE ? OR (v.codigo_unico IS NOT NULL AND UPPER(v.codigo_unico) LIKE ?))`;
+          let sqlParams: any[] = [likePattern, `%${termUpper}%`, `%${termUpper}%`];
+
+          if (tokens.length > 1) {
+            const tokenClauses = tokens
+              .map(() => `UPPER(COALESCE(b.nombres_apellidos, b.nombres, '')) LIKE ?`)
+              .join(' AND ');
+            whereSql = `(${whereSql} OR (${tokenClauses}))`;
+            sqlParams = [...sqlParams, ...tokens.map((t) => `%${t}%`)];
+          }
+
           const sql = `
             SELECT b.*, 
                    COALESCE(b.nombres_apellidos, b.nombres, '') as nombres,
@@ -475,12 +542,10 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                    COALESCE(v.litros_sugeridos, 700) as vale_litros 
             FROM beneficiarios b 
             LEFT JOIN vales_consumo v ON v.beneficiario_id = b.id 
-            WHERE b.dni LIKE ? 
-               OR UPPER(b.nombres_apellidos) LIKE ? 
-               OR (v.codigo_unico IS NOT NULL AND UPPER(v.codigo_unico) LIKE ?)
+            WHERE ${whereSql}
             LIMIT 30
           `;
-          const localRows: any = await db.getAllAsync(sql, [likePattern, `%${termUpper}%`, `%${termUpper}%`]);
+          const localRows: any = await db.getAllAsync(sql, sqlParams);
           if (localRows && localRows.length > 0) {
             matches = localRows;
           }
@@ -489,14 +554,17 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
         }
       }
 
-      // 3. Online Backend API search
+      // 3. Búsqueda en API Backend online (multi-coincidencias)
       try {
-        const endpoint = `${BACKEND_URL}/beneficiarios/buscar/${encodeURIComponent(queryTerm)}`;
+        const endpoint = `${BACKEND_URL}/beneficiarios/buscar/${encodeURIComponent(queryTerm)}?multi=true`;
         const res = await fetch(endpoint);
         if (res.ok) {
           const onlineData = await res.json();
           if (onlineData) {
-            const apiList = onlineData.coincidencias || onlineData.data || (Array.isArray(onlineData) ? onlineData : (onlineData.id ? [onlineData] : []));
+            const apiList =
+              onlineData.data ||
+              onlineData.coincidencias ||
+              (Array.isArray(onlineData) ? onlineData : onlineData.id ? [onlineData] : []);
             if (Array.isArray(apiList) && apiList.length > 0) {
               const seenIds = new Set<string>();
               const merged: any[] = [];
@@ -509,7 +577,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
               }
               matches = merged;
             } else if (onlineData.id) {
-              if (!matches.some(m => m.id === onlineData.id)) {
+              if (!matches.some((m) => m.id === onlineData.id)) {
                 matches.unshift(onlineData);
               }
             }
@@ -522,14 +590,14 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
       if (matches.length === 0) {
         Alert.alert(
           'No encontrado',
-          `No se encontró ningún beneficiario con "${raw}".\n\nPuede buscar por:\n• Nombre o Apellido\n• Número de DNI (8 dígitos)\n• Código de Vale de Consumo`
+          `No se encontró ningún beneficiario con "${raw}".\n\nPuede buscar por:\n• Número de DNI (8 dígitos)\n• Código de Vale (ej. VALE-ANUAL...)\n• Nombres o Apellidos del titular`
         );
       } else if (matches.length === 1) {
         // Coincidencia única: seleccionar de inmediato
         const b = matches[0];
         seleccionarBeneficiarioFinal(b, codigoVale || b.vale_codigo, qrLitros);
       } else {
-        // Múltiples coincidencias (ej. búsqueda por nombre común o apellido): abrir selector
+        // Múltiples coincidencias (búsqueda por nombre o apellido común): abrir selector
         setCoincidenciasResultados(matches);
         setCoincidenciasModalVisible(true);
       }
@@ -672,6 +740,8 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
     setPhotoUri(null);
     setPhotoTimestamp('');
     setPhotoGpsCoords(null);
+    const hoyDia = getDiasCicloSemanal().find((d) => d.esHoy) || getDiasCicloSemanal()[0];
+    setDiaSeleccionado(hoyDia);
     signatureRef.current?.clearSignature();
   };
 
@@ -692,9 +762,16 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
     const nuevoTotalEntregado = entregadoPrevio + litrosNum;
     const saldoRestante = Math.max(0, cuota - nuevoTotalEntregado);
     const estadoEntrega = saldoRestante > 0 ? 'PARCIAL' : 'COMPLETA';
-    const obsEntrega = saldoRestante > 0 
-      ? `Entrega parcial de ${litrosNum} Lts. Quedan pendientes ${saldoRestante} Lts por entregar.`
-      : `Entrega completa del 100% (${cuota} Lts).`;
+
+    const infoDia = diaSeleccionado?.esHoy
+      ? `[Jornada: ${diaSeleccionado.nombre} (${diaSeleccionado.fechaCorta}) - Hoy]`
+      : `[Jornada Asignada: ${diaSeleccionado.nombre} (${diaSeleccionado.fechaCorta}) - Regularización/Día diferido]`;
+
+    const obsEntrega = `${infoDia} ${
+      saldoRestante > 0
+        ? `Entrega parcial de ${litrosNum} Lts. Quedan pendientes ${saldoRestante} Lts por entregar.`
+        : `Entrega completa del 100% (${cuota} Lts).`
+    }`;
 
     try {
       const db = await getDatabase();
@@ -721,10 +798,12 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
           altitud,
           fecha_ubicacion,
           fecha_captura,
+          dia_entrega,
+          fecha_asignada,
           sincronizado,
           sync_status,
           retry_count
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'PENDING', 0)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'PENDING', 0)`,
         [
           localId,
           beneficiario.id,
@@ -744,18 +823,24 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
           location?.coords.altitude || null,
           location ? new Date(location.timestamp).toISOString() : null,
           nowIso,
+          diaSeleccionado?.nombre || 'Hoy',
+          diaSeleccionado?.fechaIso || nowIso.split('T')[0],
         ]
       );
+
+      const diaMsg = diaSeleccionado?.esHoy
+        ? `Jornada: Hoy (${diaSeleccionado.nombre})`
+        : `Jornada Asignada: ${diaSeleccionado.nombre} (${diaSeleccionado.fechaCorta}) [Regularización]`;
 
       if (saldoRestante > 0) {
         Alert.alert(
           '🟡 Entrega Parcial Registrada',
-          `Se guardaron ${litrosNum} Lts para ${beneficiario.nombres_apellidos}.\n\n⚠️ QUEDAN PENDIENTES: ${saldoRestante} Lts por entregar en esta programación.\nEstado: Guardado en Celular (Offline-First)`
+          `Se guardaron ${litrosNum} Lts para ${beneficiario.nombres_apellidos}.\n${diaMsg}\n\n⚠️ QUEDAN PENDIENTES: ${saldoRestante} Lts por entregar en esta programación.\nEstado: Guardado en Celular (Offline-First)`
         );
       } else {
         Alert.alert(
           '✅ Entrega Completa Registrada',
-          `Se completó el abastecimiento de ${litrosNum} Lts para ${beneficiario.nombres_apellidos}.\nCuota 100% cubierta.\nEstado: Guardado en Celular (Offline-First)`
+          `Se completó el abastecimiento de ${litrosNum} Lts para ${beneficiario.nombres_apellidos}.\n${diaMsg}\nCuota 100% cubierta.\nEstado: Guardado en Celular (Offline-First)`
         );
       }
 
@@ -2087,17 +2172,17 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
         {/* SEPARADOR ELEGANTE */}
         <View style={styles.orDivider}>
           <View style={styles.orLine} />
-          <Text style={styles.orText}>O BÚSQUEDA POR DNI / CÓDIGO</Text>
+          <Text style={styles.orText}>O BÚSQUEDA POR DNI, CÓDIGO O NOMBRE</Text>
           <View style={styles.orLine} />
         </View>
 
-        {/* BARRA DE BÚSQUEDA MANUAL */}
+        {/* BARRA DE BÚSQUEDA MANUAL (DNI, CÓDIGO O NOMBRE) */}
         <View style={styles.searchManualRow}>
           <View style={styles.searchInputWrapper}>
             <Ionicons name="search-outline" size={16} color="#0284c7" style={{ marginRight: 6 }} />
             <TextInput
               style={styles.input}
-              placeholder="Nombre, Apellido, DNI o Vale..."
+              placeholder="DNI, Código de vale o Nombre..."
               placeholderTextColor="#94a3b8"
               value={dni}
               onChangeText={setDni}
@@ -2154,7 +2239,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
       {/* BENEFICIARY CARD */}
       {beneficiario && (
         <View style={styles.card}>
-          {/* TOP CARD HEADER WITH BADGES & CLOSE BUTTON */}
+          {/* TOP CARD HEADER WITH BADGES & BOTÓN SELECTOR DE DÍA (UBICACIÓN CÍRCULO VERDE) */}
           <View style={styles.cardHeaderRow}>
             <View style={styles.cardBadges}>
               <View style={styles.badgeSector}>
@@ -2173,9 +2258,43 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
               )}
             </View>
 
-            <TouchableOpacity style={styles.closeCardBtn} onPress={handleCancelBeneficiary} activeOpacity={0.7}>
-              <Ionicons name="close" size={16} color="#dc2626" />
-            </TouchableOpacity>
+            {/* ZONA DERECHA: BOTÓN DÍA DE ENTREGA (CÍRCULO VERDE) + BOTÓN CERRAR */}
+            <View style={styles.cardHeaderRightActions}>
+              <TouchableOpacity
+                style={[
+                  styles.badgeDiaEntrega,
+                  !diaSeleccionado?.esHoy && styles.badgeDiaEntregaDiferido,
+                ]}
+                onPress={() => setDiaPickerModalVisible(true)}
+                activeOpacity={0.8}
+              >
+                <Ionicons
+                  name="calendar"
+                  size={12}
+                  color={diaSeleccionado?.esHoy ? '#0284c7' : '#d97706'}
+                  style={{ marginRight: 3 }}
+                />
+                <Text
+                  style={[
+                    styles.badgeDiaEntregaText,
+                    !diaSeleccionado?.esHoy && styles.badgeDiaEntregaDiferidoText,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {diaSeleccionado?.nombre} {diaSeleccionado?.esHoy ? '(Hoy)' : `(${diaSeleccionado?.fechaCorta})`}
+                </Text>
+                <Ionicons
+                  name="chevron-down"
+                  size={12}
+                  color={diaSeleccionado?.esHoy ? '#0284c7' : '#d97706'}
+                  style={{ marginLeft: 2 }}
+                />
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.closeCardBtn} onPress={handleCancelBeneficiary} activeOpacity={0.7}>
+                <Ionicons name="close" size={16} color="#dc2626" />
+              </TouchableOpacity>
+            </View>
           </View>
 
           <Text style={styles.cardTitle}>{beneficiario.nombres_apellidos}</Text>
@@ -2200,6 +2319,106 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Miembros:</Text>
             <Text style={styles.infoValue}>{beneficiario.num_miembros} personas</Text>
+          </View>
+
+          {/* SELECTOR INTERACTIVO DE LOS 7 DÍAS DEL CICLO SEMANAL */}
+          <View style={styles.diaSelectorBox}>
+            <View style={styles.diaSelectorHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                <Ionicons name="calendar-outline" size={14} color="#0284c7" />
+                <Text style={styles.diaSelectorTitle}>Día de Entrega / Jornada Asignada</Text>
+              </View>
+              <View style={[styles.diaStatusPill, !diaSeleccionado?.esHoy && styles.diaStatusPillDiferido]}>
+                <Ionicons
+                  name={diaSeleccionado?.esHoy ? "checkmark-circle" : "time-outline"}
+                  size={11}
+                  color={diaSeleccionado?.esHoy ? "#15803d" : "#b45309"}
+                />
+                <Text style={[styles.diaStatusText, !diaSeleccionado?.esHoy && styles.diaStatusTextDiferido]}>
+                  {diaSeleccionado?.esHoy ? 'Hoy (Día Actual)' : 'Día Reprogramado'}
+                </Text>
+              </View>
+            </View>
+
+            {/* CARRUSEL DE LOS 7 DÍAS DE LA SEMANA */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.diasScrollRow}>
+              {diasSemana.map((d: any) => {
+                const isSelected = diaSeleccionado?.id === d.id;
+                return (
+                  <TouchableOpacity
+                    key={`dia-pill-${d.id}`}
+                    style={[
+                      styles.diaPillBtn,
+                      isSelected && styles.diaPillBtnActive,
+                      d.esHoy && !isSelected && styles.diaPillBtnHoy,
+                    ]}
+                    onPress={() => setDiaSeleccionado(d)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.diaPillCodigo, isSelected && styles.diaPillCodigoActive]}>
+                      {d.codigo}
+                    </Text>
+                    <Text style={[styles.diaPillFecha, isSelected && styles.diaPillFechaActive]}>
+                      {d.diaNum}
+                    </Text>
+                    {d.esHoy ? (
+                      <View style={[styles.diaPillHoyBadge, isSelected && styles.diaPillHoyBadgeActive]}>
+                        <Text style={[styles.diaPillHoyText, isSelected && styles.diaPillHoyTextActive]}>HOY</Text>
+                      </View>
+                    ) : (
+                      <Text style={[styles.diaPillMes, isSelected && styles.diaPillMesActive]}>
+                        {d.fechaCorta.split(' ')[1]}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            {/* AVISO DE REGULARIZACIÓN SI SE ELIGE OTRO DÍA (EJ. DOMINGO ENTREGANDO LO DEL MIÉRCOLES) */}
+            {!diaSeleccionado?.esHoy ? (
+              <View style={styles.diaDiferidoAlert}>
+                <Ionicons name="information-circle" size={17} color="#b45309" style={{ marginTop: 1 }} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.diaDiferidoAlertTitle}>
+                    Asignando entrega al día {diaSeleccionado?.nombre} ({diaSeleccionado?.fechaCorta})
+                  </Text>
+                  <Text style={styles.diaDiferidoAlertSub}>
+                    Se guardará como regularización de ración pendiente de esa jornada.
+                  </Text>
+                </View>
+              </View>
+            ) : null}
+
+            {/* ACCESOS RÁPIDOS DE SUGERENCIA DE VOLUMEN SEGÚN DÍA */}
+            <View style={styles.quickLitrosRow}>
+              <TouchableOpacity
+                style={styles.quickLitroBtn}
+                onPress={() => {
+                  const diaria = (beneficiario.num_miembros || 1) * DOTACION_POR_HABITANTE;
+                  setLitrosEntregar(String(diaria));
+                }}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="water" size={12} color="#0284c7" />
+                <Text style={styles.quickLitroBtnText}>
+                  Ración 1 Día ({(beneficiario.num_miembros || 1) * DOTACION_POR_HABITANTE} L)
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.quickLitroBtn, { borderColor: '#bae6fd', backgroundColor: '#e0f2fe' }]}
+                onPress={() => {
+                  setLitrosEntregar(String(saldoPendiente > 0 ? saldoPendiente : cuotaTotal));
+                }}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="calendar-outline" size={12} color="#0369a1" />
+                <Text style={[styles.quickLitroBtnText, { color: '#0369a1' }]}>
+                  Saldo Semanal ({saldoPendiente > 0 ? saldoPendiente : cuotaTotal} L)
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* CALCULATION & EDITABLE LITERS BOX CON SALDO PENDIENTE */}
@@ -2812,6 +3031,102 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
             <TouchableOpacity
               style={styles.modalCancelPillBtn}
               onPress={() => setCoincidenciasModalVisible(false)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.modalCancelPillText}>Cerrar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL SELECTOR DE DÍA DE ENTREGA (7 DÍAS DEL CICLO SEMANAL) */}
+      <Modal
+        visible={diaPickerModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setDiaPickerModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.diaPickerModalContent}>
+            {/* MODAL HEADER */}
+            <View style={styles.modalCalidadHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+                <View style={styles.modalDiaCalendarIconBox}>
+                  <Ionicons name="calendar" size={20} color="#0284c7" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.modalCalidadTitle}>Elegir Día de Reparto</Text>
+                  <Text style={styles.modalCalidadSubtitle}>Ciclo de 7 días EPS Moyobamba</Text>
+                </View>
+              </View>
+
+              <TouchableOpacity
+                onPress={() => setDiaPickerModalVisible(false)}
+                style={styles.modalCloseCircle}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="close" size={18} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={{ fontSize: 12, color: '#475569', marginBottom: 12 }}>
+              Seleccione el día al que corresponde esta entrega. Por defecto es hoy, pero puede elegir cualquiera de los 7 días para entregar dotaciones pendientes o regularizar faltantes:
+            </Text>
+
+            {/* LISTA DE LOS 7 DÍAS DE LA SEMANA */}
+            <ScrollView style={{ maxHeight: 360 }}>
+              <View style={{ gap: 8 }}>
+                {diasSemana.map((d: any) => {
+                  const isSelected = diaSeleccionado?.id === d.id;
+                  return (
+                    <TouchableOpacity
+                      key={`modal-dia-opt-${d.id}`}
+                      style={[
+                        styles.diaModalRowCard,
+                        isSelected && styles.diaModalRowCardActive,
+                      ]}
+                      onPress={() => {
+                        setDiaSeleccionado(d);
+                        setDiaPickerModalVisible(false);
+                      }}
+                      activeOpacity={0.82}
+                    >
+                      <View style={[styles.diaModalIconBox, isSelected && styles.diaModalIconBoxActive]}>
+                        <Text style={[styles.diaModalCodigo, isSelected && styles.diaModalCodigoActive]}>
+                          {d.codigo}
+                        </Text>
+                      </View>
+
+                      <View style={{ flex: 1, marginLeft: 10 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Text style={[styles.diaModalNombre, isSelected && styles.diaModalNombreActive]}>
+                            {d.nombre}
+                          </Text>
+                          {d.esHoy ? (
+                            <View style={styles.diaPillHoyBadgeModal}>
+                              <Text style={styles.diaPillHoyTextModal}>HOY (ACTUAL)</Text>
+                            </View>
+                          ) : null}
+                        </View>
+                        <Text style={styles.diaModalFechaSub}>
+                          Fecha: {d.fechaDisplay}
+                        </Text>
+                      </View>
+
+                      <Ionicons
+                        name={isSelected ? "radio-button-on" : "radio-button-off"}
+                        size={20}
+                        color={isSelected ? "#0284c7" : "#cbd5e1"}
+                      />
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </ScrollView>
+
+            <TouchableOpacity
+              style={[styles.modalCancelPillBtn, { marginTop: 14 }]}
+              onPress={() => setDiaPickerModalVisible(false)}
               activeOpacity={0.8}
             >
               <Text style={styles.modalCancelPillText}>Cerrar</Text>
@@ -5088,5 +5403,289 @@ const styles = StyleSheet.create({
   benefMiniProgressBarFill: {
     height: '100%',
     borderRadius: 3,
+  },
+
+  // ─── ESTILOS DÍA DE ENTREGA / REPARTO SEMANAL (7 DÍAS) ───
+  cardHeaderRightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  badgeDiaEntrega: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#eff6ff',
+    borderWidth: 1.5,
+    borderColor: '#bfdbfe',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 14,
+  },
+  badgeDiaEntregaDiferido: {
+    backgroundColor: '#fffbeb',
+    borderColor: '#fde68a',
+  },
+  badgeDiaEntregaText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#0284c7',
+  },
+  badgeDiaEntregaDiferidoText: {
+    color: '#d97706',
+  },
+
+  diaSelectorBox: {
+    backgroundColor: '#f8fafc',
+    borderWidth: 1.5,
+    borderColor: '#e2e8f0',
+    borderRadius: 20,
+    padding: 12,
+    marginVertical: 10,
+  },
+  diaSelectorHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  diaSelectorTitle: {
+    fontSize: 12.5,
+    fontWeight: '900',
+    color: '#0f172a',
+    letterSpacing: 0.2,
+  },
+  diaStatusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#ecfdf5',
+    borderWidth: 1,
+    borderColor: '#a7f3d0',
+    paddingVertical: 2.5,
+    paddingHorizontal: 7,
+    borderRadius: 10,
+  },
+  diaStatusPillDiferido: {
+    backgroundColor: '#fffbeb',
+    borderColor: '#fde68a',
+  },
+  diaStatusText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#15803d',
+  },
+  diaStatusTextDiferido: {
+    color: '#b45309',
+  },
+
+  diasScrollRow: {
+    flexDirection: 'row',
+    gap: 7,
+    paddingVertical: 2,
+    paddingHorizontal: 1,
+  },
+  diaPillBtn: {
+    width: 52,
+    paddingVertical: 7,
+    borderRadius: 14,
+    backgroundColor: '#ffffff',
+    borderWidth: 1.5,
+    borderColor: '#cbd5e1',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  diaPillBtnActive: {
+    backgroundColor: '#0284c7',
+    borderColor: '#0369a1',
+    shadowColor: '#0284c7',
+    shadowOpacity: 0.35,
+    shadowRadius: 5,
+    elevation: 3,
+  },
+  diaPillBtnHoy: {
+    borderColor: '#38bdf8',
+    backgroundColor: '#f0f9ff',
+  },
+  diaPillCodigo: {
+    fontSize: 9.5,
+    fontWeight: '800',
+    color: '#64748b',
+    textTransform: 'uppercase',
+  },
+  diaPillCodigoActive: {
+    color: '#e0f2fe',
+    fontWeight: '900',
+  },
+  diaPillFecha: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: '#0f172a',
+    marginVertical: 1,
+  },
+  diaPillFechaActive: {
+    color: '#ffffff',
+  },
+  diaPillMes: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#94a3b8',
+    textTransform: 'capitalize',
+  },
+  diaPillMesActive: {
+    color: '#bae6fd',
+    fontWeight: '800',
+  },
+  diaPillHoyBadge: {
+    backgroundColor: '#0284c7',
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 4,
+    marginTop: 1,
+  },
+  diaPillHoyBadgeActive: {
+    backgroundColor: '#ffffff',
+  },
+  diaPillHoyText: {
+    fontSize: 7.5,
+    fontWeight: '900',
+    color: '#ffffff',
+  },
+  diaPillHoyTextActive: {
+    color: '#0284c7',
+  },
+
+  diaDiferidoAlert: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: '#fffbeb',
+    borderWidth: 1.5,
+    borderColor: '#fde68a',
+    borderRadius: 12,
+    padding: 9,
+    marginTop: 10,
+  },
+  diaDiferidoAlertTitle: {
+    fontSize: 11.5,
+    fontWeight: '800',
+    color: '#92400e',
+  },
+  diaDiferidoAlertSub: {
+    fontSize: 10.5,
+    fontWeight: '600',
+    color: '#b45309',
+    marginTop: 2,
+  },
+
+  quickLitrosRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 10,
+  },
+  quickLitroBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    backgroundColor: '#ffffff',
+    borderWidth: 1.5,
+    borderColor: '#e2e8f0',
+    borderRadius: 12,
+    paddingVertical: 7,
+    paddingHorizontal: 8,
+  },
+  quickLitroBtnText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+
+  // MODAL DÍA DE ENTREGA
+  diaPickerModalContent: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    padding: 18,
+    paddingBottom: 28,
+    maxHeight: '85%',
+  },
+  modalDiaCalendarIconBox: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#e0f2fe',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: '#bae6fd',
+  },
+  diaModalRowCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#ffffff',
+  },
+  diaModalRowCardActive: {
+    borderColor: '#0284c7',
+    backgroundColor: '#f0f9ff',
+  },
+  diaModalIconBox: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: '#f1f5f9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+  },
+  diaModalIconBoxActive: {
+    backgroundColor: '#0284c7',
+    borderColor: '#0369a1',
+  },
+  diaModalCodigo: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#475569',
+  },
+  diaModalCodigoActive: {
+    color: '#ffffff',
+  },
+  diaModalNombre: {
+    fontSize: 13.5,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  diaModalNombreActive: {
+    color: '#0284c7',
+    fontWeight: '900',
+  },
+  diaPillHoyBadgeModal: {
+    backgroundColor: '#ecfdf5',
+    borderWidth: 1,
+    borderColor: '#a7f3d0',
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 6,
+  },
+  diaPillHoyTextModal: {
+    fontSize: 8.5,
+    fontWeight: '900',
+    color: '#047857',
+  },
+  diaModalFechaSub: {
+    fontSize: 11,
+    color: '#64748b',
+    marginTop: 2,
   },
 });

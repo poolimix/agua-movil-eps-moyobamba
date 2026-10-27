@@ -58,7 +58,12 @@ export const syncData = async (): Promise<{ success: boolean; syncedCount: numbe
         if (entrega.longitud) formData.append('longitud', String(entrega.longitud));
         if (entrega.precision_gps) formData.append('precisionGps', String(entrega.precision_gps));
         if (entrega.altitud) formData.append('altitud', String(entrega.altitud));
-        if (entrega.fecha_ubicacion) formData.append('fechaUbicacion', String(entrega.fecha_ubicacion));
+        if (entrega.dia_entrega) {
+          formData.append('diaEntrega', String(entrega.dia_entrega));
+        }
+        if (entrega.fecha_asignada) {
+          formData.append('fechaAsignada', String(entrega.fecha_asignada));
+        }
         formData.append('fechaCaptura', String(entrega.fecha_captura || entrega.fecha_hora || new Date().toISOString()));
 
         // Attach Photo file (Compatible con Web y Expo Nativo moderno)

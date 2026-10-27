@@ -118,6 +118,17 @@ export const getBeneficiarioByDni = async (req: Request, res: Response) => {
     const term = String(dni || '').trim();
     const likeTerm = `%${term}%`;
 
+    const params: any[] = [term, likeTerm];
+    const words = term.split(/\s+/).filter(w => w.length > 0);
+    let tokenCondition = '';
+    if (words.length > 1) {
+      const tokenClauses = words.map(w => {
+        params.push(`%${w}%`);
+        return `b.nombres_apellidos ILIKE $${params.length}`;
+      });
+      tokenCondition = ` OR (${tokenClauses.join(' AND ')})`;
+    }
+
     const result = await query(`
       SELECT 
         b.id,
@@ -146,21 +157,23 @@ export const getBeneficiarioByDni = async (req: Request, res: Response) => {
          OR b.nombres_apellidos ILIKE $2
          OR b.nombres ILIKE $2
          OR b.apellidos ILIKE $2
+         ${tokenCondition}
          OR EXISTS (
            SELECT 1 FROM vales_entrega v 
            WHERE v.beneficiario_id = b.id 
-             AND (v.codigo_unico = $1 OR v.codigo_unico ILIKE $2)
+             AND (v.codigo_unico = $1 OR v.codigo_unico ILIKE $2 OR v.codigo_vale = $1 OR v.codigo_vale ILIKE $2)
          )
       ORDER BY 
         CASE 
           WHEN b.dni = $1 THEN 1 
-          WHEN EXISTS (SELECT 1 FROM vales_entrega v WHERE v.beneficiario_id = b.id AND v.codigo_unico = $1) THEN 2
+          WHEN EXISTS (SELECT 1 FROM vales_entrega v WHERE v.beneficiario_id = b.id AND (v.codigo_unico = $1 OR v.codigo_vale = $1)) THEN 2
           WHEN b.dni LIKE $2 THEN 3 
-          ELSE 4 
+          WHEN b.nombres_apellidos ILIKE $1 THEN 4
+          ELSE 5 
         END,
         b.nombres_apellidos ASC
-      LIMIT 15
-    `, [term, likeTerm]);
+      LIMIT 20
+    `, params);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ message: `Beneficiario '${term}' no encontrado en el sistema.` });

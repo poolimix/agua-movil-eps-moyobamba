@@ -242,6 +242,8 @@ export const bootstrapSchema = async () => {
       ALTER TABLE entregas_agua ADD COLUMN IF NOT EXISTS foto_url TEXT;
       ALTER TABLE entregas_agua ADD COLUMN IF NOT EXISTS firma_url TEXT;
       ALTER TABLE entregas_agua ADD COLUMN IF NOT EXISTS observaciones TEXT;
+      ALTER TABLE entregas_agua ADD COLUMN IF NOT EXISTS dia_entrega VARCHAR(50);
+      ALTER TABLE entregas_agua ADD COLUMN IF NOT EXISTS fecha_asignada DATE;
       ALTER TABLE entregas_agua ADD COLUMN IF NOT EXISTS sincronizado INT DEFAULT 1;
       CREATE UNIQUE INDEX IF NOT EXISTS idx_entregas_agua_local_id ON entregas_agua (local_id) WHERE local_id IS NOT NULL;
 

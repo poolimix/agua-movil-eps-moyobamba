@@ -73,9 +73,15 @@ export const uploadDelivery = async (req: Request, res: Response) => {
       fecha_ubicacion,
       fechaCaptura,
       fecha_captura,
+      diaEntrega,
+      dia_entrega,
+      fechaAsignada,
+      fecha_asignada,
     } = req.body;
 
     const finalLocalId = localId || local_id || `gen-${Date.now()}`;
+    const finalDiaEntrega = diaEntrega || dia_entrega || null;
+    const finalFechaAsignada = fechaAsignada || fecha_asignada || null;
     const finalBeneficiarioId = beneficiarioId || beneficiario_id;
     const finalProgramacionId = programacionId || programacion_id || 1;
     let finalCisternaId = cisternaId || cisterna_id || null;
@@ -226,9 +232,11 @@ export const uploadDelivery = async (req: Request, res: Response) => {
         fecha_ubicacion,
         fecha_captura,
         fecha_hora,
+        dia_entrega,
+        fecha_asignada,
         sincronizado
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $18, 1)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $18, $19, $20, 1)
       RETURNING *;
     `;
 
@@ -251,6 +259,8 @@ export const uploadDelivery = async (req: Request, res: Response) => {
       finalAltitud,
       finalFechaUbicacion,
       finalFechaCaptura,
+      finalDiaEntrega,
+      finalFechaAsignada,
     ]);
 
     // 4. Si viene con GPS y cisterna_id, actualizar la última ubicación de la cisterna en tiempo real
