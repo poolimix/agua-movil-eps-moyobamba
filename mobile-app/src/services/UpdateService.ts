@@ -117,6 +117,65 @@ export async function checkAndApplyEASUpdate(
   return false;
 }
 
+export interface ManualUpdateCheckResult {
+  status: 'UPDATE_AVAILABLE' | 'ALREADY_UP_TO_DATE' | 'NOT_SUPPORTED' | 'ERROR';
+  message: string;
+  updateId?: string;
+}
+
+/**
+ * Consulta manualmente si hay una nueva versión OTA publicada en EAS Update
+ */
+export async function manualCheckForUpdates(): Promise<ManualUpdateCheckResult> {
+  try {
+    if (__DEV__) {
+      return {
+        status: 'NOT_SUPPORTED',
+        message: 'Modo desarrollo activo (__DEV__). Las actualizaciones OTA aplican únicamente en la APK instalada.',
+      };
+    }
+
+    if (!Updates.isEnabled) {
+      return {
+        status: 'NOT_SUPPORTED',
+        message: 'Las actualizaciones OTA automáticas se gestionan por la versión instalada (v1.0.2).',
+      };
+    }
+
+    const check = await Updates.checkForUpdateAsync();
+    if (check.isAvailable) {
+      return {
+        status: 'UPDATE_AVAILABLE',
+        message: '¡Hay una nueva versión disponible en la nube! Se aplicarán las mejoras de cisternas, conductores y fotos opcionales.',
+        updateId: check.manifest?.id || '',
+      };
+    }
+
+    return {
+      status: 'ALREADY_UP_TO_DATE',
+      message: 'Tu aplicación ya cuenta con la versión más reciente en este dispositivo (AguaTrack v1.0.2).',
+    };
+  } catch (error: any) {
+    console.warn('[UpdateService] Error al verificar actualización manual:', error);
+    return {
+      status: 'ERROR',
+      message: error?.message || 'No se pudo conectar al servicio de actualizaciones. Verifique su conexión a internet.',
+    };
+  }
+}
+
+/**
+ * Descarga y aplica de inmediato la actualización OTA en 1 clic
+ */
+export async function downloadAndApplyUpdate(
+  onProgress?: (text: string) => void
+): Promise<void> {
+  if (onProgress) onProgress('Descargando paquete de actualización...');
+  await Updates.fetchUpdateAsync();
+  if (onProgress) onProgress('Reiniciando aplicación...');
+  await Updates.reloadAsync();
+}
+
 const ANDROID_PACKAGE = 'com.epsmoyobamba.aguatrack';
 const PLAY_STORE_MARKET_URL = `market://details?id=${ANDROID_PACKAGE}`;
 const PLAY_STORE_WEB_URL = `https://play.google.com/store/apps/details?id=${ANDROID_PACKAGE}`;

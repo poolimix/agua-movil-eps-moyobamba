@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { BACKEND_URL } from '../config/api';
 import { getDatabase } from '../database/schema';
+import AppUpdateModal from '../components/AppUpdateModal';
 
 interface ConductorScreenProps {
   user: any;
@@ -29,6 +30,7 @@ export default function ConductorScreen({ user, onLogout }: ConductorScreenProps
   const [selectedProg, setSelectedProg] = useState<any | null>(null);
   const [activeModal, setActiveModal] = useState(false);
   const [updatingEstado, setUpdatingEstado] = useState(false);
+  const [updateModalVisible, setUpdateModalVisible] = useState(false);
 
   // Quality check form state (Control de carga en planta)
   const [cloro, setCloro] = useState('1.00');
@@ -312,10 +314,29 @@ export default function ConductorScreen({ user, onLogout }: ConductorScreenProps
           </View>
         </View>
 
-        <TouchableOpacity style={styles.logoutBtn} onPress={onLogout} activeOpacity={0.8}>
-          <Ionicons name="log-out-outline" size={20} color="#fff" />
-          <Text style={styles.logoutText}>Salir</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <TouchableOpacity
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 4,
+              backgroundColor: '#059669',
+              paddingVertical: 6,
+              paddingHorizontal: 10,
+              borderRadius: 16,
+            }}
+            onPress={() => setUpdateModalVisible(true)}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="sparkles" size={13} color="#ffffff" />
+            <Text style={{ color: '#ffffff', fontSize: 11, fontWeight: '800' }}>Actualizar</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.logoutBtn} onPress={onLogout} activeOpacity={0.8}>
+            <Ionicons name="log-out-outline" size={18} color="#fff" />
+            <Text style={styles.logoutText}>Salir</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView
@@ -785,6 +806,12 @@ export default function ConductorScreen({ user, onLogout }: ConductorScreenProps
           </View>
         </Modal>
       )}
+
+      {/* MODAL DE ACTUALIZACIÓN DIRECTA EN 1 CLIC (EAS OTA) */}
+      <AppUpdateModal
+        visible={updateModalVisible}
+        onClose={() => setUpdateModalVisible(false)}
+      />
     </View>
   );
 }

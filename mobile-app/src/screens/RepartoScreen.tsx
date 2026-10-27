@@ -25,6 +25,7 @@ import * as Location from 'expo-location';
 import { getDatabase } from '../database/schema';
 import { syncData } from '../services/SyncService';
 import { BACKEND_URL } from '../config/api';
+import AppUpdateModal from '../components/AppUpdateModal';
 
 // Regla de Negocio Oficial EPS Moyobamba - Abastecimiento Periódico Semanal
 const DOTACION_POR_HABITANTE = 50; // 50 Litros diarios por persona (Norma SUNASS / MVCS)
@@ -95,6 +96,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
   const [qrScannerVisible, setQrScannerVisible] = useState(false);
   const [searching, setSearching] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [updateModalVisible, setUpdateModalVisible] = useState(false);
   const [, requestCameraPermission] = useCameraPermissions();
   
   // Photo Evidence State & Fehaciencia GPS
@@ -1093,6 +1095,15 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
           </View>
 
           <View style={styles.headerActions}>
+            <TouchableOpacity
+              style={styles.updateBtnPill}
+              onPress={() => setUpdateModalVisible(true)}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="sparkles" size={13} color="#059669" />
+              <Text style={styles.updateBtnPillText}>Actualizar</Text>
+            </TouchableOpacity>
+
             <TouchableOpacity style={styles.syncBtnPill} onPress={handleManualSync} disabled={isSyncing} activeOpacity={0.85}>
               {isSyncing ? (
                 <ActivityIndicator color="#0284c7" size="small" />
@@ -3295,6 +3306,12 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
           </View>
         </View>
       </Modal>
+
+      {/* MODAL DE ACTUALIZACIÓN DIRECTA EN 1 CLIC (EAS OTA) */}
+      <AppUpdateModal
+        visible={updateModalVisible}
+        onClose={() => setUpdateModalVisible(false)}
+      />
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -3359,6 +3376,27 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
     alignItems: 'center',
+  },
+  updateBtnPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#ffffff',
+    paddingVertical: 7,
+    paddingHorizontal: 11,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#a7f3d0',
+  },
+  updateBtnPillText: {
+    color: '#059669',
+    fontSize: 12,
+    fontWeight: '800',
   },
   syncBtnPill: {
     backgroundColor: '#ffffff',
