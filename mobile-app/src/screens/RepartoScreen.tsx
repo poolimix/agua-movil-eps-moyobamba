@@ -142,8 +142,36 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
   const [filtroBeneficiario, setFiltroBeneficiario] = useState('');
   const [filtroEstadoBenef, setFiltroEstadoBenef] = useState<'TODOS' | 'PENDIENTES' | 'ATENDIDOS'>('TODOS');
   const [sectorSeleccionado, setSectorSeleccionado] = useState<string>('TODOS');
+  const [beneficiariosPage, setBeneficiariosPage] = useState(1);
+  const BENEFICIARIOS_PAGE_SIZE = 15;
   const [coincidenciasModalVisible, setCoincidenciasModalVisible] = useState(false);
   const [coincidenciasResultados, setCoincidenciasResultados] = useState<any[]>([]);
+
+  const formatDiasSemana = (dias?: string) => {
+    if (!dias) return 'Lunes a Viernes';
+    const partes = dias.split(',').map((d) => d.trim()).filter(Boolean);
+    if (partes.length >= 7) return 'Lunes a Domingo (Diario)';
+    if (
+      partes.length >= 5 &&
+      partes.some(d => d.toLowerCase().includes('lunes')) &&
+      partes.some(d => d.toLowerCase().includes('viernes')) &&
+      !partes.some(d => d.toLowerCase().includes('sáb') || d.toLowerCase().includes('sab')) &&
+      !partes.some(d => d.toLowerCase().includes('dom'))
+    ) {
+      return 'Lunes a Viernes';
+    }
+    return partes.map((d) => {
+      const t = d.toLowerCase();
+      if (t.startsWith('lun')) return 'Lun';
+      if (t.startsWith('mar')) return 'Mar';
+      if (t.startsWith('mi')) return 'Mié';
+      if (t.startsWith('jue')) return 'Jue';
+      if (t.startsWith('vie')) return 'Vie';
+      if (t.startsWith('s')) return 'Sáb';
+      if (t.startsWith('d')) return 'Dom';
+      return d;
+    }).join(', ');
+  };
 
   // Scroll lock for signature pad
   const [scrollEnabled, setScrollEnabled] = useState(true);
@@ -1068,6 +1096,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
       >
       {/* HEADER CURVO MODERNO (ORGANIC CURVED HEADER) */}
       <View style={styles.headerModernCurve}>
+        {/* ROW 1: IDENTIFICACIÓN DEL USUARIO Y BOTÓN SALIR */}
         <View style={styles.headerTopRow}>
           <View style={styles.headerBrand}>
             <View style={[styles.avatarCircle, { overflow: 'hidden', padding: 0 }]}>
@@ -1080,10 +1109,10 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
             <View style={{ flex: 1 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <Text style={styles.welcomeText} numberOfLines={1}>
-                  {user?.nombres ? user.nombres.split(' ')[0] : 'Operador'}
+                  {user?.nombres ? `${user.nombres.split(' ')[0]} ${user.apellidos ? user.apellidos.split(' ')[0] : ''}` : 'Operador'}
                 </Text>
-                <View style={{ backgroundColor: 'rgba(255,255,255,0.22)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
-                  <Text style={{ color: '#fff', fontSize: 9.5, fontWeight: '900' }}>AguaTrack</Text>
+                <View style={{ backgroundColor: 'rgba(255,255,255,0.22)', paddingHorizontal: 5, paddingVertical: 1.5, borderRadius: 6 }}>
+                  <Text style={{ color: '#fff', fontSize: 9, fontWeight: '900' }}>AguaTrack</Text>
                 </View>
               </View>
               <Text style={styles.roleSubtext} numberOfLines={1}>
@@ -1094,37 +1123,38 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
             </View>
           </View>
 
-          <View style={styles.headerActions}>
-            <TouchableOpacity
-              style={styles.updateBtnPill}
-              onPress={() => setUpdateModalVisible(true)}
-              activeOpacity={0.85}
-            >
-              <Ionicons name="sparkles" size={13} color="#059669" />
-              <Text style={styles.updateBtnPillText}>Actualizar</Text>
+          {onLogout && (
+            <TouchableOpacity style={styles.logoutBtnPill} onPress={handleLogoutConfirm} activeOpacity={0.85}>
+              <Ionicons name="log-out-outline" size={16} color="#ffffff" />
             </TouchableOpacity>
+          )}
+        </View>
 
-            <TouchableOpacity style={styles.syncBtnPill} onPress={handleManualSync} disabled={isSyncing} activeOpacity={0.85}>
-              {isSyncing ? (
-                <ActivityIndicator color="#0284c7" size="small" />
-              ) : (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                  <Ionicons name="sync-outline" size={13} color="#0284c7" />
-                  <Text style={styles.syncBtnPillText}>Sync</Text>
-                </View>
-              )}
-            </TouchableOpacity>
+        {/* ROW 2: BARRA DE ACCIONES (ACTUALIZAR Y SINCRONIZAR) */}
+        <View style={styles.headerActionsBar}>
+          <TouchableOpacity
+            style={styles.updateBtnPill}
+            onPress={() => setUpdateModalVisible(true)}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="sparkles" size={13} color="#059669" />
+            <Text style={styles.updateBtnPillText}>Actualizar</Text>
+          </TouchableOpacity>
 
-            {onLogout && (
-              <TouchableOpacity style={styles.logoutBtnPill} onPress={handleLogoutConfirm} activeOpacity={0.85}>
-                <Ionicons name="log-out-outline" size={16} color="#ffffff" />
-              </TouchableOpacity>
+          <TouchableOpacity style={styles.syncBtnPill} onPress={handleManualSync} disabled={isSyncing} activeOpacity={0.85}>
+            {isSyncing ? (
+              <ActivityIndicator color="#0284c7" size="small" />
+            ) : (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Ionicons name="sync-outline" size={13} color="#0284c7" />
+                <Text style={styles.syncBtnPillText}>Sincronizar</Text>
+              </View>
             )}
-          </View>
+          </TouchableOpacity>
         </View>
       </View>
 
-      {/* TOP TAB NAVIGATOR (SEGMENTED PILL BAR FLOTANTE) */}
+      {/* TOP TAB NAVIGATOR (SEGMENTED PILL BAR FLOTANTE - RESPONSIVE SIN COLISIONES) */}
       {(() => {
         const userRole = String(user?.rol || '').toUpperCase();
         const isConductor = userRole === 'CONDUCTOR';
@@ -1146,19 +1176,21 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
         return (
           <View style={styles.topTabsBarPill}>
             <TouchableOpacity
-              style={[styles.topTabBtnPill, activeTab === 'PROGRAMACION' && styles.topTabBtnPillActive, { flexDirection: 'row', gap: 4 }]}
+              style={[styles.topTabBtnPill, activeTab === 'PROGRAMACION' && styles.topTabBtnPillActive]}
               onPress={() => setActiveTab('PROGRAMACION')}
               activeOpacity={0.85}
             >
-              <Ionicons name="calendar-outline" size={13} color={activeTab === 'PROGRAMACION' ? '#ffffff' : '#64748b'} />
-              <Text style={[styles.topTabText, activeTab === 'PROGRAMACION' && styles.topTabTextActive]}>
-                Programación
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                <Ionicons name="calendar-outline" size={13} color={activeTab === 'PROGRAMACION' ? '#ffffff' : '#64748b'} />
+                <Text style={[styles.topTabText, activeTab === 'PROGRAMACION' && styles.topTabTextActive]} numberOfLines={1}>
+                  Ruta
+                </Text>
+              </View>
               {activeTab === 'PROGRAMACION' && <View style={styles.activeDotIndicator} />}
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.topTabBtnPill, activeTab === 'BENEFICIARIOS' && styles.topTabBtnPillActive, { flexDirection: 'row', gap: 4 }]}
+              style={[styles.topTabBtnPill, activeTab === 'BENEFICIARIOS' && styles.topTabBtnPillActive]}
               onPress={() => {
                 setActiveTab('BENEFICIARIOS');
                 if (selectedProg?.id && beneficiariosSector.length === 0) {
@@ -1167,22 +1199,26 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
               }}
               activeOpacity={0.85}
             >
-              <Ionicons name="people-outline" size={13} color={activeTab === 'BENEFICIARIOS' ? '#ffffff' : '#64748b'} />
-              <Text style={[styles.topTabText, activeTab === 'BENEFICIARIOS' && styles.topTabTextActive]}>
-                Beneficiarios ({beneficiariosSector.length})
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                <Ionicons name="people-outline" size={13} color={activeTab === 'BENEFICIARIOS' ? '#ffffff' : '#64748b'} />
+                <Text style={[styles.topTabText, activeTab === 'BENEFICIARIOS' && styles.topTabTextActive]} numberOfLines={1}>
+                  Padrón ({beneficiariosSector.length})
+                </Text>
+              </View>
               {activeTab === 'BENEFICIARIOS' && <View style={styles.activeDotIndicator} />}
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.topTabBtnPill, activeTab === 'REPARTO' && styles.topTabBtnPillActive, { flexDirection: 'row', gap: 4 }]}
+              style={[styles.topTabBtnPill, activeTab === 'REPARTO' && styles.topTabBtnPillActive]}
               onPress={() => setActiveTab('REPARTO')}
               activeOpacity={0.85}
             >
-              <Ionicons name="water-outline" size={13} color={activeTab === 'REPARTO' ? '#ffffff' : '#64748b'} />
-              <Text style={[styles.topTabText, activeTab === 'REPARTO' && styles.topTabTextActive]}>
-                Entrega
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                <Ionicons name="water-outline" size={13} color={activeTab === 'REPARTO' ? '#ffffff' : '#64748b'} />
+                <Text style={[styles.topTabText, activeTab === 'REPARTO' && styles.topTabTextActive]} numberOfLines={1}>
+                  Entrega
+                </Text>
+              </View>
               {activeTab === 'REPARTO' && <View style={styles.activeDotIndicator} />}
             </TouchableOpacity>
           </View>
@@ -1350,10 +1386,12 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
 
           {/* CARD 3: SECTORES ASIGNADOS Y PADRÓN DE BENEFICIARIOS */}
           <View style={styles.sectoresCard}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, marginRight: 8 }}>
                 <Ionicons name="location-outline" size={17} color="#0284c7" />
-                <Text style={styles.sectoresCardTitle}>Sectores / AA.HH. Asignados</Text>
+                <Text style={[styles.sectoresCardTitle, { flexShrink: 1 }]} numberOfLines={1}>
+                  Sectores Asignados
+                </Text>
               </View>
               <TouchableOpacity
                 onPress={() => {
@@ -1363,7 +1401,17 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                   }
                 }}
                 activeOpacity={0.7}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 4,
+                  backgroundColor: '#f0f9ff',
+                  paddingHorizontal: 9,
+                  paddingVertical: 5,
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: '#bae6fd'
+                }}
               >
                 <Text style={{ fontSize: 11, fontWeight: '700', color: '#0284c7' }}>Padrón Completo</Text>
                 <Ionicons name="arrow-forward" size={12} color="#0284c7" />
@@ -1432,14 +1480,16 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
             </ScrollView>
 
             <View style={styles.sectoresMetaRow}>
-              <View style={styles.metaItem}>
+              <View style={[styles.metaItem, { flex: 1.4, paddingRight: 8 }]}>
                 <Text style={styles.metaLabel}>DÍAS DE ATENCIÓN</Text>
-                <Text style={styles.metaValue}>{selectedProg?.dias_semana || 'Lunes a Viernes'}</Text>
+                <Text style={styles.metaValue} numberOfLines={2}>
+                  {formatDiasSemana(selectedProg?.dias_semana)}
+                </Text>
               </View>
-              <View style={styles.metaItem}>
+              <View style={[styles.metaItem, { flex: 1 }]}>
                 <Text style={styles.metaLabel}>VIAJES PROGRAMADOS</Text>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 }}>
-                  <Ionicons name="flag-outline" size={12} color="#0f172a" />
+                  <Ionicons name="flag-outline" size={13} color="#0284c7" />
                   <Text style={styles.metaValue}>{selectedProg?.viajes_estimados || 2} Viajes</Text>
                 </View>
               </View>
@@ -1857,11 +1907,14 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                 placeholder="Buscar por Nombre, DNI o Vale..."
                 placeholderTextColor="#94a3b8"
                 value={filtroBeneficiario}
-                onChangeText={setFiltroBeneficiario}
+                onChangeText={(t) => {
+                  setFiltroBeneficiario(t);
+                  setBeneficiariosPage(1);
+                }}
                 autoCapitalize="none"
               />
               {filtroBeneficiario ? (
-                <TouchableOpacity onPress={() => setFiltroBeneficiario('')} style={{ padding: 4 }}>
+                <TouchableOpacity onPress={() => { setFiltroBeneficiario(''); setBeneficiariosPage(1); }} style={{ padding: 4 }}>
                   <Ionicons name="close-circle" size={16} color="#94a3b8" />
                 </TouchableOpacity>
               ) : null}
@@ -1875,7 +1928,10 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                   <TouchableOpacity
                     key={tipo}
                     style={[styles.benefFilterChip, isActive && styles.benefFilterChipActive]}
-                    onPress={() => setFiltroEstadoBenef(tipo)}
+                    onPress={() => {
+                      setFiltroEstadoBenef(tipo);
+                      setBeneficiariosPage(1);
+                    }}
                     activeOpacity={0.8}
                   >
                     <Text style={[styles.benefFilterChipText, isActive && styles.benefFilterChipTextActive]}>
@@ -1988,9 +2044,15 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
               );
             }
 
+            const totalBeneficiarios = filtrados.length;
+            const totalPages = Math.max(1, Math.ceil(totalBeneficiarios / BENEFICIARIOS_PAGE_SIZE));
+            const currentPage = Math.min(beneficiariosPage, totalPages);
+            const startIdx = (currentPage - 1) * BENEFICIARIOS_PAGE_SIZE;
+            const paginatedList = filtrados.slice(startIdx, startIdx + BENEFICIARIOS_PAGE_SIZE);
+
             return (
               <View style={{ gap: 10, marginTop: 4 }}>
-                {filtrados.map((b) => {
+                {paginatedList.map((b) => {
                   const atendido = !!b.atendido_esta_semana;
                   const cuota = Number(b.cuota_semanal || 700);
                   const entregado = Number(b.litros_esta_semana || 0);
@@ -2038,7 +2100,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                       <View style={{ marginTop: 8, marginBottom: 8 }}>
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
                           <Text style={{ fontSize: 10, fontWeight: '700', color: '#64748b' }}>
-                            Avance Semanal de Cuota: <Text style={{ color: atendido ? '#15803d' : '#0284c7' }}>{entregado} de {cuota} Litros</Text>
+                            Avance Semanal: <Text style={{ color: atendido ? '#15803d' : '#0284c7' }}>{entregado} de {cuota} Litros</Text>
                           </Text>
                           <Text style={{ fontSize: 10, fontWeight: '800', color: atendido ? '#15803d' : (entregado > 0 ? '#b45309' : '#64748b') }}>
                             {pctBenef}% Cubierto
@@ -2084,6 +2146,79 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                     </View>
                   );
                 })}
+
+                {/* CONTROLES DE PAGINACIÓN */}
+                {totalPages > 1 && (
+                  <View style={styles.paginationCard}>
+                    <View style={styles.paginationInfoRow}>
+                      <Text style={styles.paginationInfoText}>
+                        Mostrando {startIdx + 1}-{Math.min(startIdx + BENEFICIARIOS_PAGE_SIZE, totalBeneficiarios)} de {totalBeneficiarios} beneficiarios
+                      </Text>
+                      <View style={styles.pageBadgePill}>
+                        <Text style={styles.pageBadgePillText}>
+                          Pág. {currentPage} de {totalPages}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.paginationBtnsRow}>
+                      <TouchableOpacity
+                        style={[styles.pageNavBtn, currentPage <= 1 && styles.pageNavBtnDisabled]}
+                        disabled={currentPage <= 1}
+                        onPress={() => {
+                          setBeneficiariosPage((prev) => Math.max(1, prev - 1));
+                          scrollViewRef.current?.scrollTo({ y: 320, animated: true });
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons name="chevron-back" size={16} color={currentPage <= 1 ? '#94a3b8' : '#0284c7'} />
+                        <Text style={[styles.pageNavBtnText, currentPage <= 1 && styles.pageNavBtnTextDisabled]}>
+                          Anterior
+                        </Text>
+                      </TouchableOpacity>
+
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={styles.pageNumbersScroll}
+                      >
+                        {Array.from({ length: totalPages }, (_, i) => i + 1).map((pNum) => {
+                          const isCurrent = pNum === currentPage;
+                          return (
+                            <TouchableOpacity
+                              key={`p-${pNum}`}
+                              style={[styles.pageNumberChip, isCurrent && styles.pageNumberChipActive]}
+                              onPress={() => {
+                                setBeneficiariosPage(pNum);
+                                scrollViewRef.current?.scrollTo({ y: 320, animated: true });
+                              }}
+                              activeOpacity={0.8}
+                            >
+                              <Text style={[styles.pageNumberChipText, isCurrent && styles.pageNumberChipTextActive]}>
+                                {pNum}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </ScrollView>
+
+                      <TouchableOpacity
+                        style={[styles.pageNavBtn, currentPage >= totalPages && styles.pageNavBtnDisabled]}
+                        disabled={currentPage >= totalPages}
+                        onPress={() => {
+                          setBeneficiariosPage((prev) => Math.min(totalPages, prev + 1));
+                          scrollViewRef.current?.scrollTo({ y: 320, animated: true });
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={[styles.pageNavBtnText, currentPage >= totalPages && styles.pageNavBtnTextDisabled]}>
+                          Siguiente
+                        </Text>
+                        <Ionicons name="chevron-forward" size={16} color={currentPage >= totalPages ? '#94a3b8' : '#0284c7'} />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
               </View>
             );
           })()}
@@ -2585,10 +2720,12 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
 
             return (
               <View style={styles.waterCalcBox}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, flex: 1, marginRight: 6 }}>
                     <Ionicons name="water-outline" size={15} color="#0369a1" />
-                    <Text style={styles.waterCalcTitle}>Cuota y Dotación Familiar (Semanal)</Text>
+                    <Text style={[styles.waterCalcTitle, { flexShrink: 1 }]} numberOfLines={1}>
+                      Dotación Familiar Semanal
+                    </Text>
                   </View>
                   <Text style={styles.dotacionPill}>{DOTACION_POR_HABITANTE} L/hab/día</Text>
                 </View>
@@ -3377,14 +3514,24 @@ const styles = StyleSheet.create({
     gap: 8,
     alignItems: 'center',
   },
+  headerActionsBar: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.2)',
+  },
   updateBtnPill: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    justifyContent: 'center',
+    gap: 5,
     backgroundColor: '#ffffff',
-    paddingVertical: 7,
-    paddingHorizontal: 11,
-    borderRadius: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 18,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -3399,10 +3546,15 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   syncBtnPill: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
     backgroundColor: '#ffffff',
-    paddingVertical: 7,
+    paddingVertical: 8,
     paddingHorizontal: 12,
-    borderRadius: 20,
+    borderRadius: 18,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -3434,8 +3586,8 @@ const styles = StyleSheet.create({
   topTabsBarPill: {
     flexDirection: 'row',
     backgroundColor: '#ffffff',
-    borderRadius: 28,
-    padding: 5,
+    borderRadius: 24,
+    padding: 4,
     marginBottom: 16,
     shadowColor: '#0284c7',
     shadowOffset: { width: 0, height: 4 },
@@ -3447,10 +3599,11 @@ const styles = StyleSheet.create({
   },
   topTabBtnPill: {
     flex: 1,
-    paddingVertical: 11,
+    paddingVertical: 9,
+    paddingHorizontal: 2,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 24,
+    borderRadius: 20,
   },
   topTabBtnPillActive: {
     backgroundColor: '#0284c7',
@@ -3461,20 +3614,115 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   topTabText: {
-    fontSize: 13,
+    fontSize: 11.5,
     fontWeight: '700',
     color: '#64748b',
+    textAlign: 'center',
   },
   topTabTextActive: {
     color: '#ffffff',
     fontWeight: '900',
   },
   activeDotIndicator: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
     backgroundColor: '#ffffff',
-    marginTop: 4,
+    marginTop: 3,
+  },
+
+  // ESTILOS DE PAGINACIÓN DE BENEFICIARIOS
+  paginationCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 14,
+    marginTop: 10,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  paginationInfoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  paginationInfoText: {
+    fontSize: 11.5,
+    color: '#64748b',
+    fontWeight: '600',
+  },
+  pageBadgePill: {
+    backgroundColor: '#e0f2fe',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  pageBadgePillText: {
+    fontSize: 11,
+    color: '#0369a1',
+    fontWeight: '800',
+  },
+  paginationBtnsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  pageNavBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f1f5f9',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+  },
+  pageNavBtnDisabled: {
+    backgroundColor: '#f8fafc',
+    borderColor: '#e2e8f0',
+  },
+  pageNavBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0284c7',
+  },
+  pageNavBtnTextDisabled: {
+    color: '#94a3b8',
+  },
+  pageNumbersScroll: {
+    flexDirection: 'row',
+    gap: 6,
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  pageNumberChip: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pageNumberChipActive: {
+    backgroundColor: '#0284c7',
+    borderColor: '#0284c7',
+  },
+  pageNumberChipText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  pageNumberChipTextActive: {
+    color: '#ffffff',
+    fontWeight: '800',
   },
 
   // PROGRAMACION VIEW STYLES
@@ -4378,10 +4626,10 @@ const styles = StyleSheet.create({
     marginVertical: 14,
   },
   waterCalcTitle: {
-    fontSize: 12,
+    fontSize: 11.5,
     color: '#0369a1',
-    fontWeight: '900',
-    textTransform: 'uppercase',
+    fontWeight: '800',
+    letterSpacing: 0.2,
   },
   dotacionPill: {
     fontSize: 10.5,
