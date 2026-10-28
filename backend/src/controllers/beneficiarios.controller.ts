@@ -244,8 +244,8 @@ export const createBeneficiario = async (req: Request, res: Response) => {
       ? `${nombresVal} ${apellidosVal}`
       : (nombres_apellidos ? nombres_apellidos.trim() : `${nombresVal}${apellidosVal}`);
 
-    const sectorVal = sector_aahh || sector || '';
-    const direccionVal = calle_direccion || direccion || '';
+    const sectorVal = String(sector_aahh || sector || '').trim().toUpperCase();
+    const direccionVal = String(calle_direccion || direccion || '').trim();
     const miembrosNum = parseInt(num_miembros, 10) || 1;
 
     const config = await getConfiguracion();
@@ -329,8 +329,8 @@ export const updateBeneficiario = async (req: Request, res: Response) => {
       ? `${nombresVal} ${apellidosVal}`
       : (nombres_apellidos ? nombres_apellidos.trim() : `${nombresVal}${apellidosVal}`);
 
-    const sectorVal = sector_aahh || sector || '';
-    const direccionVal = calle_direccion || direccion || '';
+    const sectorVal = String(sector_aahh || sector || '').trim().toUpperCase();
+    const direccionVal = String(calle_direccion || direccion || '').trim();
     const miembrosNum = parseInt(num_miembros, 10) || 1;
 
     const config = await getConfiguracion();

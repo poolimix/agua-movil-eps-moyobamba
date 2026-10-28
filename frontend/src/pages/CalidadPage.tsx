@@ -17,6 +17,7 @@ interface ControlCalidad {
   conforme_sanitario: boolean;
   etapa_control?: string; // 'CARGA', 'RUTA', 'ADICIONAL'
   punto_muestreo?: string;
+  sector?: string;
   observaciones?: string;
   foto_muestra_url?: string;
   registrado_por: string;
@@ -900,14 +901,55 @@ export default function CalidadPage() {
                       </div>
 
                       <div style={{ marginBottom: 14 }}>
-                        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
-                          LUGAR O PUNTO EXACTO DE MUESTREO:
+                        <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>
+                          SECTOR / LUGAR EXACTO DEL CONTROL SANITARIO:
                         </label>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                          {[
+                            'Surtidor / Planta EPS Moyobamba',
+                            'SOL DE INDAÑE',
+                            'SANTIAGO DE LOS 8 VALLES',
+                            'SAN BORJA',
+                            'LOS EUCALIPTOS',
+                            'LAS BRISAS DEL MAYO',
+                          ].map((secOpt) => {
+                            const active = formData.punto_muestreo.toUpperCase().includes(secOpt.toUpperCase());
+                            return (
+                              <button
+                                key={secOpt}
+                                type="button"
+                                onClick={() =>
+                                  setFormData({
+                                    ...formData,
+                                    punto_muestreo:
+                                      secOpt.includes('Surtidor')
+                                        ? secOpt
+                                        : formData.etapa_control === 'CARGA'
+                                        ? `Surtidor / Planta (${secOpt})`
+                                        : `Sector: ${secOpt}`,
+                                  })
+                                }
+                                style={{
+                                  padding: '4px 10px',
+                                  borderRadius: 999,
+                                  fontSize: 11,
+                                  fontWeight: active ? 800 : 600,
+                                  border: `1px solid ${active ? '#0284c7' : '#cbd5e1'}`,
+                                  background: active ? '#e0f2fe' : '#f8fafc',
+                                  color: active ? '#0369a1' : '#475569',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                📍 {secOpt}
+                              </button>
+                            );
+                          })}
+                        </div>
                         <input 
                           type="text"
                           value={formData.punto_muestreo}
                           onChange={(e) => setFormData({ ...formData, punto_muestreo: e.target.value })}
-                          placeholder="Ej: Surtidor Central o Grifo Cisterna en Sector Sol de Indañe"
+                          placeholder="Ej: Sector Sol de Indañe o Surtidor Central"
                           style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13 }}
                         />
                       </div>

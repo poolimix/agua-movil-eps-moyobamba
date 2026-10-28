@@ -604,7 +604,7 @@ export const despacharCorreoIndividual = async (req: Request, res: Response) => 
 
 export const getAllVales = async (req: Request, res: Response) => {
   try {
-    const { estado, search, limit = 100, offset = 0 } = req.query;
+    const { estado, search, limit, offset } = req.query;
 
     let sql = `
       SELECT 
@@ -628,27 +628,42 @@ export const getAllVales = async (req: Request, res: Response) => {
     let pIdx = 1;
 
     if (estado) {
-      sql += ` AND v.estado = $${pIdx++}`;
-      params.push(estado);
+      const estUpper = String(estado).toUpperCase().trim();
+      if (estUpper === 'EMITIDO' || estUpper === 'PENDIENTE') {
+        sql += ` AND UPPER(v.estado) IN ('EMITIDO', 'PENDIENTE')`;
+      } else if (estUpper === 'ENTREGADO' || estUpper === 'CANJEADO') {
+        sql += ` AND UPPER(v.estado) IN ('ENTREGADO', 'CANJEADO')`;
+      } else {
+        sql += ` AND v.estado ILIKE $${pIdx++}`;
+        params.push(estado);
+      }
     }
     if (search) {
-      sql += ` AND (v.codigo_unico ILIKE $${pIdx} OR b.dni ILIKE $${pIdx} OR b.nombres_apellidos ILIKE $${pIdx})`;
+      sql += ` AND (v.codigo_unico ILIKE $${pIdx} OR b.dni ILIKE $${pIdx} OR b.nombres_apellidos ILIKE $${pIdx} OR b.sector_aahh ILIKE $${pIdx} OR b.sector ILIKE $${pIdx})`;
       params.push(`%${search}%`);
       pIdx++;
     }
 
-    sql += ` ORDER BY v.id DESC LIMIT $${pIdx++} OFFSET $${pIdx++}`;
-    params.push(limit, offset);
+    sql += ` ORDER BY v.id ASC`;
+
+    if (limit) {
+      sql += ` LIMIT $${pIdx++}`;
+      params.push(Number(limit));
+    }
+    if (offset) {
+      sql += ` OFFSET $${pIdx++}`;
+      params.push(Number(offset));
+    }
 
     const result = await query(sql, params);
 
     const statsRes = await query(`
       SELECT 
         COUNT(*) as total_vales,
-        COUNT(CASE WHEN estado = 'Emitido' OR estado = 'Pendiente' THEN 1 END) as pendientes,
-        COUNT(CASE WHEN estado = 'Entregado' OR estado = 'Canjeado' THEN 1 END) as entregados,
-        COUNT(CASE WHEN estado = 'Vencido' THEN 1 END) as vencidos,
-        COUNT(CASE WHEN estado = 'Anulado' THEN 1 END) as anulados,
+        COUNT(CASE WHEN UPPER(estado) IN ('EMITIDO', 'PENDIENTE') THEN 1 END) as pendientes,
+        COUNT(CASE WHEN UPPER(estado) IN ('ENTREGADO', 'CANJEADO') THEN 1 END) as entregados,
+        COUNT(CASE WHEN UPPER(estado) = 'VENCIDO' THEN 1 END) as vencidos,
+        COUNT(CASE WHEN UPPER(estado) = 'ANULADO' THEN 1 END) as anulados,
         COALESCE(SUM(litros_sugeridos), 0) as total_litros
       FROM vales_entrega
     `);
@@ -757,8 +772,15 @@ export const exportarValesExcel = async (req: Request, res: Response) => {
     let pIdx = 1;
 
     if (estado) {
-      sql += ` AND v.estado ILIKE $${pIdx++}`;
-      params.push(estado);
+      const estUpper = String(estado).toUpperCase().trim();
+      if (estUpper === 'EMITIDO' || estUpper === 'PENDIENTE') {
+        sql += ` AND UPPER(v.estado) IN ('EMITIDO', 'PENDIENTE')`;
+      } else if (estUpper === 'ENTREGADO' || estUpper === 'CANJEADO') {
+        sql += ` AND UPPER(v.estado) IN ('ENTREGADO', 'CANJEADO')`;
+      } else {
+        sql += ` AND v.estado ILIKE $${pIdx++}`;
+        params.push(estado);
+      }
     }
     if (programacion_id) {
       sql += ` AND v.programacion_id = $${pIdx++}`;

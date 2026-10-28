@@ -4,6 +4,7 @@ import PDFDocument from 'pdfkit';
 import * as xlsx from 'xlsx';
 import fs from 'fs';
 import path from 'path';
+import { stampWatermarkOnImage } from '../utils/watermark';
 
 export const getAllEntregas = async (req: Request, res: Response) => {
   try {
@@ -81,13 +82,14 @@ export const getAllEntregas = async (req: Request, res: Response) => {
         COALESCE(b.sector_aahh, b.sector, '') as sector, 
         b.num_miembros, 
         b.telefono,
-        c.placa as cisterna_placa,
+        COALESCE(c.placa, pc.placa, (SELECT placa FROM cisternas WHERE estado = 'Activa' OR placa = 'CAT-849' ORDER BY id ASC LIMIT 1), 'CAT-849') as cisterna_placa,
         p.zona, 
         p.fecha as fecha_programacion
       FROM entregas_agua e
       LEFT JOIN beneficiarios b ON e.beneficiario_id = b.id
       LEFT JOIN programaciones p ON e.programacion_id = p.id
       LEFT JOIN cisternas c ON e.cisterna_id = c.id
+      LEFT JOIN cisternas pc ON p.cisterna_id = pc.id
       ORDER BY e.fecha_hora DESC
     `);
     res.json(result.rows);
@@ -875,4 +877,460 @@ export const exportarEntregasExcel = async (req: Request, res: Response) => {
     res.status(500).json({ message: 'Error exportando Formato de Entrega a Excel', error: error.message });
   }
 };
+
+/**
+ * Actualizar o agregar fotografía de evidencia de una entrega desde la web
+ */
+export const actualizarFotoEntrega = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const estamparMembrete = req.body.estampar_membrete !== 'false' && req.body.estampar_membrete !== false;
+
+    const existingRes = await query(`
+      SELECT 
+        e.*,
+        b.nombres_apellidos,
+        b.dni,
+        COALESCE(b.sector_aahh, b.sector, 'Moyobamba') as sector,
+        COALESCE(b.calle_direccion, b.direccion, '-') as direccion,
+        COALESCE(c.placa, pc.placa, 'CAT-849') as cisterna_placa
+      FROM entregas_agua e
+      LEFT JOIN beneficiarios b ON e.beneficiario_id = b.id
+      LEFT JOIN programaciones p ON e.programacion_id = p.id
+      LEFT JOIN cisternas c ON e.cisterna_id = c.id
+      LEFT JOIN cisternas pc ON p.cisterna_id = pc.id
+      WHERE e.id = $1
+    `, [id]);
+
+    if (existingRes.rows.length === 0) {
+      return res.status(404).json({ message: 'Entrega no encontrada.' });
+    }
+
+    const entrega = existingRes.rows[0];
+    const uploadDir = path.join(process.cwd(), 'uploads', 'registros');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+
+    let fotoUrl: string | null = null;
+    let localSavedFilePath: string | null = null;
+
+    if (req.file) {
+      fotoUrl = `/uploads/registros/${req.file.filename}`;
+      localSavedFilePath = req.file.path;
+    } else if (req.body.fotoBase64 || req.body.foto_base64) {
+      const rawBase64 = String(req.body.fotoBase64 || req.body.foto_base64);
+      const b64Clean = rawBase64.replace(/^data:image\/\w+;base64,/, '');
+      const safeName = `entrega-web-${id}-${Date.now()}.jpg`;
+      const filePath = path.join(uploadDir, safeName);
+      fs.writeFileSync(filePath, Buffer.from(b64Clean, 'base64'));
+      fotoUrl = `/uploads/registros/${safeName}`;
+      localSavedFilePath = filePath;
+    } else {
+      return res.status(400).json({ message: 'Debe seleccionar una imagen válida (JPG, PNG o WEBP).' });
+    }
+
+    if (estamparMembrete && localSavedFilePath && fs.existsSync(localSavedFilePath)) {
+      try {
+        const fechaRef = entrega.fecha_captura || entrega.fecha_hora;
+        const dateStr = fechaRef
+          ? new Date(fechaRef).toLocaleString('es-PE')
+          : new Date().toLocaleString('es-PE');
+
+        await stampWatermarkOnImage(localSavedFilePath, {
+          beneficiario: entrega.nombres_apellidos || 'Beneficiario Acreditado',
+          dni: entrega.dni || '-',
+          sector: entrega.sector || 'Moyobamba',
+          direccion: entrega.direccion || '-',
+          latitud: entrega.latitud ? Number(entrega.latitud).toFixed(6) : '-6.034172',
+          longitud: entrega.longitud ? Number(entrega.longitud).toFixed(6) : '-76.971391',
+          precision: entrega.precision_gps ? Math.round(Number(entrega.precision_gps)) : 10,
+          fechaHora: dateStr,
+          cisterna: entrega.cisterna_placa || 'CAT-849',
+        });
+      } catch (wmErr) {
+        console.warn('Error estampando membrete en foto actualizada:', wmErr);
+      }
+    }
+
+    const updRes = await query(
+      `UPDATE entregas_agua SET foto_url = $1 WHERE id = $2 RETURNING *`,
+      [fotoUrl, id]
+    );
+
+    res.json({
+      message: 'Fotografía de evidencia actualizada correctamente.',
+      foto_url: fotoUrl,
+      entrega: {
+        ...entrega,
+        ...updRes.rows[0],
+        foto_url: fotoUrl,
+      },
+    });
+  } catch (error: any) {
+    console.error('Error actualizando foto de entrega:', error);
+    res.status(500).json({ message: 'Error al actualizar la fotografía de la entrega', error: error.message });
+  }
+};
+
+/**
+ * Registrar Entrega Grupal / Completa en un solo depósito diario por sector
+ * Divide el volumen total entregado entre los beneficiarios marcados del sector (excluyendo los desmarcados)
+ */
+export const registrarEntregaGrupalSector = async (req: Request, res: Response) => {
+  try {
+    const {
+      sector,
+      programacion_id,
+      cisterna_id,
+      conductor_id,
+      litros_totales_deposito,
+      beneficiario_ids,
+      fecha_entrega,
+      dia_entrega,
+      observaciones,
+      latitud,
+      longitud,
+      precision_gps,
+      firma_base64,
+      forzar_segundo_viaje,
+      lote_deposito_id,
+    } = req.body;
+
+    await query(`
+      ALTER TABLE entregas_agua ADD COLUMN IF NOT EXISTS lote_deposito_id VARCHAR(120);
+    `).catch(() => {});
+
+    const litrosTotales = parseFloat(String(litros_totales_deposito || '0'));
+    if (isNaN(litrosTotales) || litrosTotales <= 0) {
+      return res.status(400).json({ message: 'Debe ingresar una cantidad total de agua entregada mayor a 0 litros.' });
+    }
+
+    let idsArray: number[] = [];
+    if (Array.isArray(beneficiario_ids)) {
+      idsArray = beneficiario_ids.map((id) => parseInt(String(id), 10)).filter((n) => !isNaN(n) && n > 0);
+    } else if (typeof beneficiario_ids === 'string') {
+      try {
+        const parsed = JSON.parse(beneficiario_ids);
+        if (Array.isArray(parsed)) {
+          idsArray = parsed.map((id) => parseInt(String(id), 10)).filter((n) => !isNaN(n) && n > 0);
+        }
+      } catch {
+        idsArray = beneficiario_ids
+          .split(',')
+          .map((s) => parseInt(s.trim(), 10))
+          .filter((n) => !isNaN(n) && n > 0);
+      }
+    }
+
+    if (idsArray.length === 0) {
+      return res.status(400).json({ message: 'Debe mantener marcado al menos un beneficiario del sector para dividir la entrega.' });
+    }
+
+    const fechaCheckStr = fecha_entrega
+      ? String(fecha_entrega).slice(0, 10)
+      : new Date().toISOString().slice(0, 10);
+
+    // Validación anti-duplicado: verificar si ya existe una entrega de depósito único para este sector en la misma fecha
+    const isForzado = String(forzar_segundo_viaje).toLowerCase() === 'true' || forzar_segundo_viaje === true;
+    if (!isForzado && sector) {
+      const dupCheck = await query(
+        `SELECT 
+           COALESCE(e.lote_deposito_id, 'LOTE-PREVIO') as lote_id,
+           COUNT(e.id)::int as total_registros,
+           COALESCE(SUM(e.litros_entregados), 0)::numeric as total_litros
+         FROM entregas_agua e
+         LEFT JOIN beneficiarios b ON e.beneficiario_id = b.id
+         WHERE (e.fecha_asignada = $1 OR TO_CHAR(e.fecha_hora, 'YYYY-MM-DD') = $1)
+           AND UPPER(TRIM(COALESCE(b.sector_aahh, b.sector, ''))) = UPPER(TRIM($2))
+           AND (e.lote_deposito_id IS NOT NULL OR e.local_id LIKE 'dep-%' OR e.observaciones_entrega ILIKE '%Depósito Único%')
+         GROUP BY COALESCE(e.lote_deposito_id, 'LOTE-PREVIO')
+         LIMIT 1`,
+        [fechaCheckStr, String(sector)]
+      );
+
+      if (dupCheck.rows.length > 0 && Number(dupCheck.rows[0].total_registros) > 0) {
+        return res.status(409).json({
+          code: 'DUPLICATE_SECTOR_DAY',
+          existingLoteId: dupCheck.rows[0].lote_id,
+          existingCount: Number(dupCheck.rows[0].total_registros),
+          existingLitros: Number(dupCheck.rows[0].total_litros),
+          message: `Ya existe una entrega en depósito único registrada para el sector "${sector}" en la fecha ${fechaCheckStr} (${Number(dupCheck.rows[0].total_litros).toLocaleString('es-PE')} Lts entre ${dupCheck.rows[0].total_registros} beneficiarios). ¿Desea registrar un segundo viaje de cisterna o cancelar para evitar duplicados?`,
+        });
+      }
+    }
+
+    // Resolver programación, cisterna y conductor
+    let finalProgId = programacion_id && !isNaN(parseInt(String(programacion_id), 10))
+      ? parseInt(String(programacion_id), 10)
+      : null;
+
+    if (!finalProgId) {
+      const pRes = await query(`SELECT id, cisterna_id, conductor_id FROM programaciones ORDER BY id DESC LIMIT 1`);
+      if (pRes.rows.length > 0) {
+        finalProgId = pRes.rows[0].id;
+      }
+    }
+
+    let finalCisternaId = cisterna_id && !isNaN(parseInt(String(cisterna_id), 10))
+      ? parseInt(String(cisterna_id), 10)
+      : null;
+    let finalConductorId = conductor_id && !isNaN(parseInt(String(conductor_id), 10))
+      ? parseInt(String(conductor_id), 10)
+      : null;
+
+    if (finalProgId && (!finalCisternaId || !finalConductorId)) {
+      const pRes = await query(`SELECT cisterna_id, conductor_id FROM programaciones WHERE id = $1`, [finalProgId]);
+      if (pRes.rows.length > 0) {
+        if (!finalCisternaId) finalCisternaId = pRes.rows[0].cisterna_id;
+        if (!finalConductorId) finalConductorId = pRes.rows[0].conductor_id;
+      }
+    }
+
+    let cisternaPlaca = 'CAT-849';
+    if (finalCisternaId) {
+      const cRes = await query(`SELECT placa FROM cisternas WHERE id = $1`, [finalCisternaId]);
+      if (cRes.rows.length > 0) cisternaPlaca = cRes.rows[0].placa;
+    }
+
+    // Procesar foto si se adjuntó (multipart o base64)
+    const uploadDir = path.join(process.cwd(), 'uploads', 'registros');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+
+    let fotoUrl: string | null = null;
+    let localSavedFilePath: string | null = null;
+
+    if (req.file) {
+      fotoUrl = `/uploads/registros/${req.file.filename}`;
+      localSavedFilePath = req.file.path;
+    } else if (req.body.fotoBase64 || req.body.foto_base64) {
+      try {
+        const rawBase64 = String(req.body.fotoBase64 || req.body.foto_base64);
+        const b64Clean = rawBase64.replace(/^data:image\/\w+;base64,/, '');
+        const safeName = `entrega-deposito-sector-${Date.now()}.jpg`;
+        const filePath = path.join(uploadDir, safeName);
+        fs.writeFileSync(filePath, Buffer.from(b64Clean, 'base64'));
+        fotoUrl = `/uploads/registros/${safeName}`;
+        localSavedFilePath = filePath;
+      } catch (err) {
+        console.warn('Error guardando foto grupal base64:', err);
+      }
+    }
+
+    const fechaHoraRegistro = fecha_entrega
+      ? new Date(`${String(fecha_entrega).slice(0, 10)}T${new Date().toTimeString().slice(0, 8)}`)
+      : new Date();
+    const fechaAsignadaStr = fecha_entrega ? String(fecha_entrega).slice(0, 10) : fechaHoraRegistro.toISOString().slice(0, 10);
+
+    // Estampar membrete oficial en la foto del depósito único
+    if (localSavedFilePath && fs.existsSync(localSavedFilePath)) {
+      try {
+        await stampWatermarkOnImage(localSavedFilePath, {
+          beneficiario: `DEPÓSITO ÚNICO (${idsArray.length} BENEFICIARIOS)`,
+          dni: `${Math.round(litrosTotales)} L TOTAL`,
+          sector: String(sector || 'Sector Moyobamba'),
+          direccion: `Promedio: ${(litrosTotales / idsArray.length).toFixed(1)} L/fam.`,
+          latitud: latitud ? Number(latitud).toFixed(6) : '-6.034172',
+          longitud: longitud ? Number(longitud).toFixed(6) : '-76.971391',
+          precision: precision_gps ? Math.round(Number(precision_gps)) : 8,
+          fechaHora: fechaHoraRegistro.toLocaleString('es-PE'),
+          cisterna: cisternaPlaca,
+        });
+      } catch (wmErr) {
+        console.warn('Error estampando membrete en depósito grupal:', wmErr);
+      }
+    }
+
+    // División exacta entre la cantidad de agua entregada y el número de beneficiarios seleccionados
+    const totalBeneficiarios = idsArray.length;
+    const litrosBase = Number((litrosTotales / totalBeneficiarios).toFixed(2));
+    let acumulado = 0;
+
+    const entregasCreadas: any[] = [];
+    const batchStamp = Date.now();
+    const sectorSlug = String(sector || 'SEC')
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, '')
+      .slice(0, 8) || 'SEC';
+    const finalLoteId =
+      lote_deposito_id && String(lote_deposito_id).trim()
+        ? String(lote_deposito_id).trim()
+        : `LOTE-${sectorSlug}-${fechaAsignadaStr.replace(/-/g, '')}-${batchStamp}`;
+
+    for (let i = 0; i < totalBeneficiarios; i++) {
+      const benId = idsArray[i];
+      // Ajuste de redondeo en el último beneficiario para que la suma sea 100% exacta al total del depósito
+      const litrosIndividual = i === totalBeneficiarios - 1
+        ? Number((litrosTotales - acumulado).toFixed(2))
+        : litrosBase;
+      acumulado += litrosIndividual;
+
+      const localId = `dep-sec-${benId}-${batchStamp}-${i}`;
+      const obsTexto = observaciones
+        ? String(observaciones).trim()
+        : `Entrega en Depósito Único Diario (${sector || 'Sector'}): ${litrosTotales} L ÷ ${totalBeneficiarios} benef. = ${litrosIndividual} L`;
+
+      const ins = await query(`
+        INSERT INTO entregas_agua (
+          local_id,
+          lote_deposito_id,
+          beneficiario_id,
+          programacion_id,
+          cisterna_id,
+          conductor_id,
+          cuota_programada,
+          litros_entregados,
+          saldo_pendiente,
+          estado_entrega,
+          observaciones_entrega,
+          firma_base64,
+          foto_url,
+          latitud,
+          longitud,
+          precision_gps,
+          fecha_captura,
+          fecha_hora,
+          dia_entrega,
+          fecha_asignada,
+          sincronizado
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 0, 'COMPLETA', $9, $10, $11, $12, $13, $14, $15, $15, $16, $17, 1)
+        RETURNING *
+      `, [
+        localId,
+        finalLoteId,
+        benId,
+        finalProgId,
+        finalCisternaId,
+        finalConductorId,
+        litrosIndividual,
+        litrosIndividual,
+        obsTexto,
+        firma_base64 || null,
+        fotoUrl,
+        latitud ? parseFloat(String(latitud)) : null,
+        longitud ? parseFloat(String(longitud)) : null,
+        precision_gps ? parseFloat(String(precision_gps)) : null,
+        fechaHoraRegistro,
+        dia_entrega || null,
+        fechaAsignadaStr,
+      ]);
+
+      entregasCreadas.push(ins.rows[0]);
+
+      // Marcar vale como CANJEADO
+      await query(`
+        UPDATE vales_entrega
+        SET estado = 'CANJEADO', fecha_canje = CURRENT_TIMESTAMP
+        WHERE beneficiario_id = $1 AND (programacion_id = $2 OR programacion_id IS NULL)
+      `, [benId, finalProgId]).catch(() => {});
+
+      await query(`
+        UPDATE vales_consumo
+        SET estado = 'CANJEADO'
+        WHERE beneficiario_id = $1 AND (programacion_id = $2 OR programacion_id IS NULL)
+      `, [benId, finalProgId]).catch(() => {});
+    }
+
+    if (finalCisternaId && latitud && longitud) {
+      await query(`
+        UPDATE cisternas
+        SET latitud_actual = $1, longitud_actual = $2, ultima_actualizacion_gps = CURRENT_TIMESTAMP
+        WHERE id = $3
+      `, [parseFloat(String(latitud)), parseFloat(String(longitud)), finalCisternaId]).catch(() => {});
+    }
+
+    res.status(201).json({
+      message: `Se registró la entrega completa en depósito único para ${totalBeneficiarios} beneficiarios del sector ${sector || ''} (${litrosTotales.toLocaleString('es-PE')} L en total = ${litrosBase.toLocaleString('es-PE')} L por beneficiario).`,
+      lote_deposito_id: finalLoteId,
+      sector: sector || 'General',
+      totalBeneficiarios,
+      litrosTotales,
+      litrosPorBeneficiario: litrosBase,
+      foto_url: fotoUrl,
+      entregasRegistradas: entregasCreadas.length,
+    });
+  } catch (error: any) {
+    console.error('Error en registrarEntregaGrupalSector:', error);
+    res.status(500).json({
+      message: 'Error al registrar la entrega grupal del sector',
+      error: error.message,
+    });
+  }
+};
+
+export const eliminarLoteDepositoSector = async (req: Request, res: Response) => {
+  try {
+    const { loteId } = req.params;
+    if (!loteId) {
+      return res.status(400).json({ message: 'Identificador de lote requerido.' });
+    }
+    const delRes = await query(
+      `DELETE FROM entregas_agua WHERE lote_deposito_id = $1 RETURNING id`,
+      [loteId]
+    );
+    res.json({
+      message: `Se eliminó el lote completo de entrega en depósito único (${delRes.rowCount || 0} registros eliminados).`,
+      deletedCount: delRes.rowCount || 0,
+    });
+  } catch (error: any) {
+    console.error('Error eliminando lote de depósito:', error);
+    res.status(500).json({ message: 'Error al eliminar el lote de entrega', error: error.message });
+  }
+};
+
+export const actualizarLoteDepositoSector = async (req: Request, res: Response) => {
+  try {
+    const { loteId } = req.params;
+    const { litros_totales_deposito } = req.body;
+    const nuevoTotal = parseFloat(String(litros_totales_deposito || '0'));
+
+    if (!loteId || isNaN(nuevoTotal) || nuevoTotal <= 0) {
+      return res.status(400).json({ message: 'Ingrese una cantidad total de litros válida (> 0).' });
+    }
+
+    const rowsRes = await query(
+      `SELECT id FROM entregas_agua WHERE lote_deposito_id = $1 ORDER BY id ASC`,
+      [loteId]
+    );
+    const rows = rowsRes.rows;
+    if (rows.length === 0) {
+      return res.status(404).json({ message: 'No se encontraron entregas asociadas a ese lote.' });
+    }
+
+    const totalBenef = rows.length;
+    const litrosBase = Number((nuevoTotal / totalBenef).toFixed(2));
+    let acum = 0;
+
+    for (let i = 0; i < totalBenef; i++) {
+      const rowId = rows[i].id;
+      const litrosInd = i === totalBenef - 1 ? Number((nuevoTotal - acum).toFixed(2)) : litrosBase;
+      acum += litrosInd;
+      const nuevaObs = `Entrega en Depósito Único Diario (Actualizado): ${nuevoTotal} L ÷ ${totalBenef} benef. = ${litrosInd} L`;
+
+      await query(
+        `UPDATE entregas_agua
+         SET cuota_programada = $1,
+             litros_entregados = $1,
+             observaciones_entrega = $2
+         WHERE id = $3`,
+        [litrosInd, nuevaObs, rowId]
+      );
+    }
+
+    res.json({
+      message: `Lote actualizado exitosamente: ${nuevoTotal.toLocaleString('es-PE')} L divididos entre ${totalBenef} beneficiarios (${litrosBase} L c/u).`,
+      totalBeneficiarios: totalBenef,
+      litrosTotales: nuevoTotal,
+      litrosPorBeneficiario: litrosBase,
+    });
+  } catch (error: any) {
+    console.error('Error actualizando lote de depósito:', error);
+    res.status(500).json({ message: 'Error al actualizar el lote de entrega', error: error.message });
+  }
+};
+
+
 

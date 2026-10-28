@@ -122,6 +122,8 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
   const [turbiedadNtu, setTurbiedadNtu] = useState('1.40');
   const [aspectoCalidad, setAspectoCalidad] = useState('Límpido / Incoloro');
   const [etapaControl, setEtapaControl] = useState<'CARGA' | 'RUTA' | 'ADICIONAL'>('CARGA');
+  const [sectorCalidad, setSectorCalidad] = useState('SOL DE INDAÑE');
+  const calidadScrollRef = useRef<ScrollView>(null);
   const [systemConfig, setSystemConfig] = useState<any>({
     dotacion_diaria_litros: 50,
     dias_entrega_semanal: 7,
@@ -146,6 +148,15 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
   const BENEFICIARIOS_PAGE_SIZE = 15;
   const [coincidenciasModalVisible, setCoincidenciasModalVisible] = useState(false);
   const [coincidenciasResultados, setCoincidenciasResultados] = useState<any[]>([]);
+
+  // Estado para Entrega Completa en Depósito Único por Sector
+  const [depositoModalVisible, setDepositoModalVisible] = useState(false);
+  const [sectorDeposito, setSectorDeposito] = useState<string>('SOL DE INDAÑE');
+  const [litrosTotalesDeposito, setLitrosTotalesDeposito] = useState<string>('15000');
+  const [selectedBenefIdsDeposito, setSelectedBenefIdsDeposito] = useState<number[]>([]);
+  const [filtroBusquedaDeposito, setFiltroBusquedaDeposito] = useState<string>('');
+  const [fotoDepositoUri, setFotoDepositoUri] = useState<string | null>(null);
+  const [savingDeposito, setSavingDeposito] = useState(false);
 
   const formatDiasSemana = (dias?: string) => {
     if (!dias) return 'Lunes a Viernes';
@@ -393,6 +404,267 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
     seleccionarBeneficiarioFinal(b);
   };
 
+  // --- ENTREGA COMPLETA EN DEPÓSITO ÚNICO POR SECTOR ---
+  const getSectoresDisponiblesDeposito = (): string[] => {
+    const fromProg = selectedProg?.zona
+      ? String(selectedProg.zona)
+          .split(',')
+          .map((s: string) => s.trim())
+          .filter(Boolean)
+      : [];
+    if (fromProg.length > 0) return fromProg;
+    return [
+      'SOL DE INDAÑE',
+      'SANTIAGO DE LOS 8 VALLES',
+      'SAN BORJA',
+      'LOS EUCALIPTOS',
+      'LAS BRISAS DEL MAYO',
+    ];
+  };
+
+  const getBeneficiariosPorSectorNombre = (secName: string) => {
+    if (!secName || secName === 'TODOS') return beneficiariosSector;
+    return beneficiariosSector.filter((b) =>
+      String(b.sector || b.sector_aahh || '')
+        .toLowerCase()
+        .includes(secName.toLowerCase())
+    );
+  };
+
+  const handleChangeSectorDeposito = (secName: string) => {
+    setSectorDeposito(secName);
+    const lista = getBeneficiariosPorSectorNombre(secName);
+    setSelectedBenefIdsDeposito(lista.map((b: any) => Number(b.id)));
+  };
+
+  const handleOpenDepositoModal = async (initialSec?: string) => {
+    if (beneficiariosSector.length === 0 && selectedProg?.id) {
+      await loadBeneficiariosSector(selectedProg.id);
+    }
+    const opciones = getSectoresDisponiblesDeposito();
+    const targetSec =
+      initialSec && initialSec !== 'TODOS'
+        ? initialSec
+        : sectorSeleccionado && sectorSeleccionado !== 'TODOS'
+        ? sectorSeleccionado
+        : opciones[0] || 'SOL DE INDAÑE';
+
+    setSectorDeposito(targetSec);
+    const lista = beneficiariosSector.filter((b) =>
+      String(b.sector || b.sector_aahh || '')
+        .toLowerCase()
+        .includes(targetSec.toLowerCase())
+    );
+    // Marcar TODOS los beneficiarios del sector por defecto
+    setSelectedBenefIdsDeposito(lista.map((b: any) => Number(b.id)));
+    setFiltroBusquedaDeposito('');
+    setFotoDepositoUri(null);
+    setDepositoModalVisible(true);
+  };
+
+  const handleToggleBenefDeposito = (id: number) => {
+    const numId = Number(id);
+    setSelectedBenefIdsDeposito((prev) =>
+      prev.includes(numId) ? prev.filter((item) => item !== numId) : [...prev, numId]
+    );
+  };
+
+  const handleTakePhotoDeposito = async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permiso requerido', 'Se necesita acceso a la cámara para fotografiar el depósito.');
+        return;
+      }
+      const res = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        allowsEditing: false,
+        quality: 0.8,
+      });
+      if (!res.canceled && res.assets && res.assets.length > 0) {
+        setFotoDepositoUri(res.assets[0].uri);
+      }
+    } catch (err: any) {
+      Alert.alert('Error de cámara', err.message);
+    }
+  };
+
+  const handleGuardarEntregaDepositoSector = async (forzarSegundoViaje = false) => {
+    const litrosTot = parseFloat(litrosTotalesDeposito);
+    if (isNaN(litrosTot) || litrosTot <= 0) {
+      Alert.alert('Atención', 'Ingrese una cantidad válida de agua total entregada en el depósito (mayor a 0 litros).');
+      return;
+    }
+    if (selectedBenefIdsDeposito.length === 0) {
+      Alert.alert('Atención', 'Debe mantener seleccionado al menos 1 beneficiario del sector para dividir la entrega.');
+      return;
+    }
+
+    const totalBenef = selectedBenefIdsDeposito.length;
+    const litrosPorBenef = Number((litrosTot / totalBenef).toFixed(2));
+    const listaSector = getBeneficiariosPorSectorNombre(sectorDeposito);
+    const excluidosCount = Math.max(0, listaSector.length - totalBenef);
+    const fechaIso = diaSeleccionado?.fechaIso || new Date().toISOString().slice(0, 10);
+
+    // Validación anti-duplicado local en SQLite (mismo sector y misma fecha)
+    if (!forzarSegundoViaje) {
+      try {
+        const db = await getDatabase();
+        const existingLocal = await db.getAllAsync(
+          `SELECT COUNT(e.id) as cnt, COALESCE(SUM(e.litros_entregados), 0) as sum_lts
+           FROM entregas_agua e
+           WHERE (e.fecha_asignada = ? OR substr(COALESCE(e.fecha_captura, e.fecha_hora, ''), 1, 10) = ?)
+             AND (e.local_id LIKE 'dep-%' OR e.observaciones_entrega LIKE '%Depósito Único%')
+             AND e.observaciones_entrega LIKE ?`,
+          [fechaIso, fechaIso, `%${sectorDeposito}%`]
+        ) as any[];
+        if (existingLocal && existingLocal.length > 0 && Number(existingLocal[0].cnt) > 0) {
+          Alert.alert(
+            '⚠️ Entrega ya registrada hoy en este sector',
+            `Ya registraste una entrega en depósito único hoy (${fechaIso}) para ${sectorDeposito} por ${Number(existingLocal[0].sum_lts).toLocaleString()} Lts.\n\n¿Se trata de un 2.º viaje de cisterna en el mismo día o deseas cancelar para no duplicar?`,
+            [
+              { text: 'No, Cancelar', style: 'cancel' },
+              {
+                text: 'Sí, es un 2.º Viaje',
+                onPress: () => handleGuardarEntregaDepositoSector(true),
+              },
+            ]
+          );
+          return;
+        }
+      } catch (_) {}
+    }
+
+    Alert.alert(
+      '🚰 Confirmar Entrega en Depósito Único',
+      `Sector: ${sectorDeposito}\n` +
+        `Día: ${diaSeleccionado?.fechaDisplay || 'Hoy'}\n` +
+        `Agua total entregada: ${litrosTot.toLocaleString()} L\n` +
+        `Beneficiarios incluidos: ${totalBenef} familias${excluidosCount > 0 ? ` (${excluidosCount} desmarcados para otro depósito)` : ' (Todos)'}\n\n` +
+        `División automática:\n👉 ${litrosPorBenef.toLocaleString()} Litros por beneficiario`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Sí, Registrar Entrega',
+          onPress: async () => {
+            try {
+              setSavingDeposito(true);
+              const progId = selectedProg?.id || PROGRAMACION_ACTUAL_ID;
+              const diaNombre = diaSeleccionado?.nombre || 'Hoy';
+              const lat = location?.coords?.latitude || -6.034172;
+              const lng = location?.coords?.longitude || -76.971391;
+              const acc = location?.coords?.accuracy || 8;
+
+              let syncedOnline = false;
+
+              // 1. Intentar registrar en el backend en bloque
+              try {
+                const formData = new FormData();
+                formData.append('sector', sectorDeposito);
+                formData.append('programacion_id', String(progId));
+                if (selectedCisternaId) formData.append('cisterna_id', String(selectedCisternaId));
+                if (selectedConductorId) formData.append('conductor_id', String(selectedConductorId));
+                formData.append('litros_totales_deposito', String(litrosTot));
+                formData.append('beneficiario_ids', JSON.stringify(selectedBenefIdsDeposito));
+                formData.append('fecha_entrega', fechaIso);
+                formData.append('dia_entrega', diaNombre);
+                formData.append('latitud', String(lat));
+                formData.append('longitud', String(lng));
+                formData.append('precision_gps', String(acc));
+                formData.append('forzar_segundo_viaje', 'true');
+                formData.append(
+                  'observaciones',
+                  `Entrega en Depósito Único Diario (${sectorDeposito}): ${litrosTot} L ÷ ${totalBenef} benef. = ${litrosPorBenef} L`
+                );
+
+                if (fotoDepositoUri && Platform.OS !== 'web') {
+                  try {
+                    const b64 = await FileSystem.readAsStringAsync(fotoDepositoUri, {
+                      encoding: FileSystem.EncodingType.Base64,
+                    });
+                    if (b64) formData.append('fotoBase64', b64);
+                  } catch (_) {}
+                }
+
+                const resp = await fetch(`${BACKEND_URL}/entregas/entrega-grupal-sector`, {
+                  method: 'POST',
+                  body: formData,
+                  headers: { Accept: 'application/json' },
+                });
+                if (resp.ok) {
+                  syncedOnline = true;
+                }
+              } catch (onlineErr) {
+                console.log('Modo offline para entrega grupal en depósito:', onlineErr);
+              }
+
+              // 2. Guardar registros en SQLite local para trazabilidad offline/online
+              const db = await getDatabase();
+              const batchStamp = Date.now();
+              let acum = 0;
+
+              for (let i = 0; i < totalBenef; i++) {
+                const benId = selectedBenefIdsDeposito[i];
+                const litrosInd =
+                  i === totalBenef - 1 ? Number((litrosTot - acum).toFixed(2)) : litrosPorBenef;
+                acum += litrosInd;
+                const localId = `dep-movil-${benId}-${batchStamp}-${i}`;
+                const obs = `Entrega en Depósito Único Diario (${sectorDeposito}): ${litrosTot} L ÷ ${totalBenef} benef. = ${litrosInd} L`;
+
+                await db.runAsync(
+                  `INSERT INTO entregas_agua (
+                    local_id, beneficiario_id, programacion_id, cisterna_id, conductor_id,
+                    cuota_programada, litros_entregados, saldo_pendiente, estado_entrega,
+                    observaciones_entrega, foto_local_uri, latitud, longitud, precision_gps,
+                    fecha_captura, fecha_hora, dia_entrega, fecha_asignada, sincronizado, sync_status
+                  ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'COMPLETA', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                  [
+                    localId,
+                    benId,
+                    progId,
+                    selectedCisternaId || 1,
+                    selectedConductorId || 1,
+                    litrosInd,
+                    litrosInd,
+                    obs,
+                    fotoDepositoUri || null,
+                    lat,
+                    lng,
+                    acc,
+                    `${fechaIso}T12:00:00.000Z`,
+                    `${fechaIso}T12:00:00.000Z`,
+                    diaNombre,
+                    fechaIso,
+                    syncedOnline ? 1 : 0,
+                    syncedOnline ? 'SYNCED' : 'PENDING',
+                  ]
+                );
+              }
+
+              setDepositoModalVisible(false);
+              await loadBeneficiariosSector(progId);
+              await loadProgramaciones();
+
+              Alert.alert(
+                '✅ Entrega del Sector Registrada',
+                `Se registró exitosamente la entrega en depósito único para ${totalBenef} beneficiarios de ${sectorDeposito}.\n\n` +
+                  `• Volumen total: ${litrosTot.toLocaleString()} L\n` +
+                  `• Asignado a cada beneficiario: ${litrosPorBenef.toLocaleString()} L\n` +
+                  (excluidosCount > 0
+                    ? `• ${excluidosCount} beneficiario(s) quedaron desmarcados para recibir en otro depósito.`
+                    : '• Todos los beneficiarios del sector quedaron atendidos.')
+              );
+            } catch (err: any) {
+              Alert.alert('Error', 'No se pudo registrar la entrega del depósito: ' + err.message);
+            } finally {
+              setSavingDeposito(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const fetchGpsLocation = async () => {
     try {
       setLocationLoading(true);
@@ -529,6 +801,33 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
     }
   };
 
+  const getSectoresCalidadOpciones = (): string[] => {
+    const baseSectores = selectedProg?.zona
+      ? String(selectedProg.zona)
+          .split(',')
+          .map((s: string) => s.trim())
+          .filter(Boolean)
+      : [
+          'SOL DE INDAÑE',
+          'SANTIAGO DE LOS 8 VALLES',
+          'SAN BORJA',
+          'LOS EUCALIPTOS',
+          'LAS BRISAS DEL MAYO',
+        ];
+    return ['Surtidor / Planta', ...baseSectores];
+  };
+
+  const handleOpenCalidadModal = () => {
+    const sugerido =
+      beneficiario?.sector ||
+      (sectorSeleccionado && sectorSeleccionado !== 'TODOS' ? sectorSeleccionado : '') ||
+      (etapaControl === 'CARGA' ? 'Surtidor / Planta' : 'SOL DE INDAÑE');
+    if (!sectorCalidad || sectorCalidad === 'SOL DE INDAÑE' || sectorCalidad === 'Surtidor / Planta') {
+      setSectorCalidad(sugerido);
+    }
+    setCalidadModalVisible(true);
+  };
+
   const handleSaveCalidad = async () => {
     const c = parseFloat(cloroPpm);
     const t = parseFloat(turbiedadNtu);
@@ -540,17 +839,25 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
     const cloroMax = Number(systemConfig?.cloro_max_ppm) || 2.0;
     const turbMax = Number(systemConfig?.turbiedad_max_ntu) || 5.0;
     const conforme = c >= cloroMin && c <= cloroMax && t <= turbMax;
+    const sectorLimpio = (sectorCalidad || '').trim() || 'Moyobamba';
     const punto = etapaControl === 'CARGA' 
-      ? 'Surtidor / Planta de Carga Moyobamba' 
-      : (etapaControl === 'RUTA' ? 'En Ruta / Grifo de Cisterna en Sector' : 'Control Adicional / Muestreo Libre');
+      ? (sectorLimpio.toLowerCase().includes('surtidor') || sectorLimpio.toLowerCase().includes('planta')
+          ? `${sectorLimpio} EPS Moyobamba`
+          : `Surtidor / Planta (${sectorLimpio})`)
+      : (etapaControl === 'RUTA'
+          ? `En Ruta - Sector: ${sectorLimpio}`
+          : `Muestreo Adicional - Sector: ${sectorLimpio}`);
+    const progId = selectedProg?.id || PROGRAMACION_ACTUAL_ID;
 
     try {
       const db = await getDatabase();
+      let insertedLocalId: number | null = null;
       try {
-        await db.runAsync(`
-          INSERT INTO control_calidad (cisterna_id, conductor_id, cloro_residual_ppm, turbiedad_ntu, aspecto_organoleptico, conforme_sanitario, latitud, longitud, etapa_control, punto_muestreo, fecha_hora)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
+        const insertRes = await db.runAsync(`
+          INSERT INTO control_calidad (programacion_id, cisterna_id, conductor_id, cloro_residual_ppm, turbiedad_ntu, aspecto_organoleptico, conforme_sanitario, latitud, longitud, etapa_control, punto_muestreo, sector, fecha_hora, sincronizado)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'), 0)
         `, [
+          progId,
           selectedCisternaId || 1,
           selectedConductorId || 1,
           c,
@@ -560,17 +867,20 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
           location?.coords?.latitude || null,
           location?.coords?.longitude || null,
           etapaControl,
-          punto
+          punto,
+          sectorLimpio
         ]);
+        insertedLocalId = insertRes.lastInsertRowId || null;
       } catch (localErr) {
         console.warn('Local sqlite save without new columns fallback:', localErr);
       }
 
-      // If online, also send to backend
+      // If online, also send to backend and mark sincronizado = 1
       fetch(`${BACKEND_URL}/calidad/calidad`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          programacion_id: progId,
           cisterna_id: selectedCisternaId || 1,
           conductor_nombre: user?.nombres || 'Operador Móvil',
           cloro_residual_ppm: c,
@@ -578,10 +888,15 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
           aspecto_organoleptico: aspectoCalidad,
           etapa_control: etapaControl,
           punto_muestreo: punto,
+          sector: sectorLimpio,
           latitud: location?.coords?.latitude || null,
           longitud: location?.coords?.longitude || null,
           registrado_por: user?.nombres || 'Operador Móvil',
         })
+      }).then(async (resp) => {
+        if (resp.ok && insertedLocalId) {
+          await db.runAsync(`UPDATE control_calidad SET sincronizado = 1 WHERE id = ?`, [insertedLocalId]).catch(() => {});
+        }
       }).catch(() => {});
 
       const etapaLabel = etapaControl === 'CARGA' 
@@ -591,8 +906,8 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
       Alert.alert(
         conforme ? '✓ Calidad Conforme' : '⚠ Alerta Sanitaria',
         conforme 
-          ? `[${etapaLabel}]\n\nParámetros registrados según TDR:\n• Cloro Residual: ${c.toFixed(2)} ppm (${cloroMin}-${cloroMax})\n• Turbiedad: ${t.toFixed(2)} NTU (≤${turbMax})\n• Punto: ${punto}\n\nAgua 100% Apta para Reparto.`
-          : `¡ATENCIÓN! Parámetros fuera de norma sanitaria:\n• Cloro: ${c.toFixed(2)} ppm (Norma: ${cloroMin}-${cloroMax})\n• Turbiedad: ${t.toFixed(2)} NTU (Límite: ≤${turbMax})\nNotifique de inmediato a planta.`
+          ? `[${etapaLabel}]\n\nParámetros registrados según TDR:\n• Sector / Lugar: ${sectorLimpio}\n• Cloro Residual: ${c.toFixed(2)} ppm (${cloroMin}-${cloroMax})\n• Turbiedad: ${t.toFixed(2)} NTU (≤${turbMax})\n• Punto: ${punto}\n\nAgua 100% Apta para Reparto.`
+          : `¡ATENCIÓN! Parámetros fuera de norma sanitaria:\n• Sector / Lugar: ${sectorLimpio}\n• Cloro: ${c.toFixed(2)} ppm (Norma: ${cloroMin}-${cloroMax})\n• Turbiedad: ${t.toFixed(2)} NTU (Límite: ≤${turbMax})\nNotifique de inmediato a planta.`
       );
       setCalidadModalVisible(false);
     } catch (e) {
@@ -978,8 +1293,10 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
         );
       }
 
-      // Attempt background sync
+      // Attempt background sync and refresh local metrics
       syncData().catch(() => {});
+      loadBeneficiariosSector(progId).catch(() => {});
+      loadProgramaciones().catch(() => {});
 
       // Reset Form
       handleCancelBeneficiary();
@@ -1000,8 +1317,12 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
 
   const handleManualSync = async () => {
     setIsSyncing(true);
-    const res = await syncData();
+    const res = await syncData(true);
     setIsSyncing(false);
+    if (selectedProg?.id) {
+      loadBeneficiariosSector(selectedProg.id).catch(() => {});
+      loadProgramaciones().catch(() => {});
+    }
     Alert.alert(res.success ? 'Sincronización Exitosa' : 'Aviso', res.message);
   };
 
@@ -1554,6 +1875,28 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                 );
               })()}
 
+              {/* BOTÓN ENTREGA COMPLETA EN DEPÓSITO ÚNICO DEL SECTOR */}
+              <TouchableOpacity
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  backgroundColor: '#0284c7',
+                  paddingVertical: 10,
+                  paddingHorizontal: 14,
+                  borderRadius: 12,
+                  marginBottom: 10,
+                }}
+                onPress={() => handleOpenDepositoModal(sectorSeleccionado)}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="water" size={16} color="#ffffff" />
+                <Text style={{ color: '#ffffff', fontSize: 12, fontWeight: '800' }}>
+                  🚰 Entrega en Depósito Único por Sector
+                </Text>
+              </TouchableOpacity>
+
               {/* BÚSQUEDA RÁPIDA EN EL SECTOR */}
               <View style={styles.sectorMiniSearchWrapper}>
                 <Ionicons name="search-outline" size={14} color="#64748b" style={{ marginRight: 6 }} />
@@ -1704,7 +2047,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
               </View>
               <TouchableOpacity
                 style={styles.btnMedirMini}
-                onPress={() => setCalidadModalVisible(true)}
+                onPress={handleOpenCalidadModal}
                 activeOpacity={0.8}
               >
                 <Ionicons name="flask-outline" size={12} color="#0284c7" />
@@ -1943,6 +2286,27 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                 );
               })}
             </View>
+            {/* BOTÓN ENTREGA COMPLETA EN DEPÓSITO ÚNICO DEL SECTOR */}
+            <TouchableOpacity
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                backgroundColor: '#0284c7',
+                paddingVertical: 10,
+                paddingHorizontal: 14,
+                borderRadius: 12,
+                marginTop: 10,
+              }}
+              onPress={() => handleOpenDepositoModal(sectorSeleccionado)}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="water" size={16} color="#ffffff" />
+              <Text style={{ color: '#ffffff', fontSize: 12.5, fontWeight: '800' }}>
+                🚰 Entrega Completa en Depósito Único ({sectorSeleccionado === 'TODOS' ? 'Por Sector' : sectorSeleccionado})
+              </Text>
+            </TouchableOpacity>
           </View>
 
           {/* TARJETA DE AVANCE SEMANAL DEL SECTOR */}
@@ -2408,7 +2772,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
 
           <TouchableOpacity
             style={styles.calidadActionBtn}
-            onPress={() => setCalidadModalVisible(true)}
+            onPress={handleOpenCalidadModal}
             activeOpacity={0.85}
           >
             <Ionicons name="flask-outline" size={12} color="#ffffff" />
@@ -2416,6 +2780,51 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* BOTÓN ACCESO RÁPIDO A ENTREGA EN DEPÓSITO ÚNICO POR SECTOR */}
+      <TouchableOpacity
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          backgroundColor: '#0284c7',
+          borderRadius: 16,
+          paddingVertical: 11,
+          paddingHorizontal: 14,
+          marginBottom: 12,
+          shadowColor: '#0284c7',
+          shadowOffset: { width: 0, height: 3 },
+          shadowOpacity: 0.25,
+          shadowRadius: 6,
+          elevation: 3,
+        }}
+        onPress={() => handleOpenDepositoModal(sectorSeleccionado)}
+        activeOpacity={0.85}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+          <View
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: 10,
+              backgroundColor: 'rgba(255,255,255,0.2)',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Ionicons name="water" size={18} color="#ffffff" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: '#ffffff', fontSize: 13, fontWeight: '900' }}>
+              🚰 ENTREGA EN DEPÓSITO ÚNICO (SECTOR)
+            </Text>
+            <Text style={{ color: '#e0f2fe', fontSize: 10.5, fontWeight: '600' }}>
+              Marca todos los beneficiarios del sector y divide el agua entregada hoy
+            </Text>
+          </View>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color="#ffffff" />
+      </TouchableOpacity>
 
       {/* SECCIÓN INTUITIVA DE IDENTIFICACIÓN: ESCÁNER QR Y BÚSQUEDA MANUAL DNI */}
       <View
@@ -3073,10 +3482,18 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
         </View>
       </Modal>
 
-      {/* WATER QUALITY TEST MODAL (MODERNO, ESPACIOSO Y ERGONÓMICO) */}
-      <Modal visible={calidadModalVisible} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCardCalidad}>
+      {/* WATER QUALITY TEST MODAL (MODERNO, ESPACIOSO Y ERGONÓMICO CON SCROLL Y SELECTOR DE SECTOR) */}
+      <Modal
+        visible={calidadModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCalidadModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
+          <View style={[styles.modalCardCalidad, { maxHeight: '90%' }]}>
             {/* MODAL HEADER CON BOTÓN CERRAR */}
             <View style={styles.modalCalidadHeader}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
@@ -3097,149 +3514,638 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
               </TouchableOpacity>
             </View>
 
-            {/* SECCIÓN 1: ETAPA DEL CONTROL SANITARIO (FILAS DE SELECCIÓN ERGONÓMICAS) */}
-            <Text style={styles.modalSectionLabel}>ETAPA DEL CONTROL SANITARIO:</Text>
-            
-            <View style={styles.etapaOptionsContainer}>
-              {/* ETAPA 1: AL CARGAR */}
-              <TouchableOpacity
-                style={[styles.etapaRowCard, etapaControl === 'CARGA' && styles.etapaRowCardActive]}
-                onPress={() => setEtapaControl('CARGA')}
-                activeOpacity={0.8}
-              >
-                <View style={[styles.etapaRowIconBox, etapaControl === 'CARGA' && styles.etapaRowIconBoxActive]}>
-                  <Ionicons name="water-outline" size={16} color={etapaControl === 'CARGA' ? '#ffffff' : '#0284c7'} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.etapaRowName, etapaControl === 'CARGA' && styles.etapaRowNameActive]}>
-                    1. Al Cargar la Cisterna
-                  </Text>
-                  <Text style={styles.etapaRowDesc}>Llenado en Surtidor o Planta</Text>
-                </View>
-                <Ionicons
-                  name={etapaControl === 'CARGA' ? "radio-button-on" : "radio-button-off"}
-                  size={20}
-                  color={etapaControl === 'CARGA' ? '#0284c7' : '#cbd5e1'}
-                />
-              </TouchableOpacity>
+            <ScrollView
+              ref={calidadScrollRef}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={{
+                paddingBottom: keyboardHeight > 0 ? keyboardHeight * 0.55 + 32 : 6,
+              }}
+            >
+              {/* SECCIÓN 1: ETAPA DEL CONTROL SANITARIO (FILAS DE SELECCIÓN ERGONÓMICAS) */}
+              <Text style={styles.modalSectionLabel}>ETAPA DEL CONTROL SANITARIO:</Text>
+              
+              <View style={styles.etapaOptionsContainer}>
+                {/* ETAPA 1: AL CARGAR */}
+                <TouchableOpacity
+                  style={[styles.etapaRowCard, etapaControl === 'CARGA' && styles.etapaRowCardActive]}
+                  onPress={() => {
+                    setEtapaControl('CARGA');
+                    setSectorCalidad('Surtidor / Planta');
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <View style={[styles.etapaRowIconBox, etapaControl === 'CARGA' && styles.etapaRowIconBoxActive]}>
+                    <Ionicons name="water-outline" size={16} color={etapaControl === 'CARGA' ? '#ffffff' : '#0284c7'} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.etapaRowName, etapaControl === 'CARGA' && styles.etapaRowNameActive]}>
+                      1. Al Cargar la Cisterna
+                    </Text>
+                    <Text style={styles.etapaRowDesc}>Llenado en Surtidor o Planta</Text>
+                  </View>
+                  <Ionicons
+                    name={etapaControl === 'CARGA' ? "radio-button-on" : "radio-button-off"}
+                    size={20}
+                    color={etapaControl === 'CARGA' ? '#0284c7' : '#cbd5e1'}
+                  />
+                </TouchableOpacity>
 
-              {/* ETAPA 2: EN RUTA */}
-              <TouchableOpacity
-                style={[styles.etapaRowCard, etapaControl === 'RUTA' && styles.etapaRowCardActive]}
-                onPress={() => setEtapaControl('RUTA')}
-                activeOpacity={0.8}
-              >
-                <View style={[styles.etapaRowIconBox, etapaControl === 'RUTA' && styles.etapaRowIconBoxActive]}>
-                  <MaterialCommunityIcons name="truck-delivery-outline" size={16} color={etapaControl === 'RUTA' ? '#ffffff' : '#15803d'} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.etapaRowName, etapaControl === 'RUTA' && styles.etapaRowNameActive]}>
-                    2. En Ruta de Reparto
-                  </Text>
-                  <Text style={styles.etapaRowDesc}>Durante la entrega en sector</Text>
-                </View>
-                <Ionicons
-                  name={etapaControl === 'RUTA' ? "radio-button-on" : "radio-button-off"}
-                  size={20}
-                  color={etapaControl === 'RUTA' ? '#15803d' : '#cbd5e1'}
-                />
-              </TouchableOpacity>
+                {/* ETAPA 2: EN RUTA */}
+                <TouchableOpacity
+                  style={[styles.etapaRowCard, etapaControl === 'RUTA' && styles.etapaRowCardActive]}
+                  onPress={() => {
+                    setEtapaControl('RUTA');
+                    if (sectorCalidad === 'Surtidor / Planta') {
+                      const defSec = beneficiario?.sector || (sectorSeleccionado !== 'TODOS' ? sectorSeleccionado : 'SOL DE INDAÑE');
+                      setSectorCalidad(defSec);
+                    }
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <View style={[styles.etapaRowIconBox, etapaControl === 'RUTA' && styles.etapaRowIconBoxActive]}>
+                    <MaterialCommunityIcons name="truck-delivery-outline" size={16} color={etapaControl === 'RUTA' ? '#ffffff' : '#15803d'} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.etapaRowName, etapaControl === 'RUTA' && styles.etapaRowNameActive]}>
+                      2. En Ruta de Reparto
+                    </Text>
+                    <Text style={styles.etapaRowDesc}>Durante la entrega en sector</Text>
+                  </View>
+                  <Ionicons
+                    name={etapaControl === 'RUTA' ? "radio-button-on" : "radio-button-off"}
+                    size={20}
+                    color={etapaControl === 'RUTA' ? '#15803d' : '#cbd5e1'}
+                  />
+                </TouchableOpacity>
 
-              {/* ETAPA 3: ADICIONAL */}
-              <TouchableOpacity
-                style={[styles.etapaRowCard, etapaControl === 'ADICIONAL' && styles.etapaRowCardActive]}
-                onPress={() => setEtapaControl('ADICIONAL')}
-                activeOpacity={0.8}
-              >
-                <View style={[styles.etapaRowIconBox, etapaControl === 'ADICIONAL' && styles.etapaRowIconBoxActive]}>
-                  <Ionicons name="add-circle-outline" size={16} color={etapaControl === 'ADICIONAL' ? '#ffffff' : '#7e22ce'} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.etapaRowName, etapaControl === 'ADICIONAL' && styles.etapaRowNameActive]}>
-                    3. Muestreo Adicional
-                  </Text>
-                  <Text style={styles.etapaRowDesc}>Control facultativo en campo</Text>
-                </View>
-                <Ionicons
-                  name={etapaControl === 'ADICIONAL' ? "radio-button-on" : "radio-button-off"}
-                  size={20}
-                  color={etapaControl === 'ADICIONAL' ? '#7e22ce' : '#cbd5e1'}
-                />
-              </TouchableOpacity>
-            </View>
+                {/* ETAPA 3: ADICIONAL */}
+                <TouchableOpacity
+                  style={[styles.etapaRowCard, etapaControl === 'ADICIONAL' && styles.etapaRowCardActive]}
+                  onPress={() => {
+                    setEtapaControl('ADICIONAL');
+                    if (sectorCalidad === 'Surtidor / Planta') {
+                      const defSec = beneficiario?.sector || (sectorSeleccionado !== 'TODOS' ? sectorSeleccionado : 'SOL DE INDAÑE');
+                      setSectorCalidad(defSec);
+                    }
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <View style={[styles.etapaRowIconBox, etapaControl === 'ADICIONAL' && styles.etapaRowIconBoxActive]}>
+                    <Ionicons name="add-circle-outline" size={16} color={etapaControl === 'ADICIONAL' ? '#ffffff' : '#7e22ce'} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.etapaRowName, etapaControl === 'ADICIONAL' && styles.etapaRowNameActive]}>
+                      3. Muestreo Adicional
+                    </Text>
+                    <Text style={styles.etapaRowDesc}>Control facultativo en campo</Text>
+                  </View>
+                  <Ionicons
+                    name={etapaControl === 'ADICIONAL' ? "radio-button-on" : "radio-button-off"}
+                    size={20}
+                    color={etapaControl === 'ADICIONAL' ? '#7e22ce' : '#cbd5e1'}
+                  />
+                </TouchableOpacity>
+              </View>
 
-            {/* SECCIÓN 2: PARÁMETROS SANITARIOS (MEDIDAS LADO A LADO CON SUFIJOS) */}
-            <View style={styles.paramInputsRow}>
-              {/* CLORO */}
-              <View style={styles.paramInputCol}>
-                <Text style={styles.paramInputLabel}>CLORO LIBRE</Text>
+              {/* SECCIÓN 1.5: SECTOR / LUGAR DONDE SE REALIZA EL CONTROL */}
+              <View style={{ marginBottom: 10 }}>
+                <Text style={styles.paramInputLabel}>SECTOR / LUGAR DEL CONTROL SANITARIO</Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                  contentContainerStyle={{ gap: 6, paddingBottom: 6 }}
+                >
+                  {getSectoresCalidadOpciones().map((secOption, idx) => {
+                    const isSelected = sectorCalidad.toUpperCase() === secOption.toUpperCase();
+                    return (
+                      <TouchableOpacity
+                        key={idx}
+                        onPress={() => setSectorCalidad(secOption)}
+                        activeOpacity={0.8}
+                        style={{
+                          paddingHorizontal: 10,
+                          paddingVertical: 6,
+                          borderRadius: 14,
+                          borderWidth: 1.5,
+                          borderColor: isSelected ? '#0284c7' : '#cbd5e1',
+                          backgroundColor: isSelected ? '#e0f2fe' : '#f8fafc',
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 4,
+                        }}
+                      >
+                        <Ionicons
+                          name={secOption.includes('Surtidor') ? 'business-outline' : 'location-outline'}
+                          size={12}
+                          color={isSelected ? '#0369a1' : '#64748b'}
+                        />
+                        <Text
+                          style={{
+                            fontSize: 11,
+                            fontWeight: isSelected ? '800' : '600',
+                            color: isSelected ? '#0369a1' : '#475569',
+                          }}
+                        >
+                          {secOption}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+
+                <View style={styles.paramInputWrapper}>
+                  <Ionicons name="location-outline" size={16} color="#0284c7" style={{ marginRight: 6 }} />
+                  <TextInput
+                    style={[styles.paramInputText, { flex: 1, textAlign: 'left', fontSize: 13 }]}
+                    value={sectorCalidad}
+                    onChangeText={setSectorCalidad}
+                    placeholder="Seleccione o escriba el sector / punto de muestreo..."
+                    placeholderTextColor="#94a3b8"
+                    onFocus={() => {
+                      setTimeout(() => {
+                        calidadScrollRef.current?.scrollTo({ y: 180, animated: true });
+                      }, 150);
+                    }}
+                  />
+                </View>
+              </View>
+
+              {/* SECCIÓN 2: PARÁMETROS SANITARIOS (MEDIDAS LADO A LADO CON SUFIJOS) */}
+              <View style={styles.paramInputsRow}>
+                {/* CLORO */}
+                <View style={styles.paramInputCol}>
+                  <Text style={styles.paramInputLabel}>CLORO LIBRE</Text>
+                  <View style={styles.paramInputWrapper}>
+                    <TextInput
+                      style={styles.paramInputText}
+                      value={cloroPpm}
+                      onChangeText={setCloroPpm}
+                      keyboardType="numeric"
+                      placeholder="1.20"
+                      placeholderTextColor="#94a3b8"
+                      onFocus={() => {
+                        setTimeout(() => {
+                          calidadScrollRef.current?.scrollToEnd({ animated: true });
+                        }, 150);
+                      }}
+                    />
+                    <Text style={styles.paramInputUnit}>ppm</Text>
+                  </View>
+                  <Text style={styles.paramInputHint}>Óptimo: 0.5 - 2.0 ppm</Text>
+                </View>
+
+                {/* TURBIEDAD */}
+                <View style={styles.paramInputCol}>
+                  <Text style={styles.paramInputLabel}>TURBIEDAD</Text>
+                  <View style={styles.paramInputWrapper}>
+                    <TextInput
+                      style={styles.paramInputText}
+                      value={turbiedadNtu}
+                      onChangeText={setTurbiedadNtu}
+                      keyboardType="numeric"
+                      placeholder="1.40"
+                      placeholderTextColor="#94a3b8"
+                      onFocus={() => {
+                        setTimeout(() => {
+                          calidadScrollRef.current?.scrollToEnd({ animated: true });
+                        }, 150);
+                      }}
+                    />
+                    <Text style={styles.paramInputUnit}>NTU</Text>
+                  </View>
+                  <Text style={styles.paramInputHint}>Límite: ≤ {systemConfig?.turbiedad_max_ntu ?? 5.0} NTU</Text>
+                </View>
+              </View>
+
+              {/* ASPECTO ORGANOLÉPTICO */}
+              <View style={{ marginTop: 8 }}>
+                <Text style={styles.paramInputLabel}>ASPECTO ORGANOLÉPTICO</Text>
                 <View style={styles.paramInputWrapper}>
                   <TextInput
-                    style={styles.paramInputText}
-                    value={cloroPpm}
-                    onChangeText={setCloroPpm}
-                    keyboardType="numeric"
-                    placeholder="1.20"
+                    style={[styles.paramInputText, { flex: 1, textAlign: 'left' }]}
+                    value={aspectoCalidad}
+                    onChangeText={setAspectoCalidad}
+                    placeholder="Límpido / Incoloro"
                     placeholderTextColor="#94a3b8"
+                    onFocus={() => {
+                      setTimeout(() => {
+                        calidadScrollRef.current?.scrollToEnd({ animated: true });
+                      }, 150);
+                    }}
                   />
-                  <Text style={styles.paramInputUnit}>ppm</Text>
                 </View>
-                <Text style={styles.paramInputHint}>Óptimo: 0.5 - 2.0 ppm</Text>
               </View>
 
-              {/* TURBIEDAD */}
-              <View style={styles.paramInputCol}>
-                <Text style={styles.paramInputLabel}>TURBIEDAD</Text>
-                <View style={styles.paramInputWrapper}>
-                  <TextInput
-                    style={styles.paramInputText}
-                    value={turbiedadNtu}
-                    onChangeText={setTurbiedadNtu}
-                    keyboardType="numeric"
-                    placeholder="1.40"
-                    placeholderTextColor="#94a3b8"
-                  />
-                  <Text style={styles.paramInputUnit}>NTU</Text>
-                </View>
-                <Text style={styles.paramInputHint}>Límite: ≤ {systemConfig?.turbiedad_max_ntu ?? 5.0} NTU</Text>
+              {/* BOTONES DE ACCIÓN PILL */}
+              <View style={styles.modalCalidadBtnRow}>
+                <TouchableOpacity
+                  style={styles.modalCalidadCancelBtn}
+                  onPress={() => setCalidadModalVisible(false)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.modalCalidadCancelText}>Cancelar</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.modalCalidadSaveBtn}
+                  onPress={handleSaveCalidad}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="checkmark-circle-outline" size={17} color="#ffffff" />
+                  <Text style={styles.modalCalidadSaveText}>Guardar Test</Text>
+                </TouchableOpacity>
               </View>
-            </View>
-
-            {/* ASPECTO ORGANOLÉPTICO */}
-            <View style={{ marginTop: 8 }}>
-              <Text style={styles.paramInputLabel}>ASPECTO ORGANOLÉPTICO</Text>
-              <View style={styles.paramInputWrapper}>
-                <TextInput
-                  style={[styles.paramInputText, { flex: 1, textAlign: 'left' }]}
-                  value={aspectoCalidad}
-                  onChangeText={setAspectoCalidad}
-                  placeholder="Límpido / Incoloro"
-                  placeholderTextColor="#94a3b8"
-                />
-              </View>
-            </View>
-
-            {/* BOTONES DE ACCIÓN PILL */}
-            <View style={styles.modalCalidadBtnRow}>
-              <TouchableOpacity
-                style={styles.modalCalidadCancelBtn}
-                onPress={() => setCalidadModalVisible(false)}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.modalCalidadCancelText}>Cancelar</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.modalCalidadSaveBtn}
-                onPress={handleSaveCalidad}
-                activeOpacity={0.85}
-              >
-                <Ionicons name="checkmark-circle-outline" size={17} color="#ffffff" />
-                <Text style={styles.modalCalidadSaveText}>Guardar Test</Text>
-              </TouchableOpacity>
-            </View>
+            </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* MODAL ENTREGA COMPLETA EN DEPÓSITO ÚNICO POR SECTOR */}
+      <Modal
+        visible={depositoModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => !savingDeposito && setDepositoModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
+          <View
+            style={[
+              styles.modalCardCalidad,
+              { maxWidth: 420, maxHeight: '92%', paddingHorizontal: 16, paddingVertical: 16 },
+            ]}
+          >
+            {/* HEADER */}
+            <View style={styles.modalCalidadHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+                <View style={[styles.modalFlaskCircle, { backgroundColor: '#e0f2fe' }]}>
+                  <Ionicons name="water" size={20} color="#0284c7" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.modalCalidadTitle}>Entrega en Depósito Único</Text>
+                  <Text style={styles.modalCalidadSubtitle}>
+                    Divide el agua del día entre los beneficiarios marcados del sector
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                style={styles.modalCloseCircle}
+                onPress={() => !savingDeposito && setDepositoModalVisible(false)}
+              >
+                <Ionicons name="close" size={18} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            {(() => {
+              const listaDelSector = getBeneficiariosPorSectorNombre(sectorDeposito);
+              const filtradosModal = listaDelSector.filter((b: any) => {
+                if (!filtroBusquedaDeposito.trim()) return true;
+                const q = filtroBusquedaDeposito.toLowerCase().trim();
+                return (
+                  String(b.nombres_apellidos || b.nombres || '').toLowerCase().includes(q) ||
+                  String(b.dni || '').includes(q)
+                );
+              });
+              const litrosNum = parseFloat(litrosTotalesDeposito) || 0;
+              const marcadosCount = selectedBenefIdsDeposito.length;
+              const desmarcadosCount = Math.max(0, listaDelSector.length - marcadosCount);
+              const litrosPorBenef = marcadosCount > 0 ? Number((litrosNum / marcadosCount).toFixed(2)) : 0;
+              const cuotaDiariaSector = listaDelSector.reduce(
+                (acc: number, b: any) => acc + Number(b.num_miembros || 1) * (systemConfig?.dotacion_diaria_litros || 50),
+                0
+              );
+
+              return (
+                <ScrollView
+                  showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                  contentContainerStyle={{ paddingBottom: 14 }}
+                >
+                  {/* 1. SELECCIÓN DE SECTOR */}
+                  <Text style={styles.paramInputLabel}>1. SELECCIONE EL SECTOR DEL DEPÓSITO:</Text>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
+                    contentContainerStyle={{ gap: 6, paddingBottom: 8 }}
+                  >
+                    {getSectoresDisponiblesDeposito().map((secName, idx) => {
+                      const active = sectorDeposito.toLowerCase() === secName.toLowerCase();
+                      const countSec = getBeneficiariosPorSectorNombre(secName).length;
+                      return (
+                        <TouchableOpacity
+                          key={idx}
+                          onPress={() => handleChangeSectorDeposito(secName)}
+                          style={{
+                            paddingHorizontal: 11,
+                            paddingVertical: 7,
+                            borderRadius: 14,
+                            borderWidth: 1.5,
+                            borderColor: active ? '#0284c7' : '#cbd5e1',
+                            backgroundColor: active ? '#0284c7' : '#f8fafc',
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 5,
+                          }}
+                        >
+                          <Ionicons
+                            name="location-outline"
+                            size={12}
+                            color={active ? '#ffffff' : '#0369a1'}
+                          />
+                          <Text
+                            style={{
+                              fontSize: 11,
+                              fontWeight: '800',
+                              color: active ? '#ffffff' : '#334155',
+                            }}
+                          >
+                            {secName} ({countSec})
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+
+                  {/* 2. VOLUMEN TOTAL ENTREGADO EN EL DEPÓSITO HOY */}
+                  <View style={{ marginTop: 4, marginBottom: 8 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={styles.paramInputLabel}>2. AGUA TOTAL ENTREGADA EN EL DEPÓSITO (LITROS):</Text>
+                      <TouchableOpacity onPress={() => setDiaPickerModalVisible(true)}>
+                        <Text style={{ fontSize: 11, fontWeight: '800', color: '#0284c7' }}>
+                          📅 {diaSeleccionado?.fechaDisplay || 'Hoy'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    <View style={styles.paramInputWrapper}>
+                      <TextInput
+                        style={[styles.paramInputText, { fontSize: 16 }]}
+                        value={litrosTotalesDeposito}
+                        onChangeText={setLitrosTotalesDeposito}
+                        keyboardType="numeric"
+                        placeholder="Ej. 15000"
+                        placeholderTextColor="#94a3b8"
+                      />
+                      <Text style={styles.paramInputUnit}>Litros</Text>
+                    </View>
+
+                    {/* BOTONES RÁPIDOS DE VOLUMEN */}
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      keyboardShouldPersistTaps="handled"
+                      contentContainerStyle={{ gap: 6, marginTop: 6 }}
+                    >
+                      {[
+                        { label: '15,000 L (1 Cisterna)', val: '15000' },
+                        { label: '19,000 L (Cisterna 19m³)', val: '19000' },
+                        ...(cuotaDiariaSector > 0
+                          ? [{ label: `Cuota Día (${cuotaDiariaSector} L)`, val: String(cuotaDiariaSector) }]
+                          : []),
+                      ].map((preset, idx) => (
+                        <TouchableOpacity
+                          key={idx}
+                          onPress={() => setLitrosTotalesDeposito(preset.val)}
+                          style={{
+                            backgroundColor: litrosTotalesDeposito === preset.val ? '#e0f2fe' : '#f1f5f9',
+                            borderWidth: 1,
+                            borderColor: litrosTotalesDeposito === preset.val ? '#0284c7' : '#cbd5e1',
+                            borderRadius: 10,
+                            paddingHorizontal: 9,
+                            paddingVertical: 4,
+                          }}
+                        >
+                          <Text style={{ fontSize: 10.5, fontWeight: '700', color: '#0369a1' }}>
+                            {preset.label}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+
+                  {/* RESUMEN AUTOMÁTICO DE LA DIVISIÓN */}
+                  <View
+                    style={{
+                      backgroundColor: '#f0fdf4',
+                      borderWidth: 1.5,
+                      borderColor: '#86efac',
+                      borderRadius: 14,
+                      padding: 10,
+                      marginBottom: 10,
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={{ fontSize: 11, fontWeight: '800', color: '#166534' }}>
+                        ➗ DIVISIÓN ENTRE BENEFICIARIOS MARCADOS:
+                      </Text>
+                      <Text style={{ fontSize: 13, fontWeight: '900', color: '#15803d' }}>
+                        {litrosPorBenef.toLocaleString()} L / fam.
+                      </Text>
+                    </View>
+                    <Text style={{ fontSize: 11, color: '#15803d', marginTop: 2 }}>
+                      {litrosNum.toLocaleString()} L ÷ {marcadosCount} beneficiarios seleccionados ={' '}
+                      <Text style={{ fontWeight: '800' }}>{litrosPorBenef.toLocaleString()} L c/u</Text>
+                      {desmarcadosCount > 0 ? ` (${desmarcadosCount} excluidos para otro depósito)` : ''}
+                    </Text>
+                  </View>
+
+                  {/* 3. LISTA DE BENEFICIARIOS CON OPCIÓN DE DESMARCAR CASOS ESPECIALES */}
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <Text style={styles.paramInputLabel}>
+                      3. BENEFICIARIOS ({marcadosCount}/{listaDelSector.length} MARCADOS):
+                    </Text>
+                    <View style={{ flexDirection: 'row', gap: 6 }}>
+                      <TouchableOpacity
+                        onPress={() => setSelectedBenefIdsDeposito(listaDelSector.map((b: any) => Number(b.id)))}
+                        style={{
+                          backgroundColor: '#e0f2fe',
+                          paddingHorizontal: 8,
+                          paddingVertical: 3,
+                          borderRadius: 8,
+                        }}
+                      >
+                        <Text style={{ fontSize: 10.5, fontWeight: '800', color: '#0369a1' }}>☑ Todos</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => setSelectedBenefIdsDeposito([])}
+                        style={{
+                          backgroundColor: '#fee2e2',
+                          paddingHorizontal: 8,
+                          paddingVertical: 3,
+                          borderRadius: 8,
+                        }}
+                      >
+                        <Text style={{ fontSize: 10.5, fontWeight: '800', color: '#b91c1c' }}>☐ Ninguno</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  {/* BUSCADOR PARA DESMARCAR CASO ESPECIAL */}
+                  <View style={[styles.sectorMiniSearchWrapper, { marginBottom: 6 }]}>
+                    <Ionicons name="search-outline" size={14} color="#64748b" style={{ marginRight: 6 }} />
+                    <TextInput
+                      style={styles.sectorMiniSearchInput}
+                      placeholder="Buscar beneficiario para desmarcar caso especial..."
+                      placeholderTextColor="#94a3b8"
+                      value={filtroBusquedaDeposito}
+                      onChangeText={setFiltroBusquedaDeposito}
+                    />
+                    {filtroBusquedaDeposito ? (
+                      <TouchableOpacity onPress={() => setFiltroBusquedaDeposito('')}>
+                        <Ionicons name="close-circle" size={14} color="#94a3b8" />
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+
+                  <View
+                    style={{
+                      maxHeight: 195,
+                      borderWidth: 1,
+                      borderColor: '#e2e8f0',
+                      borderRadius: 12,
+                      backgroundColor: '#f8fafc',
+                      padding: 6,
+                      marginBottom: 10,
+                    }}
+                  >
+                    <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                      {filtradosModal.map((b: any) => {
+                        const isChecked = selectedBenefIdsDeposito.includes(Number(b.id));
+                        return (
+                          <TouchableOpacity
+                            key={b.id}
+                            onPress={() => handleToggleBenefDeposito(Number(b.id))}
+                            activeOpacity={0.75}
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              paddingVertical: 7,
+                              paddingHorizontal: 8,
+                              marginBottom: 4,
+                              borderRadius: 10,
+                              backgroundColor: isChecked ? '#ffffff' : '#fef2f2',
+                              borderWidth: 1,
+                              borderColor: isChecked ? '#bae6fd' : '#fecaca',
+                              gap: 8,
+                            }}
+                          >
+                            <Ionicons
+                              name={isChecked ? 'checkbox' : 'square-outline'}
+                              size={20}
+                              color={isChecked ? '#0284c7' : '#ef4444'}
+                            />
+                            <View style={{ flex: 1 }}>
+                              <Text
+                                style={{
+                                  fontSize: 12,
+                                  fontWeight: '700',
+                                  color: isChecked ? '#0f172a' : '#991b1b',
+                                  textDecorationLine: isChecked ? 'none' : 'line-through',
+                                }}
+                                numberOfLines={1}
+                              >
+                                {b.nombres_apellidos || b.nombres}
+                              </Text>
+                              <Text style={{ fontSize: 10.5, color: '#64748b' }}>
+                                DNI: {b.dni} • 👥 {b.num_miembros || 1} hab.
+                                {!isChecked ? ' • (Recibe en otro depósito)' : ''}
+                              </Text>
+                            </View>
+                            <View
+                              style={{
+                                backgroundColor: isChecked ? '#dcfce7' : '#fee2e2',
+                                paddingHorizontal: 7,
+                                paddingVertical: 3,
+                                borderRadius: 8,
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  fontSize: 11,
+                                  fontWeight: '800',
+                                  color: isChecked ? '#15803d' : '#b91c1c',
+                                }}
+                              >
+                                {isChecked ? `${litrosPorBenef} L` : '0 L'}
+                              </Text>
+                            </View>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </ScrollView>
+                  </View>
+
+                  {/* 4. FOTO OPCIONAL DEL DEPÓSITO */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                    <TouchableOpacity
+                      onPress={handleTakePhotoDeposito}
+                      style={{
+                        flex: 1,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 6,
+                        paddingVertical: 9,
+                        borderRadius: 12,
+                        borderWidth: 1.5,
+                        borderColor: fotoDepositoUri ? '#16a34a' : '#0284c7',
+                        backgroundColor: fotoDepositoUri ? '#f0fdf4' : '#f0f9ff',
+                      }}
+                    >
+                      <Ionicons
+                        name="camera-outline"
+                        size={16}
+                        color={fotoDepositoUri ? '#15803d' : '#0284c7'}
+                      />
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          fontWeight: '800',
+                          color: fotoDepositoUri ? '#15803d' : '#0284c7',
+                        }}
+                      >
+                        {fotoDepositoUri ? '📸 Foto del Depósito Capturada (Cambiar)' : '📷 Tomar Foto del Depósito (Opcional)'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* BOTONES ACCIÓN */}
+                  <View style={styles.modalCalidadBtnRow}>
+                    <TouchableOpacity
+                      style={styles.modalCalidadCancelBtn}
+                      disabled={savingDeposito}
+                      onPress={() => setDepositoModalVisible(false)}
+                    >
+                      <Text style={styles.modalCalidadCancelText}>Cancelar</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.modalCalidadSaveBtn, { flex: 1.6 }]}
+                      disabled={savingDeposito || marcadosCount === 0}
+                      onPress={() => handleGuardarEntregaDepositoSector(false)}
+                    >
+                      {savingDeposito ? (
+                        <ActivityIndicator size="small" color="#ffffff" />
+                      ) : (
+                        <>
+                          <Ionicons name="checkmark-done-circle-outline" size={18} color="#ffffff" />
+                          <Text style={styles.modalCalidadSaveText}>
+                            Entregar ({marcadosCount} fam • {litrosPorBenef}L)
+                          </Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </ScrollView>
+              );
+            })()}
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* MODAL COINCIDENCIAS DE BÚSQUEDA (CUANDO SE ENCUENTRAN VARIOS BENEFICIARIOS) */}

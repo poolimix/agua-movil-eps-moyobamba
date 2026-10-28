@@ -9,7 +9,7 @@ router.get('/', cisternasController.getAllCisternas);
 // Operaciones protegidas por roles
 router.post('/', verifyToken, requireRole(['ADMIN', 'SUPERVISOR']), cisternasController.createCisterna);
 router.put('/:id', verifyToken, requireRole(['ADMIN', 'SUPERVISOR']), cisternasController.updateCisterna);
-router.patch('/:id/ubicacion', verifyToken, cisternasController.updateUbicacionGps);
+router.patch('/:id/ubicacion', cisternasController.updateUbicacionGps);
 router.get('/volvo/status', cisternasController.getVolvoIntegrationStatus);
 router.get('/volvo/sync', cisternasController.triggerVolvoSync);
 router.post('/volvo/sync', verifyToken, requireRole(['ADMIN', 'SUPERVISOR']), cisternasController.triggerVolvoSync);

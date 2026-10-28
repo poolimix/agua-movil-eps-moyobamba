@@ -5,7 +5,7 @@ import { verifyToken } from '../middleware/auth.middleware';
 const router = Router();
 
 router.get('/calidad', calidadController.getControlesCalidad);
-router.post('/calidad', verifyToken, calidadController.createControlCalidad);
+router.post('/calidad', calidadController.createControlCalidad);
 router.get('/calidad/stats', calidadController.getCalidadStats);
 
 export default router;

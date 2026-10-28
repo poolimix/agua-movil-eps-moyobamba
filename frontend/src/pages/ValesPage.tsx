@@ -148,16 +148,17 @@ export default function ValesPage() {
   };
 
   const getEstadoBadge = (estado: string) => {
-    switch (estado) {
-      case 'Entregado':
-      case 'Canjeado':
+    const estUpper = (estado || '').toUpperCase().trim();
+    switch (estUpper) {
+      case 'ENTREGADO':
+      case 'CANJEADO':
         return <span style={{ background: '#dcfce7', color: '#15803d', padding: '4px 8px', borderRadius: 4, fontWeight: 700 }}>✓ ENTREGADO</span>;
-      case 'Emitido':
-      case 'Pendiente':
+      case 'EMITIDO':
+      case 'PENDIENTE':
         return <span style={{ background: '#e0f2fe', color: '#0369a1', padding: '4px 8px', borderRadius: 4, fontWeight: 700 }}>⏳ PENDIENTE</span>;
-      case 'Vencido':
+      case 'VENCIDO':
         return <span style={{ background: '#fef3c7', color: '#b45309', padding: '4px 8px', borderRadius: 4, fontWeight: 700 }}>⚠ VENCIDO</span>;
-      case 'Anulado':
+      case 'ANULADO':
         return <span style={{ background: '#fee2e2', color: '#b91c1c', padding: '4px 8px', borderRadius: 4, fontWeight: 700 }}>✕ ANULADO</span>;
       default:
         return <span style={{ background: '#f1f5f9', color: '#475569', padding: '4px 8px', borderRadius: 4, fontWeight: 700 }}>{estado}</span>;
@@ -365,9 +366,9 @@ export default function ValesPage() {
                           >
                             🖨️ Imprimir
                           </button>
-                          {v.estado !== 'Entregado' && v.estado !== 'Anulado' && (
+                          {!['ENTREGADO', 'CANJEADO', 'ANULADO'].includes((v.estado || '').toUpperCase()) && (
                             <button 
-                              onClick={() => handleCambiarEstado(v.id, 'Anulado')}
+                              onClick={() => handleCambiarEstado(v.id, 'ANULADO')}
                               title="Anular Vale"
                               style={{ background: '#fee2e2', border: '1px solid #fca5a5', color: '#b91c1c', padding: '4px 8px', borderRadius: 4, cursor: 'pointer', fontSize: 11 }}
                             >
@@ -388,7 +389,7 @@ export default function ValesPage() {
                 pageSize={pageSize}
                 onPageChange={setCurrentPage}
                 onPageSizeChange={setPageSize}
-                pageSizeOptions={[5, 10, 20, 50]}
+                pageSizeOptions={[5, 10, 20, 50, 100, 200]}
               />
             </>
           )}

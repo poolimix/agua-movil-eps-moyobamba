@@ -83,12 +83,16 @@ export const initDatabase = async () => {
 
     CREATE TABLE IF NOT EXISTS control_calidad (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      programacion_id INTEGER,
       cisterna_id INTEGER,
       conductor_id INTEGER,
       cloro_residual_ppm REAL NOT NULL,
       turbiedad_ntu REAL NOT NULL,
       aspecto_organoleptico TEXT DEFAULT 'Límpido / Incoloro',
       conforme_sanitario INTEGER DEFAULT 1,
+      etapa_control TEXT DEFAULT 'CARGA',
+      punto_muestreo TEXT,
+      sector TEXT,
       observaciones TEXT,
       latitud REAL,
       longitud REAL,
@@ -175,7 +179,11 @@ export const initDatabase = async () => {
     'ALTER TABLE cisternas ADD COLUMN latitud_actual REAL;',
     'ALTER TABLE cisternas ADD COLUMN longitud_actual REAL;',
     'ALTER TABLE cisternas ADD COLUMN enlace_gps_tracking TEXT;',
-    'ALTER TABLE cisternas ADD COLUMN ultima_actualizacion_gps TEXT;'
+    'ALTER TABLE cisternas ADD COLUMN ultima_actualizacion_gps TEXT;',
+    'ALTER TABLE control_calidad ADD COLUMN programacion_id INTEGER;',
+    'ALTER TABLE control_calidad ADD COLUMN etapa_control TEXT DEFAULT "CARGA";',
+    'ALTER TABLE control_calidad ADD COLUMN punto_muestreo TEXT;',
+    'ALTER TABLE control_calidad ADD COLUMN sector TEXT;'
   ];
 
   for (const sql of migrations) {

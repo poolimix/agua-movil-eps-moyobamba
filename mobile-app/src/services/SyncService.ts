@@ -5,7 +5,7 @@ import { getDatabase } from '../database/schema';
 
 import { BACKEND_URL } from '../config/api';
 
-export const syncData = async (): Promise<{ success: boolean; syncedCount: number; message: string }> => {
+export const syncData = async (manualRetry = false): Promise<{ success: boolean; syncedCount: number; message: string }> => {
   try {
     const netInfo = await NetInfo.fetch();
     
@@ -14,17 +14,67 @@ export const syncData = async (): Promise<{ success: boolean; syncedCount: numbe
     }
 
     const db = await getDatabase();
+
+    // Si es sincronización manual solicitada por el operador, reintentar también registros en estado FAILED
+    if (manualRetry) {
+      try {
+        await db.runAsync(
+          `UPDATE entregas_agua SET sync_status = 'PENDING', retry_count = 0 WHERE sync_status = 'FAILED' AND sincronizado = 0`
+        );
+      } catch (_) {}
+    }
     
     // Fetch deliveries pending synchronization
     const pendingEntregas = await db.getAllAsync(
-      `SELECT * FROM entregas_agua WHERE sincronizado = 0 OR sync_status != 'SYNCED'`
+      `SELECT * FROM entregas_agua WHERE (sincronizado = 0 OR sync_status != 'SYNCED') AND COALESCE(retry_count, 0) < 5`
     ) as any[];
 
-    if (pendingEntregas.length === 0) {
+    // Fetch quality control tests pending synchronization
+    let pendingCalidad: any[] = [];
+    try {
+      pendingCalidad = await db.getAllAsync(
+        `SELECT * FROM control_calidad WHERE sincronizado = 0`
+      ) as any[];
+    } catch (_) {}
+
+    if (pendingEntregas.length === 0 && pendingCalidad.length === 0) {
       return { success: true, syncedCount: 0, message: 'Todo está sincronizado con la nube.' };
     }
 
     let successCount = 0;
+    let syncedCalidadCount = 0;
+
+    // 1. Sincronizar controles de calidad pendientes (Offline -> Online)
+    for (const cal of pendingCalidad) {
+      try {
+        const resCal = await fetch(`${BACKEND_URL}/calidad/calidad`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            local_id: `cal-movil-${cal.id}-${cal.fecha_hora || ''}`,
+            programacion_id: cal.programacion_id || 1,
+            cisterna_id: cal.cisterna_id || 1,
+            conductor_nombre: 'Operador Móvil',
+            cloro_residual_ppm: cal.cloro_residual_ppm,
+            turbiedad_ntu: cal.turbiedad_ntu,
+            aspecto_organoleptico: cal.aspecto_organoleptico || 'Límpido / Incoloro',
+            etapa_control: cal.etapa_control || 'CARGA',
+            punto_muestreo: cal.punto_muestreo || 'Control en Campo',
+            sector: cal.sector || 'Moyobamba',
+            observaciones: cal.observaciones || null,
+            latitud: cal.latitud || null,
+            longitud: cal.longitud || null,
+            registrado_por: 'Operador Móvil (Sync Offline)',
+          }),
+        });
+        if (resCal.ok) {
+          await db.runAsync(`UPDATE control_calidad SET sincronizado = 1 WHERE id = ?`, [cal.id]);
+          syncedCalidadCount++;
+        }
+      } catch (calErr) {
+        console.warn(`Error sincronizando control_calidad #${cal.id}:`, calErr);
+      }
+    }
 
     for (const entrega of pendingEntregas) {
       try {
@@ -136,10 +186,31 @@ export const syncData = async (): Promise<{ success: boolean; syncedCount: numbe
       }
     }
 
+    // 3. Limpieza preventiva de fotos locales antiguas (>15 días) cuyas entregas ya están sincronizadas en el servidor
+    if (Platform.OS !== 'web') {
+      try {
+        const oldSyncedWithPhotos = await db.getAllAsync(
+          `SELECT id, foto_local_uri FROM entregas_agua
+           WHERE sincronizado = 1 AND sync_status = 'SYNCED'
+             AND foto_local_uri IS NOT NULL AND foto_local_uri != ''
+             AND datetime(COALESCE(fecha_captura, fecha_hora)) < datetime('now', '-15 days')
+           LIMIT 30`
+        ) as any[];
+
+        for (const item of oldSyncedWithPhotos) {
+          if (item.foto_local_uri && !String(item.foto_local_uri).startsWith('http')) {
+            await FileSystem.deleteAsync(item.foto_local_uri, { idempotent: true }).catch(() => {});
+          }
+          await db.runAsync(`UPDATE entregas_agua SET foto_local_uri = NULL WHERE id = ?`, [item.id]).catch(() => {});
+        }
+      } catch (_) {}
+    }
+
+    const totalSynced = successCount + syncedCalidadCount;
     return {
-      success: successCount > 0,
-      syncedCount: successCount,
-      message: `Sincronización finalizada: ${successCount} de ${pendingEntregas.length} entregas enviadas con éxito.`,
+      success: totalSynced > 0,
+      syncedCount: totalSynced,
+      message: `Sincronización finalizada: ${successCount} entrega(s) y ${syncedCalidadCount} control(es) de calidad enviados con éxito.`,
     };
   } catch (error: any) {
     console.error('Error general de sincronización:', error);

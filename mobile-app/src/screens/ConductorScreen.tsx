@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,8 @@ import {
   TextInput,
   RefreshControl,
   Image,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
@@ -35,7 +37,9 @@ export default function ConductorScreen({ user, onLogout }: ConductorScreenProps
   // Quality check form state (Control de carga en planta)
   const [cloro, setCloro] = useState('1.00');
   const [turbiedad, setTurbiedad] = useState('1.50');
+  const [sectorControl, setSectorControl] = useState('Surtidor / Planta');
   const [savingCalidad, setSavingCalidad] = useState(false);
+  const modalScrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     loadProgramacionesConductor();
@@ -232,38 +236,50 @@ export default function ConductorScreen({ user, onLogout }: ConductorScreenProps
       const fechaHora = new Date().toISOString();
       const esConforme = cl >= 0.5 && cl <= 2.0 && tb <= 5.0 ? 1 : 0;
 
-      await db.runAsync(
-        `INSERT INTO control_calidad (cisterna_id, conductor_id, cloro_residual_ppm, turbiedad_ntu, aspecto_organoleptico, conforme_sanitario, observaciones, fecha_hora, sincronizado)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+      const punto = sectorControl ? `Carga / ${sectorControl}` : 'Surtidor / Planta de Carga';
+
+      const insertRes = await db.runAsync(
+        `INSERT INTO control_calidad (programacion_id, cisterna_id, conductor_id, cloro_residual_ppm, turbiedad_ntu, aspecto_organoleptico, conforme_sanitario, etapa_control, punto_muestreo, sector, observaciones, fecha_hora, sincronizado)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
         [
+          selectedProg.id || 1,
           selectedProg.cisterna_id || 1,
           selectedProg.conductor_id || user.personal_id || 1,
           cl,
           tb,
           'Límpido / Incoloro',
           esConforme,
-          `Control de Carga en Planta - Prog #${selectedProg.id} (${selectedProg.zona || 'Ruta'})`,
+          'CARGA',
+          punto,
+          sectorControl || 'Surtidor / Planta',
+          `Control de Carga - Prog #${selectedProg.id} (${sectorControl || selectedProg.zona || 'Ruta'})`,
           fechaHora,
         ]
       );
+      const insertedCalId = insertRes.lastInsertRowId || null;
 
       // Intentar enviar al backend en tiempo real
       try {
-        await fetch(`${BACKEND_URL}/calidad`, {
+        const resp = await fetch(`${BACKEND_URL}/calidad/calidad`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             programacion_id: selectedProg.id,
             cisterna_id: selectedProg.cisterna_id,
-            conductor_id: selectedProg.conductor_id,
-            tipo_control: 'CARGA',
-            cloro_residual: cl,
-            turbiedad: tb,
+            conductor_nombre: selectedProg.conductor_nombre || user?.nombres || 'Conductor',
+            etapa_control: 'CARGA',
+            punto_muestreo: punto,
+            sector: sectorControl || 'Surtidor / Planta',
+            cloro_residual_ppm: cl,
+            turbiedad_ntu: tb,
             aspecto_organoleptico: 'Límpido / Incoloro',
-            conforme: esConforme === 1,
-            observaciones: 'Control de carga registrado por Conductor desde Agua Móvil App',
+            observaciones: `Control registrado por Conductor desde Agua Móvil App (${sectorControl})`,
+            registrado_por: user?.nombres || 'Conductor',
           }),
         });
+        if (resp.ok && insertedCalId) {
+          await db.runAsync(`UPDATE control_calidad SET sincronizado = 1 WHERE id = ?`, [insertedCalId]).catch(() => {});
+        }
       } catch (_) {}
 
       Alert.alert(
@@ -577,7 +593,10 @@ export default function ConductorScreen({ user, onLogout }: ConductorScreenProps
       {/* MODAL DETALLES DE LA PROGRAMACIÓN Y CONTROL DE CARGA */}
       {selectedProg && (
         <Modal visible={activeModal} animationType="slide" transparent>
-          <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.modalOverlay}
+          >
             <View style={styles.modalSheet}>
               <View style={styles.modalSheetHeader}>
                 <View>
@@ -589,7 +608,7 @@ export default function ConductorScreen({ user, onLogout }: ConductorScreenProps
                 </TouchableOpacity>
               </View>
 
-              <ScrollView style={{ maxHeight: 440 }}>
+              <ScrollView ref={modalScrollRef} style={{ maxHeight: 460 }} keyboardShouldPersistTaps="handled">
                 {/* ESTADO OPERACIONAL Y ACCIONES DE RUTA */}
                 <View style={[styles.modalCardInfo, { backgroundColor: '#f0f9ff', borderColor: '#bae6fd' }]}>
                   <Text style={[styles.cardHeaderSmall, { color: '#0369a1' }]}>🧭 ESTADO OPERATIVO DE LA JORNADA</Text>
@@ -737,6 +756,19 @@ export default function ConductorScreen({ user, onLogout }: ConductorScreenProps
                     Registre la medición de cloro y turbiedad al cargar el camión cisterna en planta antes de partir a ruta:
                   </Text>
 
+                  <View style={{ marginBottom: 10 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#166534', marginBottom: 4 }}>
+                      SECTOR / LUGAR DEL CONTROL
+                    </Text>
+                    <TextInput
+                      style={styles.inputCalidad}
+                      value={sectorControl}
+                      onChangeText={setSectorControl}
+                      placeholder="Ej. Surtidor / Planta o Sector..."
+                      onFocus={() => setTimeout(() => modalScrollRef.current?.scrollToEnd({ animated: true }), 150)}
+                    />
+                  </View>
+
                   <View style={{ flexDirection: 'row', gap: 12 }}>
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: 11, fontWeight: '700', color: '#166534', marginBottom: 4 }}>
@@ -748,6 +780,7 @@ export default function ConductorScreen({ user, onLogout }: ConductorScreenProps
                         value={cloro}
                         onChangeText={setCloro}
                         placeholder="Ej. 1.20"
+                        onFocus={() => setTimeout(() => modalScrollRef.current?.scrollToEnd({ animated: true }), 150)}
                       />
                       <Text style={{ fontSize: 9.5, color: '#15803d', marginTop: 2 }}>Norma: 0.50 - 2.00 ppm</Text>
                     </View>
@@ -762,6 +795,7 @@ export default function ConductorScreen({ user, onLogout }: ConductorScreenProps
                         value={turbiedad}
                         onChangeText={setTurbiedad}
                         placeholder="Ej. 1.50"
+                        onFocus={() => setTimeout(() => modalScrollRef.current?.scrollToEnd({ animated: true }), 150)}
                       />
                       <Text style={{ fontSize: 9.5, color: '#15803d', marginTop: 2 }}>Límite máx: 5.0 NTU</Text>
                     </View>
@@ -803,7 +837,7 @@ export default function ConductorScreen({ user, onLogout }: ConductorScreenProps
                 <Text style={styles.modalCloseBtnText}>Cerrar Detalle de Programación</Text>
               </TouchableOpacity>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </Modal>
       )}
 

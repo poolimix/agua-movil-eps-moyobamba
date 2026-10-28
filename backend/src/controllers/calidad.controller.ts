@@ -53,6 +53,8 @@ export const getControlesCalidad = async (req: Request, res: Response) => {
 export const createControlCalidad = async (req: Request, res: Response) => {
   try {
     const {
+      local_id,
+      localId,
       programacion_id,
       cisterna_id,
       conductor_nombre,
@@ -61,12 +63,15 @@ export const createControlCalidad = async (req: Request, res: Response) => {
       aspecto_organoleptico = 'Aceptable',
       etapa_control = 'CARGA', // 'CARGA', 'RUTA', 'ADICIONAL'
       punto_muestreo = 'Surtidor / Planta de Carga',
+      sector = '',
       observaciones = '',
       foto_muestra_url = null,
       latitud = null,
       longitud = null,
       registrado_por = 'Operador / Supervisor'
     } = req.body;
+
+    const finalLocalId = local_id || localId || null;
 
     const cloro = parseFloat(cloro_residual_ppm);
     const turbiedad = parseFloat(turbiedad_ntu);
@@ -136,6 +141,7 @@ export const createControlCalidad = async (req: Request, res: Response) => {
       ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS etapa_control TEXT DEFAULT 'CARGA';
       ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS conductor_nombre TEXT;
       ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS punto_muestreo TEXT DEFAULT 'CISTERNA_SALIDA';
+      ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS sector TEXT;
       ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS aspecto_organoleptico TEXT DEFAULT 'LIMPIDO_INCOLORO';
       ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS conforme_sanitario BOOLEAN DEFAULT TRUE;
       ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS observaciones TEXT;
@@ -144,19 +150,36 @@ export const createControlCalidad = async (req: Request, res: Response) => {
       ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS longitud NUMERIC(11, 8);
       ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS registrado_por VARCHAR(150) DEFAULT 'Operador / Supervisor';
       ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS fecha_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+      ALTER TABLE control_calidad ADD COLUMN IF NOT EXISTS local_id VARCHAR(120);
     `).catch((e) => {
       console.warn('Auto-curación control_calidad:', e.message);
     });
 
+    if (finalLocalId) {
+      const existingCal = await query('SELECT * FROM control_calidad WHERE local_id = $1 LIMIT 1', [finalLocalId]);
+      if (existingCal.rows.length > 0) {
+        return res.status(200).json({
+          message: 'Control de calidad ya sincronizado previamente.',
+          conforme_sanitario: existingCal.rows[0].conforme_sanitario,
+          control: existingCal.rows[0],
+        });
+      }
+    }
+
+    const finalPuntoMuestreo = punto_muestreo
+      ? String(punto_muestreo).trim()
+      : (sector ? `Sector: ${String(sector).trim()}` : 'Surtidor / Planta de Carga');
+
     const result = await query(`
       INSERT INTO control_calidad (
-        programacion_id, cisterna_id, conductor_nombre, cloro_residual_ppm, 
+        local_id, programacion_id, cisterna_id, conductor_nombre, cloro_residual_ppm, 
         turbiedad_ntu, aspecto_organoleptico, conforme_sanitario, observaciones, 
-        foto_muestra_url, latitud, longitud, registrado_por, etapa_control, punto_muestreo
+        foto_muestra_url, latitud, longitud, registrado_por, etapa_control, punto_muestreo, sector
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
       RETURNING *
     `, [
+      finalLocalId,
       finalProgId,
       finalCisternaId,
       finalConductor,
@@ -170,7 +193,8 @@ export const createControlCalidad = async (req: Request, res: Response) => {
       longitud || null,
       registrado_por || 'Operador / Supervisor',
       etapa_control || 'CARGA',
-      punto_muestreo || 'Surtidor / Planta de Carga'
+      finalPuntoMuestreo,
+      sector ? String(sector).trim() : null
     ]);
 
     res.status(201).json({

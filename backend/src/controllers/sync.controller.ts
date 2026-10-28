@@ -211,6 +211,11 @@ export const uploadDelivery = async (req: Request, res: Response) => {
     }
 
     // 3. Insert into PostgreSQL
+    const fechaHoraEfectiva =
+      finalFechaAsignada && !String(finalFechaCaptura).startsWith(String(finalFechaAsignada))
+        ? `${String(finalFechaAsignada).slice(0, 10)}T12:00:00.000Z`
+        : finalFechaCaptura;
+
     const insertQuery = `
       INSERT INTO entregas_agua (
         local_id,
@@ -236,7 +241,7 @@ export const uploadDelivery = async (req: Request, res: Response) => {
         fecha_asignada,
         sincronizado
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $18, $19, $20, 1)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, 1)
       RETURNING *;
     `;
 
@@ -259,6 +264,7 @@ export const uploadDelivery = async (req: Request, res: Response) => {
       finalAltitud,
       finalFechaUbicacion,
       finalFechaCaptura,
+      fechaHoraEfectiva,
       finalDiaEntrega,
       finalFechaAsignada,
     ]);
@@ -282,6 +288,12 @@ export const uploadDelivery = async (req: Request, res: Response) => {
       `, [validBeneficiarioId, validProgramacionId]).catch((err) => {
         console.warn('Advertencia al auto-canjear vale_entrega:', err);
       });
+      query(`
+        UPDATE vales_consumo 
+        SET estado = 'CANJEADO' 
+        WHERE beneficiario_id = $1 
+          AND (programacion_id = $2 OR programacion_id IS NULL)
+      `, [validBeneficiarioId, validProgramacionId]).catch(() => {});
     }
 
     res.status(201).json({
