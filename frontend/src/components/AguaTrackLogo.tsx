@@ -19,11 +19,11 @@ export const AguaTrackLogo: React.FC<AguaTrackLogoProps> = ({
   subtitleText = 'EPS Moyobamba • PNSU',
 }) => {
   const sizeMap = {
-    xs: { icon: 28, font: '1rem', sub: '0.65rem' },
-    sm: { icon: 38, font: '1.25rem', sub: '0.72rem' },
-    md: { icon: 54, font: '1.5rem', sub: '0.8rem' },
-    lg: { icon: 84, font: '2rem', sub: '0.88rem' },
-    xl: { icon: 110, font: '2.5rem', sub: '1rem' },
+    xs: { icon: 26, font: '0.95rem', sub: '0.65rem' },
+    sm: { icon: 34, font: '1.15rem', sub: '0.70rem' },
+    md: { icon: 50, font: '1.4rem', sub: '0.78rem' },
+    lg: { icon: 80, font: '1.9rem', sub: '0.85rem' },
+    xl: { icon: 105, font: '2.3rem', sub: '0.95rem' },
   };
 
   const currentSize = sizeMap[size] || sizeMap.md;

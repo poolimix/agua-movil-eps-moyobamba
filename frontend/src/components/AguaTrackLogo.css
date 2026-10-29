@@ -77,7 +77,8 @@
   letter-spacing: -0.03em;
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 2px;
+  white-space: nowrap;
 }
 
 .part-agua {
@@ -104,18 +105,19 @@
 }
 
 .badge-geo {
-  font-size: 0.44em;
-  font-weight: 900;
+  font-size: 9px;
+  font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.05em;
   background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
   color: #ffffff;
-  padding: 2px 6px;
-  border-radius: 6px;
-  margin-left: 4px;
-  box-shadow: 0 2px 6px rgba(2, 132, 199, 0.35);
+  padding: 1px 4px;
+  border-radius: 4px;
+  margin-left: 3px;
+  box-shadow: 0 1px 4px rgba(2, 132, 199, 0.35);
   display: inline-block;
   vertical-align: middle;
+  flex-shrink: 0;
 }
 
 .aguatrack-tagline {

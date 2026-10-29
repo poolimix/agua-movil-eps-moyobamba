@@ -98,15 +98,15 @@ export default function Sidebar({ isOpen, onClose, isCollapsed = false, onToggle
     switch (r) {
       case 'SUPER_ADMIN':
       case 'ADMIN':
-        return <span style={{ background: '#f59e0b', color: '#fff', padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 800 }}>👑 SUPER ADMIN</span>;
+        return <span style={{ background: '#f59e0b', color: '#fff', padding: '1px 5px', borderRadius: 4, fontSize: 9.5, fontWeight: 800, whiteSpace: 'nowrap' }}>👑 ADMIN</span>;
       case 'SUPERVISOR':
-        return <span style={{ background: '#8b5cf6', color: '#fff', padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 700 }}>📋 SUPERVISOR</span>;
+        return <span style={{ background: '#8b5cf6', color: '#fff', padding: '1px 5px', borderRadius: 4, fontSize: 9.5, fontWeight: 700, whiteSpace: 'nowrap' }}>📋 SUPERVISOR</span>;
       case 'CONDUCTOR':
-        return <span style={{ background: '#3b82f6', color: '#fff', padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 700 }}>🚚 CONDUCTOR</span>;
+        return <span style={{ background: '#3b82f6', color: '#fff', padding: '1px 5px', borderRadius: 4, fontSize: 9.5, fontWeight: 700, whiteSpace: 'nowrap' }}>🚚 CONDUCTOR</span>;
       case 'GESTOR_ENTREGA':
-        return <span style={{ background: '#10b981', color: '#fff', padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 700 }}>🤝 GESTOR</span>;
+        return <span style={{ background: '#10b981', color: '#fff', padding: '1px 5px', borderRadius: 4, fontSize: 9.5, fontWeight: 700, whiteSpace: 'nowrap' }}>🤝 GESTOR</span>;
       default:
-        return <span style={{ background: '#64748b', color: '#fff', padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 700 }}>{r || 'OPERADOR'}</span>;
+        return <span style={{ background: '#64748b', color: '#fff', padding: '1px 5px', borderRadius: 4, fontSize: 9.5, fontWeight: 700, whiteSpace: 'nowrap' }}>{r || 'OPERADOR'}</span>;
     }
   };
 
@@ -407,12 +407,12 @@ export default function Sidebar({ isOpen, onClose, isCollapsed = false, onToggle
           title={user?.nombres || 'Usuario'}
         />
         <div className="user-info">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span className="user-name">{user?.nombres || 'Usuario'}</span>
+          <div className="user-name" title={user?.nombres || 'Usuario'}>
+            {user?.nombres || 'Usuario'}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+          <div className="user-subrow">
             {getRoleBadge(user?.rol)}
-            <span className="user-email">{user?.email}</span>
+            <span className="user-email" title={user?.email || ''}>{user?.email}</span>
           </div>
         </div>
         <button className="logout-btn" onClick={logout} title="Cerrar sesión" aria-label="Cerrar sesión">

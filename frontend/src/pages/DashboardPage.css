@@ -66,11 +66,11 @@ body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: #
 
 /* ─── Sidebar ──────────────────────────────────────────────────────── */
 .sidebar {
-  width: 260px;
+  width: 275px;
   background: linear-gradient(180deg, #0b1527 0%, #0f243e 50%, #173255 100%);
   display: flex;
   flex-direction: column;
-  padding: 20px 14px;
+  padding: 18px 12px;
   position: fixed;
   top: 0; left: 0; bottom: 0;
   z-index: 999;
@@ -82,24 +82,26 @@ body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: #
 /* Sidebar collapsed state (desktop) */
 .sidebar.sidebar-collapsed {
   width: 76px;
-  padding: 20px 8px;
+  padding: 18px 8px;
 }
 
 .sidebar-logo {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 6px 18px;
+  padding: 2px 4px 14px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   min-height: 52px;
-  gap: 8px;
+  gap: 6px;
 }
 
 .sidebar-brand-content {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   overflow: hidden;
+  flex: 1;
+  min-width: 0;
 }
 
 .sidebar-logo-icon {
@@ -286,10 +288,11 @@ body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: #
   display: none;
 }
 
-.user-avatar { width: 36px; height: 36px; border-radius: 50%; border: 2px solid #38bdf8; object-fit: cover; }
-.user-info { flex: 1; overflow: hidden; }
-.user-name  { display: block; color: #e2e8f0; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.user-email { display: block; color: #64748b; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.user-avatar { width: 36px; height: 36px; border-radius: 50%; border: 2px solid #38bdf8; object-fit: cover; flex-shrink: 0; }
+.user-info { flex: 1; min-width: 0; overflow: hidden; }
+.user-name  { display: block; color: #e2e8f0; font-size: 12.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.user-subrow { display: flex; align-items: center; gap: 5px; margin-top: 3px; min-width: 0; }
+.user-email { display: block; color: #94a3b8; font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
 
 .logout-btn {
   background: none; border: none; color: #64748b; font-size: 18px; cursor: pointer; padding: 4px;
@@ -297,6 +300,7 @@ body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: #
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 .logout-btn:hover { color: #ef4444; }
 
@@ -353,10 +357,10 @@ body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: #
 /* ─── Main Content ──────────────────────────────────────────────────── */
 .main-content {
   flex: 1;
-  margin-left: 260px;
+  margin-left: 275px;
   padding: 24px 32px;
   max-width: 1720px;
-  width: calc(100% - 260px);
+  width: calc(100% - 275px);
   min-width: 0;
   overflow-x: hidden;
   background: #f8fafc;
