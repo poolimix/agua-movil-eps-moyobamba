@@ -881,18 +881,6 @@ export async function imprimirTodosValesSectorUnico(
     const qrPayload = `SECTOR-QR|${sectorLimpio}|${totalFamilias}|${totalHabitantes}|${totalLitrosSemanal}L`;
     const qrUrl = await generateQr(qrPayload);
 
-    const previewBeneficiarios = items
-      .slice(0, 18)
-      .map((b, i) => {
-        const nom = b.beneficiario_nombre || b.nombres_apellidos || 'Beneficiario';
-        const dni = b.beneficiario_dni || b.dni || '-';
-        const hab = Number(b.num_miembros) || 1;
-        return `<div class="benef-chip"><strong>${i + 1}.</strong> ${nom} <span class="benef-meta">(DNI: ${dni} • ${hab} hab.)</span></div>`;
-      })
-      .join('');
-
-    const restantesCount = Math.max(0, items.length - 18);
-
     paginasHtml.push(`
       <div class="sector-page">
         <div class="sector-card">
@@ -945,11 +933,10 @@ export async function imprimirTodosValesSectorUnico(
               </div>
 
               <div class="instructions-box">
-                <div class="inst-title">📲 ¿CÓMO FUNCIONA ESTE QR ÚNICO EN CAMPO?</div>
+                <div class="inst-title">📲 USO EN CAMPO (APP AGUATRACK):</div>
                 <ol class="inst-list">
-                  <li>Al escanear este <strong>QR Único</strong> con la App Móvil <strong>AguaTrack</strong>, se seleccionan automáticamente los <strong>${totalFamilias} beneficiarios del sector ${sectorLimpio}</strong>.</li>
-                  <li>El operador ingresa el volumen total descargado en el depósito comunal del día (con opción de desmarcar algún caso especial si no recibió).</li>
-                  <li>El sistema divide automáticamente los litros entregados entre los beneficiarios marcados y actualiza el saldo restante de la semana.</li>
+                  <li>Escanee este <strong>QR Único</strong> con la App Móvil <strong>AguaTrack</strong> para seleccionar a los <strong>${totalFamilias} beneficiarios del sector ${sectorLimpio}</strong>.</li>
+                  <li>Ingrese los litros totales descargados en el depósito del día y confirme la entrega grupal.</li>
                 </ol>
               </div>
             </div>
@@ -960,16 +947,6 @@ export async function imprimirTodosValesSectorUnico(
               </div>
               <div class="qr-scan-badge">📲 ESCANEAR CON APP AGUATRACK</div>
               <div class="qr-sector-caption">ENTREGA MASIVA: ${sectorLimpio}</div>
-            </div>
-          </div>
-
-          <div class="padron-preview-box">
-            <div class="padron-preview-title">
-              📋 BENEFICIARIOS INCLUIDOS AUTOMÁTICAMENTE AL ESCANEAR ESTE QR (${totalFamilias} TITULARES):
-            </div>
-            <div class="benef-chips-grid">
-              ${previewBeneficiarios}
-              ${restantesCount > 0 ? `<div class="benef-chip benef-more">+ ${restantesCount} beneficiarios adicionales empadronados en ${sectorLimpio}</div>` : ''}
             </div>
           </div>
 
