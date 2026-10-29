@@ -604,7 +604,37 @@ export const despacharCorreoIndividual = async (req: Request, res: Response) => 
 
 export const getAllVales = async (req: Request, res: Response) => {
   try {
-    const { estado, search, limit, offset } = req.query;
+    const { estado, sector, search, limit, offset } = req.query;
+
+    // Auto-sincronizar vales para cualquier beneficiario nuevo en el padrón que aún no tenga vale emitido
+    try {
+      const missingRes = await query(`
+        SELECT b.id, b.dni, COALESCE(b.num_miembros, 1) as num_miembros
+        FROM beneficiarios b
+        LEFT JOIN vales_entrega v ON v.beneficiario_id = b.id
+        WHERE v.id IS NULL
+      `);
+      if (missingRes.rows.length > 0) {
+        const config = await getConfiguracion();
+        const dotSemanal = config.dotacion_semanal_por_habitante || 350;
+        const progRes = await query(`SELECT id FROM programaciones ORDER BY id DESC LIMIT 1`);
+        const progId = progRes.rows[0]?.id || 1;
+        const anioActual = new Date().getFullYear();
+
+        for (const mb of missingRes.rows) {
+          const dniSafe = String(mb.dni || mb.id).trim();
+          const litros = (Number(mb.num_miembros) || 1) * dotSemanal;
+          const codigoUnico = `VALE-ANUAL-${anioActual}-${dniSafe}`;
+          const qrData = `${codigoUnico}|${dniSafe}|${litros}L|${progId}`;
+          await query(
+            `INSERT INTO vales_entrega (programacion_id, beneficiario_id, codigo_unico, codigo_vale, litros_sugeridos, litros_asignados, qr_data, estado, fecha_emision)
+             VALUES ($1, $2, $3, $3, $4, $4, $5, 'EMITIDO', CURRENT_DATE)
+             ON CONFLICT DO NOTHING`,
+            [progId, mb.id, codigoUnico, litros, qrData]
+          ).catch(() => {});
+        }
+      }
+    } catch (_) {}
 
     let sql = `
       SELECT 
@@ -630,13 +660,17 @@ export const getAllVales = async (req: Request, res: Response) => {
     if (estado) {
       const estUpper = String(estado).toUpperCase().trim();
       if (estUpper === 'EMITIDO' || estUpper === 'PENDIENTE') {
-        sql += ` AND UPPER(v.estado) IN ('EMITIDO', 'PENDIENTE')`;
+        sql += ` AND UPPER(TRIM(COALESCE(v.estado, 'EMITIDO'))) IN ('EMITIDO', 'PENDIENTE')`;
       } else if (estUpper === 'ENTREGADO' || estUpper === 'CANJEADO') {
-        sql += ` AND UPPER(v.estado) IN ('ENTREGADO', 'CANJEADO')`;
+        sql += ` AND UPPER(TRIM(COALESCE(v.estado, ''))) IN ('ENTREGADO', 'CANJEADO')`;
       } else {
         sql += ` AND v.estado ILIKE $${pIdx++}`;
         params.push(estado);
       }
+    }
+    if (sector) {
+      sql += ` AND UPPER(TRIM(COALESCE(b.sector_aahh, b.sector, ''))) = UPPER(TRIM($${pIdx++}))`;
+      params.push(String(sector));
     }
     if (search) {
       sql += ` AND (v.codigo_unico ILIKE $${pIdx} OR b.dni ILIKE $${pIdx} OR b.nombres_apellidos ILIKE $${pIdx} OR b.sector_aahh ILIKE $${pIdx} OR b.sector ILIKE $${pIdx})`;
@@ -644,13 +678,13 @@ export const getAllVales = async (req: Request, res: Response) => {
       pIdx++;
     }
 
-    sql += ` ORDER BY v.id ASC`;
+    sql += ` ORDER BY COALESCE(b.sector_aahh, b.sector, '') ASC, b.nombres_apellidos ASC, v.id ASC`;
 
-    if (limit) {
+    if (limit && Number(limit) > 0) {
       sql += ` LIMIT $${pIdx++}`;
       params.push(Number(limit));
     }
-    if (offset) {
+    if (offset && Number(offset) > 0) {
       sql += ` OFFSET $${pIdx++}`;
       params.push(Number(offset));
     }
@@ -660,17 +694,29 @@ export const getAllVales = async (req: Request, res: Response) => {
     const statsRes = await query(`
       SELECT 
         COUNT(*) as total_vales,
-        COUNT(CASE WHEN UPPER(estado) IN ('EMITIDO', 'PENDIENTE') THEN 1 END) as pendientes,
-        COUNT(CASE WHEN UPPER(estado) IN ('ENTREGADO', 'CANJEADO') THEN 1 END) as entregados,
-        COUNT(CASE WHEN UPPER(estado) = 'VENCIDO' THEN 1 END) as vencidos,
-        COUNT(CASE WHEN UPPER(estado) = 'ANULADO' THEN 1 END) as anulados,
+        COUNT(CASE WHEN UPPER(TRIM(COALESCE(estado, 'EMITIDO'))) IN ('EMITIDO', 'PENDIENTE') THEN 1 END) as pendientes,
+        COUNT(CASE WHEN UPPER(TRIM(COALESCE(estado, ''))) IN ('ENTREGADO', 'CANJEADO') THEN 1 END) as entregados,
+        COUNT(CASE WHEN UPPER(TRIM(COALESCE(estado, ''))) = 'VENCIDO' THEN 1 END) as vencidos,
+        COUNT(CASE WHEN UPPER(TRIM(COALESCE(estado, ''))) = 'ANULADO' THEN 1 END) as anulados,
         COALESCE(SUM(litros_sugeridos), 0) as total_litros
       FROM vales_entrega
     `);
 
+    const sectoresRes = await query(`
+      SELECT 
+        UPPER(TRIM(COALESCE(b.sector_aahh, b.sector, 'SIN SECTOR'))) as sector,
+        COUNT(v.id)::int as total_vales,
+        COALESCE(SUM(v.litros_sugeridos), 0)::numeric as total_litros
+      FROM vales_entrega v
+      LEFT JOIN beneficiarios b ON v.beneficiario_id = b.id
+      GROUP BY UPPER(TRIM(COALESCE(b.sector_aahh, b.sector, 'SIN SECTOR')))
+      ORDER BY sector ASC
+    `);
+
     res.json({
       vales: result.rows,
-      stats: statsRes.rows[0] || {}
+      stats: statsRes.rows[0] || {},
+      sectores: sectoresRes.rows || []
     });
   } catch (error: any) {
     console.error('Error al listar todos los vales:', error);
@@ -740,7 +786,7 @@ export const recalcularValesSemana = async (_req: Request, res: Response) => {
  */
 export const exportarValesExcel = async (req: Request, res: Response) => {
   try {
-    const { estado, search, programacion_id } = req.query;
+    const { estado, sector, search, programacion_id } = req.query;
     const config = await getConfiguracion();
 
     let sql = `
@@ -774,13 +820,17 @@ export const exportarValesExcel = async (req: Request, res: Response) => {
     if (estado) {
       const estUpper = String(estado).toUpperCase().trim();
       if (estUpper === 'EMITIDO' || estUpper === 'PENDIENTE') {
-        sql += ` AND UPPER(v.estado) IN ('EMITIDO', 'PENDIENTE')`;
+        sql += ` AND UPPER(TRIM(COALESCE(v.estado, 'EMITIDO'))) IN ('EMITIDO', 'PENDIENTE')`;
       } else if (estUpper === 'ENTREGADO' || estUpper === 'CANJEADO') {
-        sql += ` AND UPPER(v.estado) IN ('ENTREGADO', 'CANJEADO')`;
+        sql += ` AND UPPER(TRIM(COALESCE(v.estado, ''))) IN ('ENTREGADO', 'CANJEADO')`;
       } else {
         sql += ` AND v.estado ILIKE $${pIdx++}`;
         params.push(estado);
       }
+    }
+    if (sector) {
+      sql += ` AND UPPER(TRIM(COALESCE(b.sector_aahh, b.sector, ''))) = UPPER(TRIM($${pIdx++}))`;
+      params.push(String(sector));
     }
     if (programacion_id) {
       sql += ` AND v.programacion_id = $${pIdx++}`;
@@ -792,7 +842,7 @@ export const exportarValesExcel = async (req: Request, res: Response) => {
       pIdx++;
     }
 
-    sql += ` ORDER BY v.id DESC`;
+    sql += ` ORDER BY COALESCE(b.sector_aahh, b.sector, '') ASC, b.nombres_apellidos ASC, v.id ASC`;
 
     const result = await query(sql, params);
     const vales = result.rows;
@@ -802,8 +852,8 @@ export const exportarValesExcel = async (req: Request, res: Response) => {
     const rows: any[][] = [
       ['EMPRESA PRESTADORA DE SERVICIOS DE SANEAMIENTO — EPS MOYOBAMBA S.A.'],
       ['PROGRAMA NACIONAL DE SANEAMIENTO URBANO (PNSU) — CONVENIO N° 023-2026/VIVIENDA'],
-      ['PADRÓN OFICIAL DE VALES DE CONSUMO DE AGUA POTABLE DISTRIBUIDA EN CAMIÓN CISTERNA'],
-      [`FECHA DE REPORTE: ${new Date().toLocaleDateString('es-PE')} • DOTACIÓN REGLAMENTARIA: ${config.dotacion_diaria_litros} L/HAB/DÍA (${config.dias_entrega_semanal} DÍAS)`],
+      [`PADRÓN OFICIAL DE VALES DE CONSUMO DE AGUA POTABLE${sector ? ` — SECTOR: ${String(sector).toUpperCase()}` : ' (TODOS LOS SECTORES)'}`],
+      [`FECHA DE REPORTE: ${new Date().toLocaleDateString('es-PE')} • TOTAL VALES: ${vales.length} • DOTACIÓN REGLAMENTARIA: ${config.dotacion_diaria_litros} L/HAB/DÍA (${config.dias_entrega_semanal} DÍAS)`],
       [],
       [
         'N°',

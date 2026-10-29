@@ -13,12 +13,15 @@ export const api = axios.create({
   },
 });
 
-// Request interceptor to automatically attach JWT token
+// Request interceptor to automatically attach JWT token and handle FormData
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`;
+    }
+    if (typeof FormData !== 'undefined' && config.data instanceof FormData && config.headers) {
+      delete config.headers['Content-Type'];
     }
     return config;
   },

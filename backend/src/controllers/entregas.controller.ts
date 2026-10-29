@@ -1148,6 +1148,43 @@ export const registrarEntregaGrupalSector = async (req: Request, res: Response) 
     const litrosBase = Number((litrosTotales / totalBeneficiarios).toFixed(2));
     let acumulado = 0;
 
+    // Calcular el inicio (Lunes) y fin (Domingo) de la semana correspondiente a fechaAsignadaStr
+    const refDate = new Date(`${fechaAsignadaStr}T12:00:00`);
+    const dayOfWeek = refDate.getDay(); // 0 = Dom, 1 = Lun ... 6 = Sab
+    const diffToMonday = (dayOfWeek + 6) % 7;
+    const mondayDate = new Date(refDate);
+    mondayDate.setDate(refDate.getDate() - diffToMonday);
+    const sundayDate = new Date(mondayDate);
+    sundayDate.setDate(mondayDate.getDate() + 6);
+    const lunesStr = mondayDate.toISOString().slice(0, 10);
+    const domingoStr = sundayDate.toISOString().slice(0, 10);
+
+    // Consultar miembros de cada beneficiario y lo ya entregado en esa semana
+    const benefInfoRes = await query(
+      `SELECT 
+         b.id,
+         COALESCE(b.num_miembros, 1)::int as num_miembros,
+         COALESCE((
+           SELECT SUM(e.litros_entregados)
+           FROM entregas_agua e
+           WHERE e.beneficiario_id = b.id
+             AND (
+               (e.fecha_asignada >= $2 AND e.fecha_asignada <= $3)
+               OR (TO_CHAR(e.fecha_hora, 'YYYY-MM-DD') >= $2 AND TO_CHAR(e.fecha_hora, 'YYYY-MM-DD') <= $3)
+             )
+         ), 0)::numeric as entregado_semana
+       FROM beneficiarios b
+       WHERE b.id = ANY($1::int[])`,
+      [idsArray, lunesStr, domingoStr]
+    );
+    const benefWeeklyMap = new Map<number, { miembros: number; entregadoSemana: number }>();
+    for (const row of benefInfoRes.rows) {
+      benefWeeklyMap.set(Number(row.id), {
+        miembros: Number(row.num_miembros) || 1,
+        entregadoSemana: parseFloat(row.entregado_semana || '0') || 0,
+      });
+    }
+
     const entregasCreadas: any[] = [];
     const batchStamp = Date.now();
     const sectorSlug = String(sector || 'SEC')
@@ -1159,6 +1196,9 @@ export const registrarEntregaGrupalSector = async (req: Request, res: Response) 
         ? String(lote_deposito_id).trim()
         : `LOTE-${sectorSlug}-${fechaAsignadaStr.replace(/-/g, '')}-${batchStamp}`;
 
+    let cuotaSemanalSectorTotal = 0;
+    let saldoRestanteSectorTotal = 0;
+
     for (let i = 0; i < totalBeneficiarios; i++) {
       const benId = idsArray[i];
       // Ajuste de redondeo en el último beneficiario para que la suma sea 100% exacta al total del depósito
@@ -1167,10 +1207,19 @@ export const registrarEntregaGrupalSector = async (req: Request, res: Response) 
         : litrosBase;
       acumulado += litrosIndividual;
 
+      const bInfo = benefWeeklyMap.get(benId) || { miembros: 1, entregadoSemana: 0 };
+      const cuotaSemanalBenef = bInfo.miembros * 350;
+      const nuevoAcumuladoSemanal = bInfo.entregadoSemana + litrosIndividual;
+      const saldoSemanalRestante = Number(Math.max(0, cuotaSemanalBenef - nuevoAcumuladoSemanal).toFixed(2));
+      const estadoSemanal = saldoSemanalRestante > 0 ? 'PARCIAL' : 'COMPLETA';
+
+      cuotaSemanalSectorTotal += cuotaSemanalBenef;
+      saldoRestanteSectorTotal += saldoSemanalRestante;
+
       const localId = `dep-sec-${benId}-${batchStamp}-${i}`;
       const obsTexto = observaciones
         ? String(observaciones).trim()
-        : `Entrega en Depósito Único Diario (${sector || 'Sector'}): ${litrosTotales} L ÷ ${totalBeneficiarios} benef. = ${litrosIndividual} L`;
+        : `Depósito Único (${sector || 'Sector'}): +${litrosIndividual} L hoy (${litrosTotales} L ÷ ${totalBeneficiarios} benef.) • Meta Sem: ${cuotaSemanalBenef} L • Restante Sem: ${saldoSemanalRestante} L`;
 
       const ins = await query(`
         INSERT INTO entregas_agua (
@@ -1196,7 +1245,7 @@ export const registrarEntregaGrupalSector = async (req: Request, res: Response) 
           fecha_asignada,
           sincronizado
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 0, 'COMPLETA', $9, $10, $11, $12, $13, $14, $15, $15, $16, $17, 1)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $17, $18, $19, 1)
         RETURNING *
       `, [
         localId,
@@ -1205,8 +1254,10 @@ export const registrarEntregaGrupalSector = async (req: Request, res: Response) 
         finalProgId,
         finalCisternaId,
         finalConductorId,
+        cuotaSemanalBenef,
         litrosIndividual,
-        litrosIndividual,
+        saldoSemanalRestante,
+        estadoSemanal,
         obsTexto,
         firma_base64 || null,
         fotoUrl,
@@ -1243,12 +1294,14 @@ export const registrarEntregaGrupalSector = async (req: Request, res: Response) 
     }
 
     res.status(201).json({
-      message: `Se registró la entrega completa en depósito único para ${totalBeneficiarios} beneficiarios del sector ${sector || ''} (${litrosTotales.toLocaleString('es-PE')} L en total = ${litrosBase.toLocaleString('es-PE')} L por beneficiario).`,
+      message: `Se registró la entrega en depósito único para ${totalBeneficiarios} beneficiarios del sector ${sector || ''}: ${litrosTotales.toLocaleString('es-PE')} L hoy (${litrosBase.toLocaleString('es-PE')} L c/u). Meta semanal del sector: ${cuotaSemanalSectorTotal.toLocaleString('es-PE')} L • Restante por entregar en la semana: ${Math.round(saldoRestanteSectorTotal).toLocaleString('es-PE')} L.`,
       lote_deposito_id: finalLoteId,
       sector: sector || 'General',
       totalBeneficiarios,
       litrosTotales,
       litrosPorBeneficiario: litrosBase,
+      cuotaSemanalSector: cuotaSemanalSectorTotal,
+      saldoRestanteSemanaSector: Math.round(saldoRestanteSectorTotal * 100) / 100,
       foto_url: fotoUrl,
       entregasRegistradas: entregasCreadas.length,
     });

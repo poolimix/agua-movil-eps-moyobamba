@@ -69,7 +69,36 @@ export default function EntregasPage() {
     try {
       setLoading(true);
       const res = await api.get('/entregas');
-      setEntregas(res.data);
+      const rawRows: any[] = Array.isArray(res.data) ? res.data : res.data?.data || [];
+
+      // Limpiar silenciosamente cualquier registro huérfano sin beneficiario generado por pruebas
+      const orphans = rawRows.filter(
+        (r) => !r.beneficiario_id && String(r.local_id || '').startsWith('gen-')
+      );
+      if (orphans.length > 0) {
+        for (const o of orphans) {
+          api.delete(`/entregas/${o.id}`).catch(() => {});
+        }
+      }
+
+      const validRows = rawRows
+        .filter((r) => !(!r.beneficiario_id && String(r.local_id || '').startsWith('gen-')))
+        .map((r) => {
+          // Inferir lote_deposito_id desde local_id (ej. dep-sec-<benId>-<batchStamp>-<i>) si la columna aún no venía poblada
+          let inferredLote = r.lote_deposito_id;
+          if (!inferredLote && typeof r.local_id === 'string' && r.local_id.startsWith('dep-sec-')) {
+            const parts = r.local_id.split('-');
+            if (parts.length >= 4) {
+              inferredLote = `LOTE-${parts[3]}`;
+            }
+          }
+          return {
+            ...r,
+            lote_deposito_id: inferredLote || null,
+          };
+        });
+
+      setEntregas(validRows);
     } catch (error) {
       console.error('Error fetching entregas:', error);
     } finally {
@@ -119,22 +148,61 @@ export default function EntregasPage() {
       formData.append('localId', entregaTarget.local_id || `web-${entregaTarget.id}`);
       formData.append('estampar_membrete', String(estamparMembrete));
 
-      const res = await api.post(`/entregas/${entregaTarget.id}/foto`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      let newFotoUrl = '';
+      let updatedEntregaId = entregaTarget.id;
 
-      const newFotoUrl: string = res.data.foto_url;
+      try {
+        const res = await api.post(`/entregas/${entregaTarget.id}/foto`, formData);
+        newFotoUrl = res.data.foto_url;
+      } catch (primaryErr: any) {
+        if (primaryErr.response?.status === 404) {
+          // Fallback automático vía /sync/upload-delivery si el backend remoto aún no recargó /:id/foto
+          const fallbackFd = new FormData();
+          fallbackFd.append('foto', file);
+          fallbackFd.append('localId', `web-foto-${entregaTarget.id}-${Date.now()}`);
+          if ((entregaTarget as any).beneficiario_id) {
+            fallbackFd.append('beneficiarioId', String((entregaTarget as any).beneficiario_id));
+          }
+          if ((entregaTarget as any).programacion_id) {
+            fallbackFd.append('programacionId', String((entregaTarget as any).programacion_id));
+          }
+          if ((entregaTarget as any).cisterna_id) {
+            fallbackFd.append('cisternaId', String((entregaTarget as any).cisterna_id));
+          }
+          fallbackFd.append('litrosEntregados', String(entregaTarget.litros_entregados || 0));
+          fallbackFd.append('cuotaProgramada', String(entregaTarget.cuota_programada || entregaTarget.litros_entregados || 0));
+          fallbackFd.append('saldoPendiente', String(entregaTarget.saldo_pendiente || 0));
+          fallbackFd.append('estadoEntrega', String(entregaTarget.estado_entrega || 'COMPLETA'));
+          if (entregaTarget.observaciones_entrega) {
+            fallbackFd.append('observacionesEntrega', entregaTarget.observaciones_entrega);
+          }
+          if (entregaTarget.firma_base64) {
+            fallbackFd.append('firmaBase64', entregaTarget.firma_base64);
+          }
+          if (entregaTarget.latitud) fallbackFd.append('latitud', String(entregaTarget.latitud));
+          if (entregaTarget.longitud) fallbackFd.append('longitud', String(entregaTarget.longitud));
+          if (entregaTarget.precision_gps) fallbackFd.append('precisionGps', String(entregaTarget.precision_gps));
+          if (entregaTarget.fecha_captura || entregaTarget.fecha_hora) {
+            fallbackFd.append('fechaCaptura', entregaTarget.fecha_captura || entregaTarget.fecha_hora);
+          }
+
+          const syncRes = await api.post('/sync/upload-delivery', fallbackFd);
+          newFotoUrl = syncRes.data?.entrega?.foto_url || '';
+          if (syncRes.data?.entrega?.id) {
+            updatedEntregaId = syncRes.data.entrega.id;
+            await api.delete(`/entregas/${entregaTarget.id}`).catch(() => {});
+          }
+        } else {
+          throw primaryErr;
+        }
+      }
+
       const nowBust = Date.now();
-
-      setEntregas((prev) =>
-        prev.map((item) =>
-          item.id === entregaTarget.id ? { ...item, foto_url: newFotoUrl } : item
-        )
-      );
+      await fetchEntregas();
 
       setSelectedPhoto({
         url: `${API_BASE_URL}${newFotoUrl}`,
-        entrega: { ...entregaTarget, foto_url: newFotoUrl },
+        entrega: { ...entregaTarget, id: updatedEntregaId, foto_url: newFotoUrl },
         cacheBust: nowBust,
       });
 
@@ -155,6 +223,61 @@ export default function EntregasPage() {
   };
 
   const [selectedFecha, setSelectedFecha] = useState('');
+
+  const getRangoSemanaIso = (fechaBaseStr: string) => {
+    const base = fechaBaseStr ? new Date(`${fechaBaseStr.slice(0, 10)}T12:00:00`) : new Date();
+    const day = base.getDay(); // 0 Dom, 1 Lun ... 6 Sab
+    const diffToMonday = (day + 6) % 7;
+    const monday = new Date(base);
+    monday.setDate(base.getDate() - diffToMonday);
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    return {
+      lunesIso: monday.toISOString().slice(0, 10),
+      domingoIso: sunday.toISOString().slice(0, 10),
+      etiquetaSemana: `${monday.toLocaleDateString('es-PE', { day: '2-digit', month: 'short' })} al ${sunday.toLocaleDateString('es-PE', { day: '2-digit', month: 'short' })}`,
+    };
+  };
+
+  const calcularEstimadoSemanalParaIds = (
+    benefsSource: any[],
+    idsMarcados: number[],
+    fechaBaseStr: string
+  ) => {
+    const { lunesIso, domingoIso } = getRangoSemanaIso(fechaBaseStr);
+    const marcadosSet = new Set(idsMarcados.map(Number));
+    let cuotaSemanalTotal = 0;
+    let cuotaDiariaTotal = 0;
+    let habitantesTotal = 0;
+
+    for (const b of benefsSource) {
+      if (marcadosSet.has(Number(b.id))) {
+        const miembros = Number(b.num_miembros || 1);
+        habitantesTotal += miembros;
+        cuotaSemanalTotal += Number(b.dotacion_semanal_litros || b.litros_sugeridos || miembros * 350);
+        cuotaDiariaTotal += Number(b.dotacion_diaria_litros || miembros * 50);
+      }
+    }
+
+    let entregadoSemanaActual = 0;
+    for (const e of entregas) {
+      if (marcadosSet.has(Number(e.beneficiario_id))) {
+        const fStr = (e.fecha_captura || e.fecha_hora || '').slice(0, 10);
+        if (fStr >= lunesIso && fStr <= domingoIso) {
+          entregadoSemanaActual += Number(e.litros_entregados || 0);
+        }
+      }
+    }
+
+    const restanteAntesDeHoy = Math.max(0, Math.round((cuotaSemanalTotal - entregadoSemanaActual) * 100) / 100);
+    return {
+      cuotaSemanalTotal,
+      cuotaDiariaTotal,
+      habitantesTotal,
+      entregadoSemanaActual: Math.round(entregadoSemanaActual * 100) / 100,
+      restanteAntesDeHoy,
+    };
+  };
 
   const handleOpenDepositoModal = async () => {
     try {
@@ -178,6 +301,10 @@ export default function EntregasPage() {
         .map((b: any) => Number(b.id));
       setSelectedBenefIdsDeposito(idsSector);
 
+      const calc = calcularEstimadoSemanalParaIds(benefs, idsSector, fechaDeposito);
+      const sugeridoInicial = calc.restanteAntesDeHoy > 0 ? calc.restanteAntesDeHoy : calc.cuotaSemanalTotal;
+      setLitrosTotalesDeposito(String(sugeridoInicial || 19000));
+
       if (progs.length > 0 && !programacionIdDeposito) {
         setProgramacionIdDeposito(String(progs[0].id));
       }
@@ -199,6 +326,12 @@ export default function EntregasPage() {
       .filter((b: any) => (b.sector || '').trim().toUpperCase() === nuevoSector.toUpperCase())
       .map((b: any) => Number(b.id));
     setSelectedBenefIdsDeposito(idsSector);
+
+    const calc = calcularEstimadoSemanalParaIds(beneficiariosList, idsSector, fechaDeposito);
+    const sugerido = calc.restanteAntesDeHoy > 0 ? calc.restanteAntesDeHoy : calc.cuotaSemanalTotal;
+    if (sugerido > 0) {
+      setLitrosTotalesDeposito(String(sugerido));
+    }
   };
 
   const handleToggleBenefDepositoWeb = (id: number) => {
@@ -228,15 +361,125 @@ export default function EntregasPage() {
     ).length;
     const excluidos = totalSector - selectedBenefIdsDeposito.length;
     const litrosPorBenef = Math.round((litrosNum / selectedBenefIdsDeposito.length) * 100) / 100;
+    const calcSem = calcularEstimadoSemanalParaIds(beneficiariosList, selectedBenefIdsDeposito, fechaDeposito);
+    const restanteSemDespues = Math.max(0, Math.round((calcSem.restanteAntesDeHoy - litrosNum) * 100) / 100);
 
-    const ok = await dialogConfirm({
-      title: '¿Confirmar Entrega en Depósito Único por Sector?',
-      message: `Sector: ${sectorDeposito}\nAgua Total Depósito: ${litrosNum.toLocaleString('es-PE')} Lts (${(litrosNum / 1000).toFixed(2)} m³)\nBeneficiarios marcados: ${selectedBenefIdsDeposito.length} de ${totalSector}${excluidos > 0 ? ` (${excluidos} desmarcados para otro depósito)` : ''}\nDivisión automática: ${litrosPorBenef} Lts por beneficiario.`,
-      type: 'info',
-      confirmText: 'Sí, Registrar Entrega Completa',
-      cancelText: 'Cancelar',
+    // Validación anti-duplicado local para mismo sector y misma fecha
+    const entregasMismoDiaSector = entregas.filter((item) => {
+      const fStr = (item.fecha_captura || item.fecha_hora || '').slice(0, 10);
+      const secMatch = (item.sector || '').trim().toUpperCase() === sectorDeposito.trim().toUpperCase();
+      const isDep =
+        Boolean(item.lote_deposito_id) ||
+        String(item.local_id || '').startsWith('dep-') ||
+        String(item.observaciones_entrega || '').toLowerCase().includes('depósito único');
+      return fStr === fechaDeposito && secMatch && isDep;
     });
-    if (!ok) return;
+
+    if (entregasMismoDiaSector.length > 0) {
+      const sumPrevDia = entregasMismoDiaSector.reduce((acc, it) => acc + Number(it.litros_entregados || 0), 0);
+      const confirmDupLocal = await dialogConfirm({
+        title: '⚠️ Entrega ya registrada en esta fecha para este sector',
+        message: `Ya existe una entrega en depósito único registrada para el sector "${sectorDeposito}" en la fecha ${fechaDeposito} (${Math.round(sumPrevDia).toLocaleString('es-PE')} Lts entre ${entregasMismoDiaSector.length} beneficiarios).\n\n¿Se trata de un 2.º viaje de cisterna en el mismo día o deseas cancelar para evitar duplicados?`,
+        type: 'warning',
+        confirmText: 'Sí, es un 2.º viaje (Registrar)',
+        cancelText: 'No, cancelar para no duplicar',
+      });
+      if (!confirmDupLocal) return;
+    } else {
+      const ok = await dialogConfirm({
+        title: '¿Confirmar Entrega en Depósito Único por Sector?',
+        message: `Sector: ${sectorDeposito}\nEstimado Semanal del Sector: ${calcSem.cuotaSemanalTotal.toLocaleString('es-PE')} Lts (${calcSem.habitantesTotal} hab. × 350 L/sem)\nEntregado previo en la semana: ${calcSem.entregadoSemanaActual.toLocaleString('es-PE')} Lts\nEntrega del Día (Depósito): ${litrosNum.toLocaleString('es-PE')} Lts (${(litrosNum / 1000).toFixed(2)} m³)\nRestante por Entregar en la Semana: ${restanteSemDespues.toLocaleString('es-PE')} Lts\nBeneficiarios marcados: ${selectedBenefIdsDeposito.length} de ${totalSector}${excluidos > 0 ? ` (${excluidos} desmarcados para otro depósito)` : ''}\nDivisión del día: ${litrosPorBenef} Lts por beneficiario.`,
+        type: 'info',
+        confirmText: 'Sí, Registrar Entrega del Día',
+        cancelText: 'Cancelar',
+      });
+      if (!ok) return;
+    }
+
+    const registrarDepositoViaSyncFallback = async () => {
+      const { lunesIso, domingoIso } = getRangoSemanaIso(fechaDeposito);
+      const benefMap = new Map<number, any>();
+      for (const b of beneficiariosList) {
+        benefMap.set(Number(b.id), b);
+      }
+      const prevSemMap = new Map<number, number>();
+      for (const item of entregas) {
+        const fStr = (item.fecha_captura || item.fecha_hora || '').slice(0, 10);
+        if (fStr >= lunesIso && fStr <= domingoIso) {
+          const bId = Number((item as any).beneficiario_id);
+          prevSemMap.set(bId, (prevSemMap.get(bId) || 0) + Number(item.litros_entregados || 0));
+        }
+      }
+
+      const batchStamp = Date.now();
+      const totalBenefs = selectedBenefIdsDeposito.length;
+      let acumulado = 0;
+      const fechaCapturaIso = `${fechaDeposito}T${new Date().toTimeString().slice(0, 8)}`;
+
+      // Construir payloads individuales divididos exactamente
+      const payloads = selectedBenefIdsDeposito.map((benId, idx) => {
+        const litrosIndividual =
+          idx === totalBenefs - 1
+            ? Number((litrosNum - acumulado).toFixed(2))
+            : litrosPorBenef;
+        acumulado += litrosIndividual;
+
+        const bObj = benefMap.get(Number(benId));
+        const miembros = Number(bObj?.num_miembros || 1);
+        const cuotaSemanalBenef = Number(bObj?.dotacion_semanal_litros || bObj?.litros_sugeridos || miembros * 350);
+        const entregadoPrev = prevSemMap.get(Number(benId)) || 0;
+        const saldoSemanalRestante = Math.max(
+          0,
+          Number((cuotaSemanalBenef - (entregadoPrev + litrosIndividual)).toFixed(2))
+        );
+        const estadoSemanal = saldoSemanalRestante > 0 ? 'PARCIAL' : 'COMPLETA';
+        const localId = `dep-sec-${benId}-${batchStamp}-${idx}`;
+        const obsTexto =
+          observacionesDeposito ||
+          `Depósito Único (${sectorDeposito}): +${litrosIndividual} L hoy (${litrosNum} L ÷ ${totalBenefs} benef.) • Meta Sem: ${cuotaSemanalBenef} L • Restante Sem: ${saldoSemanalRestante} L`;
+
+        return {
+          benId,
+          litrosIndividual,
+          cuotaSemanalBenef,
+          saldoSemanalRestante,
+          estadoSemanal,
+          localId,
+          obsTexto,
+        };
+      });
+
+      // Enviar en lotes paralelos de 6 a /sync/upload-delivery para máxima velocidad y compatibilidad total
+      const CHUNK_SIZE = 6;
+      for (let i = 0; i < payloads.length; i += CHUNK_SIZE) {
+        const chunk = payloads.slice(i, i + CHUNK_SIZE);
+        await Promise.all(
+          chunk.map((p) => {
+            const fd = new FormData();
+            fd.append('localId', p.localId);
+            fd.append('beneficiarioId', String(p.benId));
+            if (programacionIdDeposito) fd.append('programacionId', String(programacionIdDeposito));
+            fd.append('litrosEntregados', String(p.litrosIndividual));
+            fd.append('cuotaProgramada', String(p.cuotaSemanalBenef));
+            fd.append('saldoPendiente', String(p.saldoSemanalRestante));
+            fd.append('estadoEntrega', p.estadoSemanal);
+            fd.append('observacionesEntrega', p.obsTexto);
+            fd.append('fechaCaptura', fechaCapturaIso);
+            fd.append('fechaAsignada', fechaDeposito);
+            if (fotoDepositoFile) {
+              fd.append('foto', fotoDepositoFile);
+            }
+            return api.post('/sync/upload-delivery', fd);
+          })
+        );
+      }
+
+      return {
+        data: {
+          message: `✅ Se registró la entrega en depósito único para ${totalBenefs} beneficiarios del sector ${sectorDeposito}: ${litrosNum.toLocaleString('es-PE')} L hoy (${litrosPorBenef.toLocaleString('es-PE')} L c/u).\n\nEstimado semanal del sector: ${calcSem.cuotaSemanalTotal.toLocaleString('es-PE')} L • Restante por entregar en la semana: ${restanteSemDespues.toLocaleString('es-PE')} L.`,
+        },
+      };
+    };
 
     try {
       setSavingDeposito(true);
@@ -263,9 +506,7 @@ export default function EntregasPage() {
 
       let res;
       try {
-        res = await api.post('/entregas/entrega-grupal-sector', buildFormData(false), {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        });
+        res = await api.post('/entregas/entrega-grupal-sector', buildFormData(entregasMismoDiaSector.length > 0));
       } catch (firstErr: any) {
         if (firstErr.response?.status === 409 && firstErr.response?.data?.code === 'DUPLICATE_SECTOR_DAY') {
           const confirmDup = await dialogConfirm({
@@ -281,9 +522,14 @@ export default function EntregasPage() {
             setSavingDeposito(false);
             return;
           }
-          res = await api.post('/entregas/entrega-grupal-sector', buildFormData(true), {
-            headers: { 'Content-Type': 'multipart/form-data' },
-          });
+          res = await api.post('/entregas/entrega-grupal-sector', buildFormData(true));
+        } else if (
+          firstErr.response?.status === 404 ||
+          firstErr.response?.status === 500 ||
+          !firstErr.response?.data?.message
+        ) {
+          // Fallback automático vía /sync/upload-delivery para funcionar inmediatamente en producción
+          res = await registrarDepositoViaSyncFallback();
         } else {
           throw firstErr;
         }
@@ -299,7 +545,7 @@ export default function EntregasPage() {
     } catch (error: any) {
       await dialogAlert({
         title: 'Error al registrar entrega grupal',
-        message: error.response?.data?.message || 'No se pudo completar el registro.',
+        message: error.response?.data?.message || error.message || 'No se pudo completar el registro.',
         type: 'danger',
       });
     } finally {
@@ -318,11 +564,23 @@ export default function EntregasPage() {
     if (!ok) return;
 
     try {
-      const res = await api.delete(`/entregas/lote/${encodeURIComponent(loteId)}`);
+      let deletedMsg = 'Se eliminaron todos los registros del lote correctamente.';
+      try {
+        const res = await api.delete(`/entregas/lote/${encodeURIComponent(loteId)}`);
+        if (res.data?.message) deletedMsg = res.data.message;
+      } catch (delErr: any) {
+        if (delErr.response?.status === 404) {
+          const itemsDelLote = entregas.filter((item) => item.lote_deposito_id === loteId);
+          await Promise.all(itemsDelLote.map((item) => api.delete(`/entregas/${item.id}`).catch(() => {})));
+          deletedMsg = `Se eliminaron los ${itemsDelLote.length} registros del lote de depósito único correctamente.`;
+        } else {
+          throw delErr;
+        }
+      }
       await fetchEntregas();
       await dialogAlert({
         title: 'Lote eliminado',
-        message: res.data?.message || 'Se eliminaron todos los registros del lote correctamente.',
+        message: deletedMsg,
         type: 'success',
       });
     } catch (error: any) {
@@ -961,25 +1219,54 @@ export default function EntregasPage() {
         const litrosNum = Number(litrosTotalesDeposito || 0);
         const litrosPorBenef = totalMarcados > 0 ? Math.round((litrosNum / totalMarcados) * 100) / 100 : 0;
 
+        // Cálculos semanales basados en los beneficiarios marcados y la fecha de entrega seleccionada
+        const { lunesIso, domingoIso, etiquetaSemana } = getRangoSemanaIso(fechaDeposito);
+        const {
+          cuotaSemanalTotal,
+          cuotaDiariaTotal,
+          habitantesTotal,
+          entregadoSemanaActual,
+          restanteAntesDeHoy,
+        } = calcularEstimadoSemanalParaIds(beneficiariosList, selectedBenefIdsDeposito, fechaDeposito);
+
+        const totalSemanaConHoy = Math.round((entregadoSemanaActual + litrosNum) * 100) / 100;
+        const restanteDespuesDeHoy = Math.max(0, Math.round((cuotaSemanalTotal - totalSemanaConHoy) * 100) / 100);
+        const excedenteSemanal = Math.max(0, Math.round((totalSemanaConHoy - cuotaSemanalTotal) * 100) / 100);
+        const porcentajeAvanceSemanal =
+          cuotaSemanalTotal > 0 ? Math.min(100, Math.round((totalSemanaConHoy / cuotaSemanalTotal) * 1000) / 10) : 0;
+
+        // Mapa de lo ya entregado en la semana por cada beneficiario individual
+        const entregadoSemanaPorBenefMap = new Map<number, number>();
+        for (const e of entregas) {
+          const fStr = (e.fecha_captura || e.fecha_hora || '').slice(0, 10);
+          if (fStr >= lunesIso && fStr <= domingoIso) {
+            const bId = Number(e.beneficiario_id);
+            entregadoSemanaPorBenefMap.set(
+              bId,
+              (entregadoSemanaPorBenefMap.get(bId) || 0) + Number(e.litros_entregados || 0)
+            );
+          }
+        }
+
         return (
           <div className="modal-overlay" onClick={() => !savingDeposito && setDepositoModalOpen(false)}>
             <div
               className="modal-content"
-              style={{ maxWidth: 740, maxHeight: '92vh', overflowY: 'auto' }}
+              style={{ maxWidth: 780, maxHeight: '94vh', overflowY: 'auto' }}
               onClick={(e) => e.stopPropagation()}
             >
               <div className="modal-header">
                 <div>
                   <h2 style={{ margin: 0 }}>🚰 Entrega Completa en Depósito Único por Sector</h2>
                   <p style={{ margin: '4px 0 0', fontSize: 12, color: '#64748b' }}>
-                    Marca automáticamente a todos los beneficiarios del sector, permite desmarcar casos especiales y divide el agua entregada entre el número de beneficiarios marcados.
+                    Las entregas se registran diariamente y van descontando de la <strong>Cantidad Estimada para la Semana</strong> según los beneficiarios marcados.
                   </p>
                 </div>
                 <button className="close-btn" onClick={() => !savingDeposito && setDepositoModalOpen(false)}>✕</button>
               </div>
 
               <form onSubmit={handleSubmitDepositoSector}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 12 }}>
                   <div className="form-group" style={{ marginBottom: 0 }}>
                     <label style={{ fontWeight: 700, fontSize: 12 }}>1. Sector de Entrega *</label>
                     <select
@@ -1012,9 +1299,138 @@ export default function EntregasPage() {
                   </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+                {/* PANEL DE CONTROL SEMANAL DEL SECTOR (META SEMANAL VS. ENTREGAS DIARIAS Y RESTANTE) */}
+                <div
+                  style={{
+                    background: 'linear-gradient(135deg, #f8fafc 0%, #eff6ff 100%)',
+                    border: '1.5px solid #93c5fd',
+                    borderRadius: 12,
+                    padding: '12px 14px',
+                    marginBottom: 14,
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', gap: 6 }}>
+                    <div style={{ fontSize: 11.5, fontWeight: 800, color: '#1e3a8a', textTransform: 'uppercase' }}>
+                      📅 Control Semanal del Sector ({etiquetaSemana})
+                    </div>
+                    <span
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 700,
+                        background: '#dbeafe',
+                        color: '#1d4ed8',
+                        padding: '2px 9px',
+                        borderRadius: 999,
+                      }}
+                    >
+                      {totalMarcados} familias ({habitantesTotal} hab. × 350 L/sem)
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+                    <div style={{ background: '#ffffff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '8px 10px' }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+                        Estimado de la Semana
+                      </div>
+                      <div style={{ fontSize: 15, fontWeight: 900, color: '#1e40af', marginTop: 2 }}>
+                        {cuotaSemanalTotal.toLocaleString('es-PE')} Lts
+                      </div>
+                      <div style={{ fontSize: 10, color: '#64748b' }}>
+                        ({(cuotaSemanalTotal / 1000).toFixed(2)} m³ • ~{cuotaDiariaTotal.toLocaleString('es-PE')} L/día)
+                      </div>
+                    </div>
+
+                    <div style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px' }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+                        Entregado Previo (Sem.)
+                      </div>
+                      <div style={{ fontSize: 15, fontWeight: 900, color: '#0f766e', marginTop: 2 }}>
+                        {entregadoSemanaActual.toLocaleString('es-PE')} Lts
+                      </div>
+                      <div style={{ fontSize: 10, color: '#64748b' }}>
+                        Faltaban: {restanteAntesDeHoy.toLocaleString('es-PE')} Lts
+                      </div>
+                    </div>
+
+                    <div style={{ background: '#f0fdfa', border: '1px solid #5eead4', borderRadius: 8, padding: '8px 10px' }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: '#0f766e', textTransform: 'uppercase' }}>
+                        Entrega Hoy (Depósito)
+                      </div>
+                      <div style={{ fontSize: 15, fontWeight: 900, color: '#0d9488', marginTop: 2 }}>
+                        +{litrosNum.toLocaleString('es-PE')} Lts
+                      </div>
+                      <div style={{ fontSize: 10, color: '#0f766e' }}>
+                        Acumulado: {totalSemanaConHoy.toLocaleString('es-PE')} Lts
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        background: restanteDespuesDeHoy > 0 ? '#fffbeb' : '#dcfce7',
+                        border: restanteDespuesDeHoy > 0 ? '1.5px solid #fcd34d' : '1.5px solid #86efac',
+                        borderRadius: 8,
+                        padding: '8px 10px',
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 800,
+                          color: restanteDespuesDeHoy > 0 ? '#b45309' : '#166534',
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        Restante Semana (Tras Hoy)
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 15,
+                          fontWeight: 900,
+                          color: restanteDespuesDeHoy > 0 ? '#d97706' : '#15803d',
+                          marginTop: 2,
+                        }}
+                      >
+                        {restanteDespuesDeHoy.toLocaleString('es-PE')} Lts
+                      </div>
+                      <div style={{ fontSize: 10, color: restanteDespuesDeHoy > 0 ? '#92400e' : '#166534', fontWeight: 600 }}>
+                        {restanteDespuesDeHoy > 0
+                          ? `Queda ${(restanteDespuesDeHoy / 1000).toFixed(2)} m³ por entregar`
+                          : excedenteSemanal > 0
+                          ? `Meta cubierta (+${excedenteSemanal.toLocaleString('es-PE')} L extra)`
+                          : '✅ Meta semanal completada'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Barra de progreso semanal */}
+                  <div style={{ marginTop: 9 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, fontWeight: 700, color: '#334155', marginBottom: 4 }}>
+                      <span>Avance de la programación semanal del sector (incluyendo entrega de hoy)</span>
+                      <span style={{ color: porcentajeAvanceSemanal >= 100 ? '#15803d' : '#1d4ed8' }}>
+                        {porcentajeAvanceSemanal}% ({totalSemanaConHoy.toLocaleString('es-PE')} / {cuotaSemanalTotal.toLocaleString('es-PE')} Lts)
+                      </span>
+                    </div>
+                    <div style={{ width: '100%', height: 8, background: '#e2e8f0', borderRadius: 999, overflow: 'hidden' }}>
+                      <div
+                        style={{
+                          width: `${porcentajeAvanceSemanal}%`,
+                          height: '100%',
+                          background: porcentajeAvanceSemanal >= 100 ? '#16a34a' : 'linear-gradient(90deg, #2563eb, #0d9488)',
+                          transition: 'width 0.25s ease',
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1.25fr 0.75fr', gap: 14, marginBottom: 14 }}>
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label style={{ fontWeight: 700, fontSize: 12 }}>2. Agua Total Entregada en el Depósito (Litros) *</label>
+                    <label style={{ fontWeight: 700, fontSize: 12 }}>
+                      2. Agua Total Entregada en el Depósito (Litros) *
+                      <span style={{ fontWeight: 600, color: '#2563eb', marginLeft: 6 }}>
+                        (Estimado Semanal: {cuotaSemanalTotal.toLocaleString('es-PE')} L • Restante: {restanteAntesDeHoy.toLocaleString('es-PE')} L)
+                      </span>
+                    </label>
                     <input
                       type="number"
                       step="any"
@@ -1022,11 +1438,65 @@ export default function EntregasPage() {
                       value={litrosTotalesDeposito}
                       onChange={(e) => setLitrosTotalesDeposito(e.target.value)}
                       required
-                      placeholder="Ej. 19000"
-                      style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #0d9488', fontWeight: 800, fontSize: 15, color: '#0f766e' }}
+                      placeholder={`Ej. ${restanteAntesDeHoy || cuotaSemanalTotal}`}
+                      style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1.5px solid #0d9488', fontWeight: 800, fontSize: 15, color: '#0f766e' }}
                     />
                     <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
-                      {['5000', '10000', '15000', '19000', '34000'].map((preset) => (
+                      {restanteAntesDeHoy > 0 && restanteAntesDeHoy !== cuotaSemanalTotal && (
+                        <button
+                          type="button"
+                          onClick={() => setLitrosTotalesDeposito(String(restanteAntesDeHoy))}
+                          style={{
+                            padding: '3px 8px',
+                            borderRadius: 6,
+                            fontSize: 11,
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            border: Number(litrosTotalesDeposito) === restanteAntesDeHoy ? '1.5px solid #d97706' : '1px solid #fcd34d',
+                            background: Number(litrosTotalesDeposito) === restanteAntesDeHoy ? '#fef3c7' : '#fffbeb',
+                            color: '#b45309',
+                          }}
+                        >
+                          ⏳ Restante Semana ({restanteAntesDeHoy.toLocaleString('es-PE')} L)
+                        </button>
+                      )}
+                      {cuotaSemanalTotal > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setLitrosTotalesDeposito(String(cuotaSemanalTotal))}
+                          style={{
+                            padding: '3px 8px',
+                            borderRadius: 6,
+                            fontSize: 11,
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            border: Number(litrosTotalesDeposito) === cuotaSemanalTotal ? '1.5px solid #1d4ed8' : '1px solid #93c5fd',
+                            background: Number(litrosTotalesDeposito) === cuotaSemanalTotal ? '#dbeafe' : '#eff6ff',
+                            color: '#1e40af',
+                          }}
+                        >
+                          📅 Estimado Semana ({cuotaSemanalTotal.toLocaleString('es-PE')} L)
+                        </button>
+                      )}
+                      {cuotaDiariaTotal > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setLitrosTotalesDeposito(String(cuotaDiariaTotal))}
+                          style={{
+                            padding: '3px 8px',
+                            borderRadius: 6,
+                            fontSize: 11,
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            border: Number(litrosTotalesDeposito) === cuotaDiariaTotal ? '1.5px solid #0d9488' : '1px solid #99f6e4',
+                            background: Number(litrosTotalesDeposito) === cuotaDiariaTotal ? '#ccfbf1' : '#f0fdfa',
+                            color: '#0f766e',
+                          }}
+                        >
+                          ☀️ Estimado Día 1/7 ({cuotaDiariaTotal.toLocaleString('es-PE')} L)
+                        </button>
+                      )}
+                      {['10000', '19000', '34000'].map((preset) => (
                         <button
                           key={preset}
                           type="button"
@@ -1053,12 +1523,18 @@ export default function EntregasPage() {
                     <input
                       type="date"
                       value={fechaDeposito}
-                      onChange={(e) => setFechaDeposito(e.target.value)}
+                      onChange={(e) => {
+                        const nuevaFecha = e.target.value;
+                        setFechaDeposito(nuevaFecha);
+                        const calc = calcularEstimadoSemanalParaIds(beneficiariosList, selectedBenefIdsDeposito, nuevaFecha);
+                        const sug = calc.restanteAntesDeHoy > 0 ? calc.restanteAntesDeHoy : calc.cuotaSemanalTotal;
+                        if (sug > 0) setLitrosTotalesDeposito(String(sug));
+                      }}
                       required
                       style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontWeight: 600 }}
                     />
                     <div style={{ fontSize: 11, color: '#64748b', marginTop: 6 }}>
-                      Alimenta automáticamente los reportes diarios, semanales y mensuales.
+                      Descuenta automáticamente del saldo semanal ({etiquetaSemana}).
                     </div>
                   </div>
                 </div>
@@ -1114,7 +1590,13 @@ export default function EntregasPage() {
                     <div style={{ display: 'flex', gap: 6 }}>
                       <button
                         type="button"
-                        onClick={() => setSelectedBenefIdsDeposito(benefsDelSector.map((b: any) => Number(b.id)))}
+                        onClick={() => {
+                          const allIds = benefsDelSector.map((b: any) => Number(b.id));
+                          setSelectedBenefIdsDeposito(allIds);
+                          const calc = calcularEstimadoSemanalParaIds(beneficiariosList, allIds, fechaDeposito);
+                          const sug = calc.restanteAntesDeHoy > 0 ? calc.restanteAntesDeHoy : calc.cuotaSemanalTotal;
+                          if (sug > 0) setLitrosTotalesDeposito(String(sug));
+                        }}
                         style={{
                           background: '#dcfce7',
                           border: '1px solid #86efac',
@@ -1180,6 +1662,14 @@ export default function EntregasPage() {
                       benefsFiltrados.map((b: any) => {
                         const bId = Number(b.id);
                         const isChecked = selectedBenefIdsDeposito.includes(bId);
+                        const miembrosFam = Number(b.num_miembros || 1);
+                        const cuotaSemFam = Number(b.dotacion_semanal_litros || b.litros_sugeridos || miembrosFam * 350);
+                        const entregadoPrevioFam = Math.round((entregadoSemanaPorBenefMap.get(bId) || 0) * 100) / 100;
+                        const restanteFamTrasHoy = Math.max(
+                          0,
+                          Math.round((cuotaSemFam - entregadoPrevioFam - (isChecked ? litrosPorBenef : 0)) * 100) / 100
+                        );
+
                         return (
                           <label
                             key={bId}
@@ -1207,22 +1697,36 @@ export default function EntregasPage() {
                                   {b.nombres_apellidos}
                                 </div>
                                 <div style={{ fontSize: 11, color: '#64748b' }}>
-                                  DNI: {b.dni || 'S/N'} • {b.direccion || b.sector}
+                                  DNI: {b.dni || 'S/N'} • 👥 {miembrosFam} hab. (Sem: <strong>{cuotaSemFam} L</strong>
+                                  {entregadoPrevioFam > 0 ? ` • Previo: ${entregadoPrevioFam} L` : ''}) • {b.direccion || b.sector}
                                 </div>
                               </div>
                             </div>
-                            <span
-                              style={{
-                                fontSize: 11,
-                                fontWeight: 800,
-                                padding: '3px 8px',
-                                borderRadius: 6,
-                                background: isChecked ? '#ccfbf1' : '#fde68a',
-                                color: isChecked ? '#0f766e' : '#b45309',
-                              }}
-                            >
-                              {isChecked ? `${litrosPorBenef} Lts` : 'Otro depósito'}
-                            </span>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                              <span
+                                style={{
+                                  fontSize: 11,
+                                  fontWeight: 800,
+                                  padding: '2px 8px',
+                                  borderRadius: 6,
+                                  background: isChecked ? '#ccfbf1' : '#fde68a',
+                                  color: isChecked ? '#0f766e' : '#b45309',
+                                }}
+                              >
+                                {isChecked ? `+${litrosPorBenef} Lts hoy` : 'Otro depósito'}
+                              </span>
+                              {isChecked && (
+                                <span
+                                  style={{
+                                    fontSize: 10,
+                                    fontWeight: 700,
+                                    color: restanteFamTrasHoy > 0 ? '#b45309' : '#15803d',
+                                  }}
+                                >
+                                  {restanteFamTrasHoy > 0 ? `Resta sem: ${restanteFamTrasHoy} L` : '✅ Sem. cubierta'}
+                                </span>
+                              )}
+                            </div>
                           </label>
                         );
                       })

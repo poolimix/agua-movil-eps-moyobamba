@@ -184,24 +184,53 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
     }).join(', ');
   };
 
-  // Scroll lock for signature pad
+  // Scroll lock for signature pad & keyboard auto-scroll
   const [scrollEnabled, setScrollEnabled] = useState(true);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [searchCardY, setSearchCardY] = useState(0);
+  const [progBenefCardY, setProgBenefCardY] = useState(0);
+  const [beneficiaryCardY, setBeneficiaryCardY] = useState(0);
 
   const signatureRef = useRef<SignatureViewRef>(null);
   const scrollViewRef = useRef<ScrollView>(null);
+  const depositoScrollRef = useRef<ScrollView>(null);
+  const activeScrollTargetRef = useRef<{ type: 'MAIN' | 'CALIDAD' | 'DEPOSITO'; y: number } | null>(null);
 
-  // Listener para medir en tiempo real la altura del teclado y evitar que tape los campos
+  const executeScrollTarget = (target: { type: 'MAIN' | 'CALIDAD' | 'DEPOSITO'; y: number } | null) => {
+    if (!target) return;
+    const ref =
+      target.type === 'CALIDAD'
+        ? calidadScrollRef.current
+        : target.type === 'DEPOSITO'
+        ? depositoScrollRef.current
+        : scrollViewRef.current;
+    if (!ref) return;
+    ref.scrollTo({ y: Math.max(0, target.y), animated: true });
+  };
+
+  const focusScrollTo = (type: 'MAIN' | 'CALIDAD' | 'DEPOSITO', y: number) => {
+    const target = { type, y };
+    activeScrollTargetRef.current = target;
+    executeScrollTarget(target);
+    setTimeout(() => executeScrollTarget(target), 120);
+    setTimeout(() => executeScrollTarget(target), 280);
+  };
+
+  // Listener para medir en tiempo real la altura del teclado y re-posicionar automáticamente el campo enfocado
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
 
     const showSub = Keyboard.addListener(showEvent, (e) => {
       setKeyboardHeight(e.endCoordinates.height);
+      if (activeScrollTargetRef.current) {
+        setTimeout(() => executeScrollTarget(activeScrollTargetRef.current), 40);
+        setTimeout(() => executeScrollTarget(activeScrollTargetRef.current), 180);
+      }
     });
     const hideSub = Keyboard.addListener(hideEvent, () => {
       setKeyboardHeight(0);
+      activeScrollTargetRef.current = null;
     });
 
     return () => {
@@ -317,14 +346,20 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
       // Fallback local SQLite si no hay conexión a internet
       const db = await getDatabase();
       const rows: any = await db.getAllAsync(`
-        SELECT b.id, b.dni, 
+        SELECT b.id, b.dni, b.num_miembros,
                COALESCE(b.nombres_apellidos, '') as nombres,
                COALESCE(b.nombres_apellidos, '') as nombres_apellidos,
                COALESCE(b.sector_aahh, b.sector, 'Sector') as sector,
                COALESCE(b.calle_direccion, b.direccion, '-') as direccion,
                b.telefono,
                v.codigo_unico as vale_codigo,
-               COALESCE(v.litros_sugeridos, 700) as cuota_semanal
+               COALESCE(v.litros_sugeridos, COALESCE(b.num_miembros, 1) * 350, 700) as cuota_semanal,
+               COALESCE((
+                 SELECT SUM(e.litros_entregados)
+                 FROM entregas_agua e
+                 WHERE e.beneficiario_id = b.id
+                   AND date(e.fecha_hora) >= date('now', 'weekday 0', '-6 days')
+               ), 0) as litros_esta_semana
         FROM beneficiarios b
         LEFT JOIN vales_consumo v ON v.beneficiario_id = b.id
         ORDER BY b.nombres_apellidos ASC
@@ -431,10 +466,40 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
     );
   };
 
+  const calcularEstimadoSemanalListaApp = (listaBenefs: any[]) => {
+    const dotacionDia = Number(systemConfig?.dotacion_diaria_litros || 50);
+    const diasSem = Number(systemConfig?.dias_entrega_semanal || 7);
+    let cuotaSemanal = 0;
+    let cuotaDiaria = 0;
+    let entregadoSemana = 0;
+    let habitantes = 0;
+
+    for (const b of listaBenefs) {
+      const miembros = Number(b.num_miembros || 1);
+      habitantes += miembros;
+      const cSem = Number(b.cuota_semanal || b.litros_sugeridos || miembros * dotacionDia * diasSem);
+      cuotaSemanal += cSem;
+      cuotaDiaria += miembros * dotacionDia;
+      entregadoSemana += Number(b.litros_esta_semana || b.litros_entregados_semana || 0);
+    }
+
+    const restanteSemana = Math.max(0, Number((cuotaSemanal - entregadoSemana).toFixed(2)));
+    return {
+      cuotaSemanal: Number(cuotaSemanal.toFixed(2)),
+      cuotaDiaria: Number(cuotaDiaria.toFixed(2)),
+      entregadoSemana: Number(entregadoSemana.toFixed(2)),
+      restanteSemana,
+      habitantes,
+    };
+  };
+
   const handleChangeSectorDeposito = (secName: string) => {
     setSectorDeposito(secName);
     const lista = getBeneficiariosPorSectorNombre(secName);
     setSelectedBenefIdsDeposito(lista.map((b: any) => Number(b.id)));
+    const calc = calcularEstimadoSemanalListaApp(lista);
+    const sug = calc.restanteSemana > 0 ? calc.restanteSemana : calc.cuotaSemanal;
+    if (sug > 0) setLitrosTotalesDeposito(String(sug));
   };
 
   const handleOpenDepositoModal = async (initialSec?: string) => {
@@ -457,6 +522,9 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
     );
     // Marcar TODOS los beneficiarios del sector por defecto
     setSelectedBenefIdsDeposito(lista.map((b: any) => Number(b.id)));
+    const calc = calcularEstimadoSemanalListaApp(lista);
+    const sug = calc.restanteSemana > 0 ? calc.restanteSemana : calc.cuotaSemanal;
+    setLitrosTotalesDeposito(String(sug || 15000));
     setFiltroBusquedaDeposito('');
     setFotoDepositoUri(null);
     setDepositoModalVisible(true);
@@ -1706,7 +1774,10 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
           </View>
 
           {/* CARD 3: SECTORES ASIGNADOS Y PADRÓN DE BENEFICIARIOS */}
-          <View style={styles.sectoresCard}>
+          <View
+            style={styles.sectoresCard}
+            onLayout={(e) => setProgBenefCardY(e.nativeEvent.layout.y)}
+          >
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, marginRight: 8 }}>
                 <Ionicons name="location-outline" size={17} color="#0284c7" />
@@ -1907,6 +1978,9 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                   value={filtroBeneficiario}
                   onChangeText={setFiltroBeneficiario}
                   autoCapitalize="none"
+                  onFocus={() => {
+                    focusScrollTo('MAIN', progBenefCardY > 0 ? progBenefCardY + 210 : 560);
+                  }}
                 />
                 {filtroBeneficiario ? (
                   <TouchableOpacity onPress={() => setFiltroBeneficiario('')} style={{ padding: 2 }}>
@@ -2255,6 +2329,9 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                   setBeneficiariosPage(1);
                 }}
                 autoCapitalize="none"
+                onFocus={() => {
+                  focusScrollTo('MAIN', 210);
+                }}
               />
               {filtroBeneficiario ? (
                 <TouchableOpacity onPress={() => { setFiltroBeneficiario(''); setBeneficiariosPage(1); }} style={{ padding: 4 }}>
@@ -2872,14 +2949,8 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
               maxLength={60}
               onFocus={() => {
                 // Posicionar el campo arriba del teclado dinámicamente en cualquier teléfono
-                const targetY = searchCardY > 0 ? Math.max(0, searchCardY + 65) : 850;
-                scrollViewRef.current?.scrollTo({ y: targetY, animated: true });
-                setTimeout(() => {
-                  scrollViewRef.current?.scrollTo({ y: targetY, animated: true });
-                }, 160);
-                setTimeout(() => {
-                  scrollViewRef.current?.scrollTo({ y: targetY, animated: true });
-                }, 320);
+                const targetY = searchCardY > 0 ? Math.max(0, searchCardY + 60) : 780;
+                focusScrollTo('MAIN', targetY);
               }}
               onSubmitEditing={() => {
                 Keyboard.dismiss();
@@ -2936,7 +3007,10 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
 
       {/* BENEFICIARY CARD */}
       {beneficiario && (
-        <View style={styles.card}>
+        <View
+          style={styles.card}
+          onLayout={(e) => setBeneficiaryCardY(e.nativeEvent.layout.y)}
+        >
           {/* TOP CARD HEADER WITH BADGES & BOTÓN SELECTOR DE DÍA (UBICACIÓN CÍRCULO VERDE) */}
           <View style={styles.cardHeaderRow}>
             <View style={styles.cardBadges}>
@@ -3165,9 +3239,8 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                       onChangeText={setLitrosEntregar}
                       keyboardType="numeric"
                       onFocus={() => {
-                        setTimeout(() => {
-                          scrollViewRef.current?.scrollTo({ y: 880, animated: true });
-                        }, 120);
+                        const targetY = beneficiaryCardY > 0 ? beneficiaryCardY + 280 : 940;
+                        focusScrollTo('MAIN', targetY);
                       }}
                     />
                     <Text style={styles.litersSuffix}>Lts</Text>
@@ -3491,9 +3564,16 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
       >
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.modalOverlay}
+          style={[
+            styles.modalOverlay,
+            keyboardHeight > 0 && {
+              justifyContent: 'flex-start',
+              paddingTop: Platform.OS === 'ios' ? 42 : 16,
+              paddingBottom: Math.min(keyboardHeight * 0.65, 220),
+            },
+          ]}
         >
-          <View style={[styles.modalCardCalidad, { maxHeight: '90%' }]}>
+          <View style={[styles.modalCardCalidad, { maxHeight: keyboardHeight > 0 ? '96%' : '90%' }]}>
             {/* MODAL HEADER CON BOTÓN CERRAR */}
             <View style={styles.modalCalidadHeader}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
@@ -3519,7 +3599,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
               contentContainerStyle={{
-                paddingBottom: keyboardHeight > 0 ? keyboardHeight * 0.55 + 32 : 6,
+                paddingBottom: keyboardHeight > 0 ? keyboardHeight * 0.75 + 48 : 6,
               }}
             >
               {/* SECCIÓN 1: ETAPA DEL CONTROL SANITARIO (FILAS DE SELECCIÓN ERGONÓMICAS) */}
@@ -3663,11 +3743,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                     onChangeText={setSectorCalidad}
                     placeholder="Seleccione o escriba el sector / punto de muestreo..."
                     placeholderTextColor="#94a3b8"
-                    onFocus={() => {
-                      setTimeout(() => {
-                        calidadScrollRef.current?.scrollTo({ y: 180, animated: true });
-                      }, 150);
-                    }}
+                    onFocus={() => focusScrollTo('CALIDAD', 180)}
                   />
                 </View>
               </View>
@@ -3685,11 +3761,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                       keyboardType="numeric"
                       placeholder="1.20"
                       placeholderTextColor="#94a3b8"
-                      onFocus={() => {
-                        setTimeout(() => {
-                          calidadScrollRef.current?.scrollToEnd({ animated: true });
-                        }, 150);
-                      }}
+                      onFocus={() => focusScrollTo('CALIDAD', 280)}
                     />
                     <Text style={styles.paramInputUnit}>ppm</Text>
                   </View>
@@ -3707,11 +3779,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                       keyboardType="numeric"
                       placeholder="1.40"
                       placeholderTextColor="#94a3b8"
-                      onFocus={() => {
-                        setTimeout(() => {
-                          calidadScrollRef.current?.scrollToEnd({ animated: true });
-                        }, 150);
-                      }}
+                      onFocus={() => focusScrollTo('CALIDAD', 280)}
                     />
                     <Text style={styles.paramInputUnit}>NTU</Text>
                   </View>
@@ -3729,11 +3797,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                     onChangeText={setAspectoCalidad}
                     placeholder="Límpido / Incoloro"
                     placeholderTextColor="#94a3b8"
-                    onFocus={() => {
-                      setTimeout(() => {
-                        calidadScrollRef.current?.scrollToEnd({ animated: true });
-                      }, 150);
-                    }}
+                    onFocus={() => focusScrollTo('CALIDAD', 380)}
                   />
                 </View>
               </View>
@@ -3771,12 +3835,24 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
       >
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.modalOverlay}
+          style={[
+            styles.modalOverlay,
+            keyboardHeight > 0 && {
+              justifyContent: 'flex-start',
+              paddingTop: Platform.OS === 'ios' ? 40 : 14,
+              paddingBottom: Math.min(keyboardHeight * 0.65, 220),
+            },
+          ]}
         >
           <View
             style={[
               styles.modalCardCalidad,
-              { maxWidth: 420, maxHeight: '92%', paddingHorizontal: 16, paddingVertical: 16 },
+              {
+                maxWidth: 420,
+                maxHeight: keyboardHeight > 0 ? '96%' : '92%',
+                paddingHorizontal: 16,
+                paddingVertical: 16,
+              },
             ]}
           >
             {/* HEADER */}
@@ -3814,16 +3890,36 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
               const marcadosCount = selectedBenefIdsDeposito.length;
               const desmarcadosCount = Math.max(0, listaDelSector.length - marcadosCount);
               const litrosPorBenef = marcadosCount > 0 ? Number((litrosNum / marcadosCount).toFixed(2)) : 0;
-              const cuotaDiariaSector = listaDelSector.reduce(
-                (acc: number, b: any) => acc + Number(b.num_miembros || 1) * (systemConfig?.dotacion_diaria_litros || 50),
-                0
+
+              const listaMarcados = listaDelSector.filter((b: any) =>
+                selectedBenefIdsDeposito.includes(Number(b.id))
               );
+              const {
+                cuotaSemanal: cuotaSemanalSector,
+                cuotaDiaria: cuotaDiariaSector,
+                entregadoSemana: entregadoSemanaSector,
+                restanteSemana: restanteAntesDeHoySector,
+                habitantes: habitantesSector,
+              } = calcularEstimadoSemanalListaApp(listaMarcados);
+
+              const acumuladoConHoySector = Number((entregadoSemanaSector + litrosNum).toFixed(2));
+              const restanteDespuesDeHoySector = Math.max(
+                0,
+                Number((cuotaSemanalSector - acumuladoConHoySector).toFixed(2))
+              );
+              const pctAvanceSem =
+                cuotaSemanalSector > 0
+                  ? Math.min(100, Number(((acumuladoConHoySector / cuotaSemanalSector) * 100).toFixed(1)))
+                  : 0;
 
               return (
                 <ScrollView
+                  ref={depositoScrollRef}
                   showsVerticalScrollIndicator={false}
                   keyboardShouldPersistTaps="handled"
-                  contentContainerStyle={{ paddingBottom: 14 }}
+                  contentContainerStyle={{
+                    paddingBottom: keyboardHeight > 0 ? keyboardHeight * 0.75 + 60 : 14,
+                  }}
                 >
                   {/* 1. SELECCIÓN DE SECTOR */}
                   <Text style={styles.paramInputLabel}>1. SELECCIONE EL SECTOR DEL DEPÓSITO:</Text>
@@ -3871,6 +3967,81 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                     })}
                   </ScrollView>
 
+                  {/* CONTROL SEMANAL DEL SECTOR (META ESTIMADA VS. ENTREGAS DIARIAS Y RESTANTE) */}
+                  <View
+                    style={{
+                      backgroundColor: '#eff6ff',
+                      borderWidth: 1.5,
+                      borderColor: '#93c5fd',
+                      borderRadius: 14,
+                      padding: 10,
+                      marginBottom: 8,
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <Text style={{ fontSize: 10.5, fontWeight: '900', color: '#1e3a8a' }}>
+                        📅 CONTROL SEMANAL ({marcadosCount} fam. • {habitantesSector} hab.)
+                      </Text>
+                      <Text style={{ fontSize: 10.5, fontWeight: '800', color: pctAvanceSem >= 100 ? '#15803d' : '#1d4ed8' }}>
+                        {pctAvanceSem}% sem.
+                      </Text>
+                    </View>
+
+                    <View style={{ flexDirection: 'row', gap: 6, marginBottom: 6 }}>
+                      <View style={{ flex: 1, backgroundColor: '#ffffff', borderRadius: 8, padding: 6, borderWidth: 1, borderColor: '#bfdbfe' }}>
+                        <Text style={{ fontSize: 9, fontWeight: '700', color: '#64748b' }}>ESTIMADO SEM.</Text>
+                        <Text style={{ fontSize: 12, fontWeight: '900', color: '#1e40af' }}>
+                          {cuotaSemanalSector.toLocaleString()} L
+                        </Text>
+                      </View>
+                      <View style={{ flex: 1, backgroundColor: '#ffffff', borderRadius: 8, padding: 6, borderWidth: 1, borderColor: '#cbd5e1' }}>
+                        <Text style={{ fontSize: 9, fontWeight: '700', color: '#64748b' }}>YA ENTREGADO</Text>
+                        <Text style={{ fontSize: 12, fontWeight: '900', color: '#0f766e' }}>
+                          {entregadoSemanaSector.toLocaleString()} L
+                        </Text>
+                      </View>
+                      <View
+                        style={{
+                          flex: 1.15,
+                          backgroundColor: restanteDespuesDeHoySector > 0 ? '#fffbeb' : '#dcfce7',
+                          borderRadius: 8,
+                          padding: 6,
+                          borderWidth: 1,
+                          borderColor: restanteDespuesDeHoySector > 0 ? '#fcd34d' : '#86efac',
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 9,
+                            fontWeight: '800',
+                            color: restanteDespuesDeHoySector > 0 ? '#b45309' : '#166534',
+                          }}
+                        >
+                          RESTANTE SEM.
+                        </Text>
+                        <Text
+                          style={{
+                            fontSize: 12,
+                            fontWeight: '900',
+                            color: restanteDespuesDeHoySector > 0 ? '#d97706' : '#15803d',
+                          }}
+                        >
+                          {restanteDespuesDeHoySector.toLocaleString()} L
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={{ height: 6, backgroundColor: '#dbeafe', borderRadius: 999, overflow: 'hidden' }}>
+                      <View
+                        style={{
+                          width: `${pctAvanceSem}%`,
+                          height: '100%',
+                          backgroundColor: pctAvanceSem >= 100 ? '#16a34a' : '#0284c7',
+                        }}
+                      />
+                    </View>
+                  </View>
+
                   {/* 2. VOLUMEN TOTAL ENTREGADO EN EL DEPÓSITO HOY */}
                   <View style={{ marginTop: 4, marginBottom: 8 }}>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -3888,13 +4059,14 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                         value={litrosTotalesDeposito}
                         onChangeText={setLitrosTotalesDeposito}
                         keyboardType="numeric"
-                        placeholder="Ej. 15000"
+                        placeholder={`Ej. ${restanteAntesDeHoySector || cuotaSemanalSector}`}
                         placeholderTextColor="#94a3b8"
+                        onFocus={() => focusScrollTo('DEPOSITO', 150)}
                       />
                       <Text style={styles.paramInputUnit}>Litros</Text>
                     </View>
 
-                    {/* BOTONES RÁPIDOS DE VOLUMEN */}
+                    {/* BOTONES RÁPIDOS DE VOLUMEN (SEMANAL, RESTANTE, DIARIO Y CISTERNA) */}
                     <ScrollView
                       horizontal
                       showsHorizontalScrollIndicator={false}
@@ -3902,11 +4074,17 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                       contentContainerStyle={{ gap: 6, marginTop: 6 }}
                     >
                       {[
-                        { label: '15,000 L (1 Cisterna)', val: '15000' },
-                        { label: '19,000 L (Cisterna 19m³)', val: '19000' },
-                        ...(cuotaDiariaSector > 0
-                          ? [{ label: `Cuota Día (${cuotaDiariaSector} L)`, val: String(cuotaDiariaSector) }]
+                        ...(restanteAntesDeHoySector > 0 && restanteAntesDeHoySector !== cuotaSemanalSector
+                          ? [{ label: `⏳ Restante Sem. (${restanteAntesDeHoySector} L)`, val: String(restanteAntesDeHoySector) }]
                           : []),
+                        ...(cuotaSemanalSector > 0
+                          ? [{ label: `📅 Estimado Sem. (${cuotaSemanalSector} L)`, val: String(cuotaSemanalSector) }]
+                          : []),
+                        ...(cuotaDiariaSector > 0
+                          ? [{ label: `☀️ Cuota Día 1/7 (${cuotaDiariaSector} L)`, val: String(cuotaDiariaSector) }]
+                          : []),
+                        { label: '15,000 L (15m³)', val: '15000' },
+                        { label: '19,000 L (19m³)', val: '19000' },
                       ].map((preset, idx) => (
                         <TouchableOpacity
                           key={idx}
@@ -3961,7 +4139,13 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                     </Text>
                     <View style={{ flexDirection: 'row', gap: 6 }}>
                       <TouchableOpacity
-                        onPress={() => setSelectedBenefIdsDeposito(listaDelSector.map((b: any) => Number(b.id)))}
+                        onPress={() => {
+                          const allIds = listaDelSector.map((b: any) => Number(b.id));
+                          setSelectedBenefIdsDeposito(allIds);
+                          const calc = calcularEstimadoSemanalListaApp(listaDelSector);
+                          const sug = calc.restanteSemana > 0 ? calc.restanteSemana : calc.cuotaSemanal;
+                          if (sug > 0) setLitrosTotalesDeposito(String(sug));
+                        }}
                         style={{
                           backgroundColor: '#e0f2fe',
                           paddingHorizontal: 8,
@@ -3994,6 +4178,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                       placeholderTextColor="#94a3b8"
                       value={filtroBusquedaDeposito}
                       onChangeText={setFiltroBusquedaDeposito}
+                      onFocus={() => focusScrollTo('DEPOSITO', 340)}
                     />
                     {filtroBusquedaDeposito ? (
                       <TouchableOpacity onPress={() => setFiltroBusquedaDeposito('')}>
@@ -4016,6 +4201,13 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                     <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled">
                       {filtradosModal.map((b: any) => {
                         const isChecked = selectedBenefIdsDeposito.includes(Number(b.id));
+                        const miembrosFam = Number(b.num_miembros || 1);
+                        const cuotaSemFam = Number(b.cuota_semanal || miembrosFam * 350);
+                        const entregadoPrevFam = Number(b.litros_esta_semana || b.litros_entregados_semana || 0);
+                        const restanteSemFam = Math.max(
+                          0,
+                          Number((cuotaSemFam - entregadoPrevFam - (isChecked ? litrosPorBenef : 0)).toFixed(2))
+                        );
                         return (
                           <TouchableOpacity
                             key={b.id}
@@ -4051,9 +4243,9 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                               >
                                 {b.nombres_apellidos || b.nombres}
                               </Text>
-                              <Text style={{ fontSize: 10.5, color: '#64748b' }}>
-                                DNI: {b.dni} • 👥 {b.num_miembros || 1} hab.
-                                {!isChecked ? ' • (Recibe en otro depósito)' : ''}
+                              <Text style={{ fontSize: 10, color: '#64748b' }}>
+                                DNI: {b.dni} • 👥 {miembrosFam} hab. (Sem: {cuotaSemFam}L)
+                                {!isChecked ? ' • Otro depósito' : ` • Resta: ${restanteSemFam}L`}
                               </Text>
                             </View>
                             <View
@@ -4071,7 +4263,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                                   color: isChecked ? '#15803d' : '#b91c1c',
                                 }}
                               >
-                                {isChecked ? `${litrosPorBenef} L` : '0 L'}
+                                {isChecked ? `+${litrosPorBenef} L` : '0 L'}
                               </Text>
                             </View>
                           </TouchableOpacity>

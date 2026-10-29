@@ -43,6 +43,7 @@ export default function ValesPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filtroEstado, setFiltroEstado] = useState('');
+  const [filtroSector, setFiltroSector] = useState('');
   const [selectedVale, setSelectedVale] = useState<Vale | null>(null);
   const [configSistema, setConfigSistema] = useState({
     dotacion_diaria_litros: 50,
@@ -57,12 +58,37 @@ export default function ValesPage() {
     try {
       setLoading(true);
       const params = new URLSearchParams();
+      params.append('limit', '10000');
       if (filtroEstado) params.append('estado', filtroEstado);
       if (search) params.append('search', search);
 
       const res = await api.get(`/vales?${params.toString()}`);
-      setVales(res.data.vales || []);
-      setStats(res.data.stats || null);
+      let loadedVales: Vale[] = res.data.vales || [];
+      const loadedStats: StatsVales | null = res.data.stats || null;
+
+      // Garantía total sin límite de 100: si por paginación previa quedaron más registros (ej. 153 o más en el futuro), traer todas las páginas restantes automáticamente
+      const totalEsperado = Number(loadedStats?.total_vales || 0);
+      if (!filtroEstado && !search && loadedVales.length > 0 && loadedVales.length < totalEsperado) {
+        let currentOffset = loadedVales.length;
+        while (currentOffset < totalEsperado) {
+          const nextParams = new URLSearchParams();
+          nextParams.append('limit', '500');
+          nextParams.append('offset', String(currentOffset));
+          const nextRes = await api.get(`/vales?${nextParams.toString()}`);
+          const extra: Vale[] = nextRes.data?.vales || [];
+          if (extra.length === 0) break;
+          const existingIds = new Set(loadedVales.map((v) => v.id));
+          for (const item of extra) {
+            if (!existingIds.has(item.id)) {
+              loadedVales.push(item);
+            }
+          }
+          currentOffset += extra.length;
+        }
+      }
+
+      setVales(loadedVales);
+      setStats(loadedStats);
     } catch (error) {
       console.error('Error al cargar vales:', error);
     } finally {
@@ -180,8 +206,66 @@ export default function ValesPage() {
     }, configSistema);
   };
 
-  const filteredVales = vales;
+  // Lista de sectores únicos con sus conteos para filtrar o imprimir por sector
+  const sectoresSummary = (() => {
+    const map = new Map<string, Vale[]>();
+    for (const v of vales) {
+      const sec = (v.sector || 'SIN SECTOR').trim().toUpperCase();
+      if (!map.has(sec)) map.set(sec, []);
+      map.get(sec)!.push(v);
+    }
+    return Array.from(map.entries())
+      .map(([sectorName, items]) => ({
+        sector: sectorName,
+        count: items.length,
+        litros: items.reduce((acc, cur) => acc + (Number(cur.litros_sugeridos) || 0), 0),
+        items,
+      }))
+      .sort((a, b) => a.sector.localeCompare(b.sector));
+  })();
+
+  const filteredVales = vales.filter((v) => {
+    if (filtroSector) {
+      const sec = (v.sector || 'SIN SECTOR').trim().toUpperCase();
+      if (sec !== filtroSector.toUpperCase()) return false;
+    }
+    if (filtroEstado) {
+      const est = (v.estado || 'EMITIDO').toUpperCase().trim();
+      const target = filtroEstado.toUpperCase().trim();
+      if (target === 'EMITIDO' || target === 'PENDIENTE') {
+        if (est !== 'EMITIDO' && est !== 'PENDIENTE') return false;
+      } else if (target === 'ENTREGADO' || target === 'CANJEADO') {
+        if (est !== 'ENTREGADO' && est !== 'CANJEADO') return false;
+      } else if (est !== target) {
+        return false;
+      }
+    }
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      const matchCodigo = (v.codigo_unico || '').toLowerCase().includes(q);
+      const matchDni = (v.beneficiario_dni || '').toLowerCase().includes(q);
+      const matchNombre = (v.beneficiario_nombre || '').toLowerCase().includes(q);
+      const matchSector = (v.sector || '').toLowerCase().includes(q);
+      if (!matchCodigo && !matchDni && !matchNombre && !matchSector) return false;
+    }
+    return true;
+  });
+
   const paginatedVales = filteredVales.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
+  const totalEmitidosKpi = Math.max(Number(stats?.total_vales || 0), vales.length);
+  const pendientesCalculados = vales.filter((v) =>
+    ['EMITIDO', 'PENDIENTE'].includes((v.estado || 'EMITIDO').toUpperCase().trim())
+  ).length;
+  const entregadosCalculados = vales.filter((v) =>
+    ['ENTREGADO', 'CANJEADO'].includes((v.estado || '').toUpperCase().trim())
+  ).length;
+  const totalPendientesKpi = Number(stats?.pendientes || 0) > 0 ? Number(stats?.pendientes) : pendientesCalculados;
+  const totalEntregadosKpi = Number(stats?.entregados || 0) > 0 ? Number(stats?.entregados) : entregadosCalculados;
+  const totalLitrosKpi =
+    Number(stats?.total_litros || 0) > 0
+      ? Number(stats?.total_litros)
+      : vales.reduce((acc, v) => acc + (Number(v.litros_sugeridos) || 0), 0);
 
   return (
     <Layout>
@@ -195,34 +279,143 @@ export default function ValesPage() {
         </div>
 
         {/* Stats Cards */}
-        <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 24 }}>
+        <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 18 }}>
           <div className="stat-card" style={{ background: '#fff', padding: 16, borderRadius: 8, border: '1px solid #e2e8f0' }}>
             <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>TOTAL VALES EMITIDOS</div>
-            <div style={{ fontSize: 24, fontWeight: 800, color: '#0f172a', marginTop: 4 }}>{stats?.total_vales || 0}</div>
+            <div style={{ fontSize: 24, fontWeight: 800, color: '#0f172a', marginTop: 4 }}>{totalEmitidosKpi}</div>
             <div style={{ fontSize: 11, color: '#0284c7', marginTop: 4 }}>Serie oficial asignada</div>
           </div>
           <div className="stat-card" style={{ background: '#fff', padding: 16, borderRadius: 8, border: '1px solid #e2e8f0' }}>
             <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>PENDIENTES DE CANJE</div>
-            <div style={{ fontSize: 24, fontWeight: 800, color: '#0284c7', marginTop: 4 }}>{stats?.pendientes || 0}</div>
+            <div style={{ fontSize: 24, fontWeight: 800, color: '#0284c7', marginTop: 4 }}>{totalPendientesKpi}</div>
             <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>Por entregar en ruta</div>
           </div>
           <div className="stat-card" style={{ background: '#fff', padding: 16, borderRadius: 8, border: '1px solid #e2e8f0' }}>
             <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>VALES CANJEADOS (ENTREGADOS)</div>
-            <div style={{ fontSize: 24, fontWeight: 800, color: '#16a34a', marginTop: 4 }}>{stats?.entregados || 0}</div>
+            <div style={{ fontSize: 24, fontWeight: 800, color: '#16a34a', marginTop: 4 }}>{totalEntregadosKpi}</div>
             <div style={{ fontSize: 11, color: '#16a34a', marginTop: 4 }}>Con firma y foto auditada</div>
           </div>
           <div className="stat-card" style={{ background: '#fff', padding: 16, borderRadius: 8, border: '1px solid #e2e8f0' }}>
             <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>VOLUMEN TOTAL ASIGNADO</div>
             <div style={{ fontSize: 24, fontWeight: 800, color: '#6366f1', marginTop: 4 }}>
-              {(Number(stats?.total_litros || 0) / 1000).toLocaleString('es-PE', { maximumFractionDigits: 1 })} m³
+              {(totalLitrosKpi / 1000).toLocaleString('es-PE', { maximumFractionDigits: 1 })} m³
             </div>
-            <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>{Number(stats?.total_litros || 0).toLocaleString('es-PE')} Litros</div>
+            <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>{totalLitrosKpi.toLocaleString('es-PE')} Litros</div>
           </div>
         </div>
 
+        {/* BARRA DE IMPRESIÓN RÁPIDA DE VALES POR SECTOR */}
+        {sectoresSummary.length > 0 && (
+          <div
+            style={{
+              background: '#f8fafc',
+              border: '1px solid #cbd5e1',
+              borderRadius: 10,
+              padding: '12px 16px',
+              marginBottom: 14,
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span>🖨️ IMPRIMIR VALES POR SECTOR (TALONARIO A4):</span>
+                <span style={{ fontSize: 11.5, fontWeight: 500, color: '#64748b' }}>
+                  Haz clic en un sector para imprimir todos los vales de ese sector o filtrarlos en la tabla
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  imprimirValesLote(
+                    vales,
+                    configSistema,
+                    `Padrón Completo de Vales (${vales.length} Beneficiarios) - EPS Moyobamba`
+                  )
+                }
+                style={{
+                  background: '#0284c7',
+                  color: '#ffffff',
+                  border: '1px solid #0284c7',
+                  borderRadius: 8,
+                  padding: '6px 12px',
+                  fontSize: 12,
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
+                🖨️ Imprimir Todos los Sectores ({vales.length})
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {sectoresSummary.map((s) => {
+                const isSelected = filtroSector.toUpperCase() === s.sector;
+                return (
+                  <div
+                    key={s.sector}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      borderRadius: 8,
+                      border: isSelected ? '1.5px solid #0284c7' : '1px solid #cbd5e1',
+                      background: isSelected ? '#e0f2fe' : '#ffffff',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFiltroSector(isSelected ? '' : s.sector);
+                        setCurrentPage(1);
+                      }}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        padding: '6px 10px',
+                        fontSize: 12,
+                        fontWeight: 700,
+                        color: isSelected ? '#0369a1' : '#334155',
+                        cursor: 'pointer',
+                      }}
+                      title={`Filtrar tabla por el sector ${s.sector}`}
+                    >
+                      📍 {s.sector} <strong>({s.count})</strong>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        imprimirValesLote(
+                          s.items,
+                          configSistema,
+                          `Vales del Sector: ${s.sector} (${s.count} Beneficiarios) - EPS Moyobamba`
+                        )
+                      }
+                      style={{
+                        background: '#0f172a',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderLeft: '1px solid #cbd5e1',
+                        padding: '6px 9px',
+                        fontSize: 11.5,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                      title={`Imprimir directamente los ${s.count} vales del sector ${s.sector} en formato A4`}
+                    >
+                      🖨️ Imprimir
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Search & Filter Toolbar */}
-        <div style={{ display: 'flex', gap: 12, marginBottom: 16, background: '#fff', padding: 12, borderRadius: 8, border: '1px solid #e2e8f0', flexWrap: 'wrap' }}>
-          <form onSubmit={handleSearchSubmit} style={{ display: 'flex', gap: 8, flex: 1, minWidth: 280 }}>
+        <div style={{ display: 'flex', gap: 10, marginBottom: 16, background: '#fff', padding: 12, borderRadius: 8, border: '1px solid #e2e8f0', flexWrap: 'wrap', alignItems: 'center' }}>
+          <form onSubmit={handleSearchSubmit} style={{ display: 'flex', gap: 8, flex: 1, minWidth: 260 }}>
             <input 
               type="text" 
               placeholder="Buscar por serie (VAL-...), DNI o Nombre de Beneficiario..."
@@ -237,6 +430,22 @@ export default function ValesPage() {
               🔍 Buscar
             </button>
           </form>
+
+          <select
+            value={filtroSector}
+            onChange={(e) => {
+              setFiltroSector(e.target.value);
+              setCurrentPage(1);
+            }}
+            style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #0284c7', background: '#f0f9ff', color: '#0369a1', fontWeight: 700, fontSize: 13 }}
+          >
+            <option value="">📍 Todos los Sectores ({vales.length})</option>
+            {sectoresSummary.map((s) => (
+              <option key={s.sector} value={s.sector}>
+                📍 {s.sector} ({s.count} vales)
+              </option>
+            ))}
+          </select>
 
           <select 
             value={filtroEstado} 
@@ -253,12 +462,26 @@ export default function ValesPage() {
             <option value="Anulado">Anulados</option>
           </select>
 
-          <button className="btn-secondary" onClick={() => { setSearch(''); setFiltroEstado(''); setCurrentPage(1); fetchVales(); }} style={{ padding: '8px 14px', fontSize: 13 }}>
+          <button
+            className="btn-secondary"
+            onClick={() => {
+              setSearch('');
+              setFiltroEstado('');
+              setFiltroSector('');
+              setCurrentPage(1);
+              fetchVales();
+            }}
+            style={{ padding: '8px 14px', fontSize: 13 }}
+          >
             Limpiar Filtros
           </button>
 
           <a 
-            href={`${API_BASE_URL}/api/v1/vales/export-excel?${new URLSearchParams({ ...(filtroEstado ? { estado: filtroEstado } : {}), ...(search ? { search } : {}) }).toString()}`}
+            href={`${API_BASE_URL}/api/v1/vales/export-excel?${new URLSearchParams({
+              ...(filtroEstado ? { estado: filtroEstado } : {}),
+              ...(filtroSector ? { sector: filtroSector } : {}),
+              ...(search ? { search } : {}),
+            }).toString()}`}
             target="_blank"
             rel="noopener noreferrer"
             className="btn-secondary"
@@ -282,7 +505,15 @@ export default function ValesPage() {
           <button
             type="button"
             className="btn-secondary"
-            onClick={() => imprimirValesLote(filteredVales, configSistema, `Vales de Consumo (${filteredVales.length}) - EPS Moyobamba`)}
+            onClick={() =>
+              imprimirValesLote(
+                filteredVales,
+                configSistema,
+                filtroSector
+                  ? `Vales del Sector ${filtroSector} (${filteredVales.length}) - EPS Moyobamba`
+                  : `Vales de Consumo (${filteredVales.length}) - EPS Moyobamba`
+              )
+            }
             disabled={filteredVales.length === 0}
             style={{ 
               padding: '8px 14px', 
@@ -297,7 +528,7 @@ export default function ValesPage() {
             }}
             title="Imprimir todos los vales filtrados en formato talonario A4 listo para corte"
           >
-            🖨️ Imprimir Lote A4 ({filteredVales.length})
+            🖨️ Imprimir Lote A4{filtroSector ? ` - ${filtroSector}` : ''} ({filteredVales.length})
           </button>
 
           <button 

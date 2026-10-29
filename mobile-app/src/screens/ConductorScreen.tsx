@@ -12,6 +12,7 @@ import {
   RefreshControl,
   Image,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -39,7 +40,36 @@ export default function ConductorScreen({ user, onLogout }: ConductorScreenProps
   const [turbiedad, setTurbiedad] = useState('1.50');
   const [sectorControl, setSectorControl] = useState('Surtidor / Planta');
   const [savingCalidad, setSavingCalidad] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const modalScrollRef = useRef<ScrollView>(null);
+  const focusedCalidadRef = useRef(false);
+
+  const scrollModalToCalidad = () => {
+    focusedCalidadRef.current = true;
+    modalScrollRef.current?.scrollToEnd({ animated: true });
+    setTimeout(() => modalScrollRef.current?.scrollToEnd({ animated: true }), 120);
+    setTimeout(() => modalScrollRef.current?.scrollToEnd({ animated: true }), 260);
+  };
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, (e) => {
+      setKeyboardHeight(e.endCoordinates?.height || 280);
+      if (focusedCalidadRef.current) {
+        setTimeout(() => modalScrollRef.current?.scrollToEnd({ animated: true }), 60);
+        setTimeout(() => modalScrollRef.current?.scrollToEnd({ animated: true }), 200);
+      }
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setKeyboardHeight(0);
+      focusedCalidadRef.current = false;
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   useEffect(() => {
     loadProgramacionesConductor();
@@ -595,9 +625,16 @@ export default function ConductorScreen({ user, onLogout }: ConductorScreenProps
         <Modal visible={activeModal} animationType="slide" transparent>
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={styles.modalOverlay}
+            style={[
+              styles.modalOverlay,
+              keyboardHeight > 0 && {
+                justifyContent: 'flex-start',
+                paddingTop: Platform.OS === 'ios' ? 42 : 16,
+                paddingBottom: Math.min(keyboardHeight * 0.65, 220),
+              },
+            ]}
           >
-            <View style={styles.modalSheet}>
+            <View style={[styles.modalSheet, keyboardHeight > 0 && { maxHeight: '95%' }]}>
               <View style={styles.modalSheetHeader}>
                 <View>
                   <Text style={styles.modalCode}>PROGRAMACIÓN #{selectedProg.id}</Text>
@@ -608,7 +645,14 @@ export default function ConductorScreen({ user, onLogout }: ConductorScreenProps
                 </TouchableOpacity>
               </View>
 
-              <ScrollView ref={modalScrollRef} style={{ maxHeight: 460 }} keyboardShouldPersistTaps="handled">
+              <ScrollView
+                ref={modalScrollRef}
+                style={{ maxHeight: 460 }}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={{
+                  paddingBottom: keyboardHeight > 0 ? keyboardHeight * 0.75 + 60 : 16,
+                }}
+              >
                 {/* ESTADO OPERACIONAL Y ACCIONES DE RUTA */}
                 <View style={[styles.modalCardInfo, { backgroundColor: '#f0f9ff', borderColor: '#bae6fd' }]}>
                   <Text style={[styles.cardHeaderSmall, { color: '#0369a1' }]}>🧭 ESTADO OPERATIVO DE LA JORNADA</Text>
@@ -765,7 +809,7 @@ export default function ConductorScreen({ user, onLogout }: ConductorScreenProps
                       value={sectorControl}
                       onChangeText={setSectorControl}
                       placeholder="Ej. Surtidor / Planta o Sector..."
-                      onFocus={() => setTimeout(() => modalScrollRef.current?.scrollToEnd({ animated: true }), 150)}
+                      onFocus={scrollModalToCalidad}
                     />
                   </View>
 
@@ -780,7 +824,7 @@ export default function ConductorScreen({ user, onLogout }: ConductorScreenProps
                         value={cloro}
                         onChangeText={setCloro}
                         placeholder="Ej. 1.20"
-                        onFocus={() => setTimeout(() => modalScrollRef.current?.scrollToEnd({ animated: true }), 150)}
+                        onFocus={scrollModalToCalidad}
                       />
                       <Text style={{ fontSize: 9.5, color: '#15803d', marginTop: 2 }}>Norma: 0.50 - 2.00 ppm</Text>
                     </View>
@@ -795,7 +839,7 @@ export default function ConductorScreen({ user, onLogout }: ConductorScreenProps
                         value={turbiedad}
                         onChangeText={setTurbiedad}
                         placeholder="Ej. 1.50"
-                        onFocus={() => setTimeout(() => modalScrollRef.current?.scrollToEnd({ animated: true }), 150)}
+                        onFocus={scrollModalToCalidad}
                       />
                       <Text style={{ fontSize: 9.5, color: '#15803d', marginTop: 2 }}>Límite máx: 5.0 NTU</Text>
                     </View>

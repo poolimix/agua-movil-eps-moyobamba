@@ -25,15 +25,16 @@ export interface ConfigPrintData {
 }
 
 /**
- * Genera el QR como Data URL en base64
+ * Genera el QR como Data URL en base64 (alta resolución para impresión nítida)
  */
 async function generateQr(payload: string): Promise<string> {
   try {
     return await QRCode.toDataURL(payload, {
-      width: 180,
+      width: 320,
       margin: 1,
+      errorCorrectionLevel: 'M',
       color: {
-        dark: '#0f172a',
+        dark: '#000000',
         light: '#ffffff'
       }
     });
@@ -77,17 +78,22 @@ export async function imprimirValeIndividual(v: ValePrintData, config?: ConfigPr
             body { margin: 0; padding: 12px; }
             .no-print { display: none !important; }
           }
-          * { box-sizing: border-box; }
+          * {
+            box-sizing: border-box;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            color-adjust: exact !important;
+          }
           body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
             background: #ffffff;
             color: #0f172a;
-            max-width: 480px;
+            max-width: 500px;
             margin: 0 auto;
             padding: 20px;
           }
           .vale-card {
-            border: 2px solid #0284c7;
+            border: 2.5px solid #0284c7;
             border-radius: 12px;
             padding: 20px;
             background: #ffffff;
@@ -96,98 +102,101 @@ export async function imprimirValeIndividual(v: ValePrintData, config?: ConfigPr
           }
           .header-banner {
             text-align: center;
-            border-bottom: 2px dashed #0284c7;
-            padding-bottom: 12px;
+            background: linear-gradient(135deg, #0369a1 0%, #0284c7 100%);
+            color: #ffffff;
+            border-radius: 10px;
+            padding: 12px;
             margin-bottom: 14px;
           }
           .institution {
-            font-size: 16px;
+            font-size: 18px;
             font-weight: 900;
-            color: #0284c7;
+            color: #ffffff;
             letter-spacing: 0.5px;
           }
           .sub-institution {
-            font-size: 10px;
-            font-weight: 700;
-            color: #475569;
+            font-size: 10.5px;
+            font-weight: 800;
+            color: #e0f2fe;
             text-transform: uppercase;
             margin-top: 2px;
           }
           .convenio {
-            font-size: 9.5px;
-            font-weight: 600;
+            font-size: 10px;
+            font-weight: 800;
             color: #0369a1;
-            background: #e0f2fe;
+            background: #ffffff;
             display: inline-block;
-            padding: 2px 8px;
+            padding: 2px 10px;
             border-radius: 10px;
-            margin-top: 4px;
+            margin-top: 5px;
           }
           .serie-box {
-            background: #f8fafc;
-            border: 1.5px solid #cbd5e1;
+            background: #f0f9ff;
+            border: 2px solid #0284c7;
             border-radius: 8px;
             padding: 8px;
             text-align: center;
             margin-bottom: 14px;
           }
           .serie-title {
-            font-size: 10px;
-            font-weight: 800;
-            color: #64748b;
+            font-size: 10.5px;
+            font-weight: 900;
+            color: #0369a1;
             text-transform: uppercase;
             letter-spacing: 0.5px;
           }
           .serie-code {
             font-family: 'Courier New', Courier, monospace;
-            font-size: 22px;
+            font-size: 23px;
             font-weight: 900;
             color: #0f172a;
             letter-spacing: 2px;
           }
           .info-grid {
             margin-bottom: 14px;
-            font-size: 12px;
+            font-size: 13px;
           }
           .info-row {
             display: flex;
             justify-content: space-between;
-            padding: 4px 0;
-            border-bottom: 1px dotted #e2e8f0;
+            padding: 5px 0;
+            border-bottom: 1px dashed #cbd5e1;
           }
           .info-label {
-            color: #64748b;
-            font-weight: 600;
+            color: #0369a1;
+            font-weight: 800;
           }
           .info-value {
             color: #0f172a;
-            font-weight: 700;
+            font-weight: 900;
             text-align: right;
-            max-width: 60%;
+            max-width: 62%;
           }
           .dotacion-box {
-            background: linear-gradient(135deg, #eff6ff 0%, #e0f2fe 100%);
-            border: 1.5px solid #7dd3fc;
+            background: linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%);
+            border: 2px solid #0284c7;
             border-radius: 10px;
             padding: 12px;
             text-align: center;
             margin-bottom: 14px;
           }
           .dotacion-total {
-            font-size: 26px;
+            font-size: 28px;
             font-weight: 900;
-            color: #0369a1;
+            color: #0c4a6e;
             line-height: 1.1;
           }
           .dotacion-desc {
-            font-size: 11px;
-            font-weight: 700;
-            color: #0284c7;
+            font-size: 12px;
+            font-weight: 800;
+            color: #0369a1;
             margin-top: 4px;
           }
           .dotacion-formula {
-            font-size: 10px;
-            color: #475569;
+            font-size: 11px;
+            font-weight: 700;
+            color: #1e293b;
             margin-top: 2px;
           }
           .qr-section {
@@ -196,20 +205,24 @@ export async function imprimirValeIndividual(v: ValePrintData, config?: ConfigPr
             padding: 8px 0;
           }
           .qr-img {
-            width: 140px;
-            height: 140px;
+            width: 185px;
+            height: 185px;
             display: block;
             margin: 0 auto;
-            border: 1px solid #cbd5e1;
-            border-radius: 8px;
-            padding: 4px;
+            border: 2.5px solid #0284c7;
+            border-radius: 10px;
+            padding: 5px;
             background: #fff;
           }
           .qr-hint {
-            font-size: 9.5px;
-            font-weight: 800;
-            color: #0369a1;
-            margin-top: 4px;
+            font-size: 10.5px;
+            font-weight: 900;
+            color: #ffffff;
+            background: #0284c7;
+            display: inline-block;
+            padding: 3px 12px;
+            border-radius: 999px;
+            margin-top: 6px;
             letter-spacing: 0.5px;
           }
           .signatures-box {
@@ -333,13 +346,37 @@ export async function imprimirValesLote(
 ) {
   if (!vales || vales.length === 0) return;
 
+  // Abrir la ventana de inmediato en el evento de clic para evitar bloqueo de popups cuando hay 153+ vales
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) return;
+
+  printWindow.document.write(`
+    <!DOCTYPE html>
+    <html lang="es">
+      <head><meta charset="UTF-8" /><title>Generando ${vales.length} vales...</title></head>
+      <body style="font-family: sans-serif; padding: 40px; text-align: center; color: #0369a1;">
+        <h2>⏳ Preparando ${vales.length} Vales Oficiales con Código QR...</h2>
+        <p>Por favor espere un momento mientras se generan todos los talonarios A4.</p>
+      </body>
+    </html>
+  `);
+
+  const sortedVales = [...vales].sort((a, b) => {
+    const secA = (a.sector || a.sector_aahh || '').toUpperCase();
+    const secB = (b.sector || b.sector_aahh || '').toUpperCase();
+    if (secA !== secB) return secA.localeCompare(secB);
+    const nomA = (a.beneficiario_nombre || a.nombres_apellidos || '').toUpperCase();
+    const nomB = (b.beneficiario_nombre || b.nombres_apellidos || '').toUpperCase();
+    return nomA.localeCompare(nomB);
+  });
+
   const dotDiaria = Number(config?.dotacion_diaria_litros) || 50;
   const dias = Number(config?.dias_entrega_semanal) || 7;
   const dotPorPersona = dotDiaria * dias;
 
   // Generar QRs para todos en paralelo
   const qrs = await Promise.all(
-    vales.map((v) => {
+    sortedVales.map((v) => {
       const dni = v.beneficiario_dni || v.dni || '';
       const rawMiembros = Number(v.num_miembros) || 0;
       const rawLitros = Number(v.litros_sugeridos) || 0;
@@ -350,10 +387,7 @@ export async function imprimirValesLote(
     })
   );
 
-  const printWindow = window.open('', '_blank');
-  if (!printWindow) return;
-
-  const valesHtml = vales.map((v, i) => {
+  const renderTicketHtml = (v: ValePrintData, qrUrl: string) => {
     const dni = v.beneficiario_dni || v.dni || 'S/N';
     const nombre = v.beneficiario_nombre || v.nombres_apellidos || 'Beneficiario';
     const sector = v.sector || v.sector_aahh || 'Moyobamba';
@@ -363,184 +397,405 @@ export async function imprimirValesLote(
     const miembros = rawMiembros > 0 ? rawMiembros : (rawLitros > 0 ? Math.max(1, Math.round(rawLitros / dotPorPersona)) : 1);
     const litros = rawLitros > 0 ? rawLitros : (miembros * dotPorPersona);
     const m3 = (litros / 1000).toFixed(2);
-    const qrUrl = qrs[i];
 
     return `
       <div class="vale-ticket">
         <div class="ticket-header">
-          <div class="inst-logo">💧 EPS MOYOBAMBA S.A. ${v.codigo_unico.includes('ANUAL') ? '• VALE ANUAL' : ''}</div>
-          <div class="inst-sub">Convenio PNSU N° 023-2026/VIVIENDA</div>
-          <div class="inst-code">${v.codigo_unico}</div>
-          ${v.codigo_unico.includes('ANUAL') ? '<div style="font-size: 8px; font-weight: 800; color: #047857; margin-top: 2px;">🌟 VÁLIDO TODO EL AÑO</div>' : ''}
+          <div class="header-top-bar">
+            <div class="inst-logo">💧 EPS MOYOBAMBA S.A. ${v.codigo_unico.includes('ANUAL') ? '• VALE ANUAL' : ''}</div>
+            <div class="inst-sub">CONVENIO PNSU N° 023-2026/VIVIENDA • DISTRIBUCIÓN DE AGUA POTABLE</div>
+          </div>
+          <div class="code-row">
+            <span class="inst-code">${v.codigo_unico}</span>
+            ${v.codigo_unico.includes('ANUAL') ? '<span class="anual-badge">🌟 VÁLIDO TODO EL AÑO</span>' : ''}
+          </div>
         </div>
 
         <div class="ticket-body">
           <div class="ticket-info">
-            <div><strong>Titular:</strong> ${nombre}</div>
-            <div><strong>DNI:</strong> ${dni} • <strong>Fam:</strong> ${miembros} pers.</div>
-            <div><strong>Sector:</strong> ${sector}</div>
-            <div><strong>Dir:</strong> ${direccion}</div>
+            <div class="titular-box">
+              <span class="field-label">TITULAR BENEFICIARIO:</span>
+              <div class="titular-name">${nombre}</div>
+            </div>
+
+            <div class="badges-row">
+              <span class="dni-pill">🪪 <strong>DNI:</strong> ${dni}</span>
+              <span class="fam-pill">👥 <strong>FAMILIA:</strong> ${miembros} pers.</span>
+            </div>
+
+            <div class="detail-row">
+              <span class="detail-label">📍 SECTOR:</span>
+              <span class="detail-val sector-val">${sector}</span>
+            </div>
+
+            <div class="detail-row">
+              <span class="detail-label">🏠 DIRECCIÓN:</span>
+              <span class="detail-val">${direccion}</span>
+            </div>
+
             <div class="ticket-quota">
-              <strong>${litros.toLocaleString()} L</strong> (${m3} m³ • ${dias} días @ ${dotDiaria}L/d)
+              <div class="quota-main">🚰 ${litros.toLocaleString('es-PE')} LITROS</div>
+              <div class="quota-sub"><strong>${m3} m³</strong> Semanal • (${miembros} hab. × ${dias} días @ ${dotDiaria} L/día)</div>
             </div>
           </div>
 
           <div class="ticket-qr">
-            ${qrUrl ? `<img src="${qrUrl}" alt="QR" />` : ''}
-            <div class="qr-text">Escanear App</div>
+            <div class="qr-frame">
+              ${qrUrl ? `<img src="${qrUrl}" alt="QR" />` : ''}
+            </div>
+            <div class="qr-text">📲 ESCANEAR APP</div>
           </div>
         </div>
 
-        <div class="ticket-signatures">
-          <div class="sig-col">Firma Beneficiario</div>
-          <div class="sig-col">Sello Cisterna EPS</div>
-        </div>
+        <div class="ticket-bottom">
+          <div class="ticket-signatures">
+            <div class="sig-col">
+              <div class="sig-space"></div>
+              <div class="sig-line">FIRMA / HUELLA BENEFICIARIO</div>
+              <div class="sig-sub">DNI: ${dni}</div>
+            </div>
+            <div class="sig-col">
+              <div class="sig-space"></div>
+              <div class="sig-line">FIRMA Y SELLO CISTERNA EPS</div>
+              <div class="sig-sub">Control de Reparto</div>
+            </div>
+          </div>
 
-        <div class="ticket-footer">
-          Distribución Gratuita • Prohibida su Venta
+          <div class="ticket-footer">
+            DISTRIBUCIÓN 100% GRATUITA • PROHIBIDA SU VENTA O COMERCIALIZACIÓN • FISCALIZADO POR SUNASS
+          </div>
         </div>
       </div>
     `;
-  }).join('');
+  };
+
+  // Agrupar exactamente de 4 en 4 vales por cada hoja A4 (2 filas × 2 columnas ocupando toda la hoja)
+  const VALES_POR_HOJA = 4;
+  const paginasHtml: string[] = [];
+  for (let idx = 0; idx < sortedVales.length; idx += VALES_POR_HOJA) {
+    const grupo = sortedVales.slice(idx, idx + VALES_POR_HOJA);
+    const itemsHtml = grupo
+      .map((v, subIdx) => renderTicketHtml(v, qrs[idx + subIdx]))
+      .join('');
+    paginasHtml.push(`<div class="sheet-page">${itemsHtml}</div>`);
+  }
+
+  const totalHojas = Math.ceil(sortedVales.length / VALES_POR_HOJA);
 
   printWindow.document.write(`
     <!DOCTYPE html>
     <html lang="es">
       <head>
         <meta charset="UTF-8" />
-        <title>${tituloLote || 'Vales de Consumo - Impresión por Lote'}</title>
+        <title>${tituloLote || 'Vales de Consumo - Impresión por Lote (4 por Hoja)'}</title>
         <style>
           @page {
             size: A4 portrait;
-            margin: 10mm;
+            margin: 6mm;
+          }
+          * {
+            box-sizing: border-box;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            color-adjust: exact !important;
           }
           @media print {
-            body { margin: 0; padding: 0; background: #fff; }
+            html, body {
+              margin: 0 !important;
+              padding: 0 !important;
+              background: #ffffff !important;
+            }
             .no-print { display: none !important; }
-            .vale-ticket { page-break-inside: avoid; break-inside: avoid; }
+            .sheet-page {
+              height: 284mm !important;
+              page-break-after: always;
+              break-after: page;
+              margin: 0 !important;
+              padding: 0 !important;
+            }
+            .sheet-page:last-child {
+              page-break-after: auto;
+              break-after: auto;
+            }
+            .vale-ticket {
+              page-break-inside: avoid;
+              break-inside: avoid;
+            }
           }
-          * { box-sizing: border-box; }
           body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            background: #f8fafc;
+            background: #e2e8f0;
             color: #0f172a;
             margin: 0;
-            padding: 10px;
+            padding: 12px;
           }
-          .grid-container {
+          .sheet-page {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 12px;
+            grid-template-rows: 1fr 1fr;
+            gap: 10px;
+            width: 100%;
+            max-width: 210mm;
+            height: 284mm;
+            margin: 0 auto 16px auto;
+            background: #ffffff;
           }
           .vale-ticket {
-            border: 2px dashed #0284c7;
-            border-radius: 8px;
+            border: 2.5px dashed #0284c7;
+            border-radius: 12px;
             padding: 10px 12px;
             background: #ffffff;
-            font-size: 11px;
             display: flex;
             flex-direction: column;
-            justifyContent: space-between;
-            min-height: 250px;
+            justify-content: space-between;
+            height: 100%;
+            overflow: hidden;
           }
           .ticket-header {
             text-align: center;
-            border-bottom: 1px solid #cbd5e1;
-            padding-bottom: 4px;
+            border-bottom: 2px solid #bae6fd;
+            padding-bottom: 6px;
+            margin-bottom: 6px;
+          }
+          .header-top-bar {
+            background: linear-gradient(135deg, #0369a1 0%, #0284c7 100%);
+            color: #ffffff;
+            padding: 6px 8px;
+            border-radius: 8px;
             margin-bottom: 6px;
           }
           .inst-logo {
-            font-size: 12px;
+            font-size: 14px;
             font-weight: 900;
-            color: #0284c7;
+            color: #ffffff;
+            letter-spacing: 0.4px;
           }
           .inst-sub {
             font-size: 8.5px;
-            color: #64748b;
-            font-weight: 600;
+            color: #e0f2fe;
+            font-weight: 800;
+            letter-spacing: 0.3px;
+            margin-top: 1px;
+          }
+          .code-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            flex-wrap: wrap;
           }
           .inst-code {
-            font-family: monospace;
-            font-size: 14px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 16.5px;
             font-weight: 900;
             color: #0f172a;
-            background: #f1f5f9;
+            background: #f0f9ff;
+            border: 1.5px solid #0284c7;
             display: inline-block;
-            padding: 2px 8px;
-            border-radius: 4px;
-            margin-top: 2px;
+            padding: 2px 10px;
+            border-radius: 6px;
+            letter-spacing: 0.8px;
+          }
+          .anual-badge {
+            font-size: 9.5px;
+            font-weight: 900;
+            color: #065f46;
+            background: #d1fae5;
+            border: 1.5px solid #10b981;
+            padding: 3px 8px;
+            border-radius: 6px;
+            letter-spacing: 0.3px;
           }
           .ticket-body {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            gap: 8px;
-            margin: 4px 0;
+            gap: 10px;
+            flex: 1;
+            margin: 2px 0;
           }
           .ticket-info {
             flex: 1;
-            line-height: 1.4;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            min-width: 0;
+          }
+          .titular-box {
+            background: #f8fafc;
+            border-left: 4px solid #0284c7;
+            padding: 4px 8px;
+            border-radius: 4px;
+          }
+          .field-label {
+            display: block;
+            font-size: 8.5px;
+            font-weight: 900;
+            color: #0369a1;
+            letter-spacing: 0.4px;
+          }
+          .titular-name {
+            font-size: 13.5px;
+            font-weight: 900;
+            color: #0f172a;
+            line-height: 1.2;
+            margin-top: 1px;
+            text-transform: uppercase;
+          }
+          .badges-row {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+          }
+          .dni-pill {
+            background: #eff6ff;
+            border: 1px solid #93c5fd;
+            color: #1e3a8a;
+            font-size: 11.5px;
+            font-weight: 800;
+            padding: 2px 8px;
+            border-radius: 6px;
+          }
+          .fam-pill {
+            background: #f0fdf4;
+            border: 1px solid #86efac;
+            color: #14532d;
+            font-size: 11.5px;
+            font-weight: 800;
+            padding: 2px 8px;
+            border-radius: 6px;
+          }
+          .detail-row {
+            font-size: 11.5px;
+            line-height: 1.25;
+            display: flex;
+            gap: 4px;
+            align-items: baseline;
+          }
+          .detail-label {
+            font-weight: 900;
+            color: #0369a1;
             font-size: 10.5px;
+            white-space: nowrap;
+          }
+          .detail-val {
+            font-weight: 800;
+            color: #1e293b;
+          }
+          .sector-val {
+            color: #0f172a;
+            font-weight: 900;
+            background: #fef3c7;
+            border: 1px solid #fcd34d;
+            padding: 1px 6px;
+            border-radius: 4px;
           }
           .ticket-quota {
-            margin-top: 4px;
-            background: #e0f2fe;
+            margin-top: 2px;
+            background: linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%);
+            border: 2px solid #0284c7;
             color: #0369a1;
-            padding: 3px 6px;
-            border-radius: 4px;
-            font-size: 11.5px;
+            padding: 5px 8px;
+            border-radius: 8px;
+          }
+          .quota-main {
+            font-size: 16.5px;
+            font-weight: 900;
+            color: #0c4a6e;
+            line-height: 1.1;
+          }
+          .quota-sub {
+            font-size: 10px;
+            font-weight: 800;
+            color: #0369a1;
+            margin-top: 2px;
           }
           .ticket-qr {
-            text-align: center;
-            width: 75px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 144px;
+            flex-shrink: 0;
+          }
+          .qr-frame {
+            border: 2.5px solid #0284c7;
+            border-radius: 10px;
+            padding: 4px;
+            background: #ffffff;
+            box-shadow: 0 2px 6px rgba(2, 132, 199, 0.12);
           }
           .ticket-qr img {
-            width: 70px;
-            height: 70px;
+            width: 132px;
+            height: 132px;
             display: block;
-            margin: 0 auto;
-            border: 1px solid #cbd5e1;
-            border-radius: 4px;
           }
           .qr-text {
-            font-size: 7.5px;
-            font-weight: 700;
-            color: #64748b;
-            margin-top: 2px;
+            font-size: 9.5px;
+            font-weight: 900;
+            color: #ffffff;
+            background: #0284c7;
+            padding: 2px 10px;
+            border-radius: 999px;
+            margin-top: 5px;
+            letter-spacing: 0.4px;
+          }
+          .ticket-bottom {
+            margin-top: 4px;
           }
           .ticket-signatures {
             display: flex;
             justify-content: space-between;
-            gap: 8px;
-            margin-top: 8px;
-            padding-top: 6px;
+            gap: 14px;
           }
           .sig-col {
             flex: 1;
             text-align: center;
-            border-top: 1px dashed #94a3b8;
+          }
+          .sig-space {
+            height: 28px;
+          }
+          .sig-line {
+            border-top: 1.5px dashed #334155;
+            font-size: 9px;
+            color: #0f172a;
+            font-weight: 900;
+            padding-top: 3px;
+            letter-spacing: 0.3px;
+          }
+          .sig-sub {
             font-size: 8px;
-            color: #64748b;
-            font-weight: 600;
-            padding-top: 2px;
+            font-weight: 700;
+            color: #475569;
           }
           .ticket-footer {
             text-align: center;
-            font-size: 7.5px;
-            color: #94a3b8;
-            border-top: 1px dotted #e2e8f0;
-            margin-top: 6px;
-            padding-top: 3px;
+            font-size: 8px;
+            font-weight: 800;
+            color: #0369a1;
+            background: #f0f9ff;
+            border-top: 1.5px solid #bae6fd;
+            border-radius: 4px;
+            margin-top: 5px;
+            padding: 3px 4px;
+            letter-spacing: 0.2px;
           }
         </style>
       </head>
       <body>
-        <div class="grid-container">
-          ${valesHtml}
+        <div class="no-print" style="background: #0f172a; color: #fff; padding: 12px 18px; border-radius: 8px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; max-width: 210mm; margin-left: auto; margin-right: auto;">
+          <div>
+            <strong style="font-size: 14px;">🎟️ ${tituloLote || 'Talonario Oficial de Vales de Consumo (4 Vales por Hoja A4)'}</strong>
+            <div style="font-size: 12px; color: #94a3b8; margin-top: 2px;">Total listos para imprimir: <strong>${sortedVales.length} vales</strong> en <strong>${totalHojas} hoja${totalHojas === 1 ? '' : 's'} A4</strong> (4 vales grandes por hoja con QR ampliado)</div>
+          </div>
+          <button onclick="window.print()" style="background: #0284c7; color: #fff; border: none; padding: 9px 18px; border-radius: 6px; font-weight: 900; cursor: pointer; font-size: 13px;">
+            🖨️ Imprimir Ahora (${sortedVales.length})
+          </button>
         </div>
+        ${paginasHtml.join('')}
         <script>
           window.onload = function() {
-            setTimeout(function() { window.print(); }, 300);
+            setTimeout(function() { window.print(); }, 350);
           };
         </script>
       </body>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
   ScrollView,
   Modal,
@@ -35,6 +36,22 @@ interface LoginScreenProps {
 export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const scrollRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, (e) => {
+      setKeyboardHeight(e.endCoordinates?.height || 260);
+      setTimeout(() => scrollRef.current?.scrollTo({ y: 120, animated: true }), 60);
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardHeight(0));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   // Official PKCE Compliant Native Google OAuth Request Hook
   const [request, response, promptAsync] = Google.useAuthRequest({
@@ -234,7 +251,14 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}
     >
-      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={[
+          styles.scrollContent,
+          keyboardHeight > 0 && { paddingBottom: keyboardHeight * 0.75 + 48 },
+        ]}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.card}>
           {/* LOGO INSTITUCIONAL AGUATRACK */}
           <View style={styles.logoContainer}>
@@ -277,6 +301,10 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
               keyboardType="email-address"
               placeholder="ejemplo@gmail.com / @epsmoyobamba.gob.pe"
               placeholderTextColor="#64748b"
+              onFocus={() => {
+                setTimeout(() => scrollRef.current?.scrollTo({ y: 120, animated: true }), 100);
+                setTimeout(() => scrollRef.current?.scrollTo({ y: 120, animated: true }), 240);
+              }}
               onSubmitEditing={() => performLoginWithEmail(email)}
             />
 
