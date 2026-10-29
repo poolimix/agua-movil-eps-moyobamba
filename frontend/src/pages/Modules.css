@@ -662,31 +662,70 @@
   flex-wrap: wrap;
 }
 
+.responsive-grid-2col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.responsive-grid-4col {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
 /* ─── Responsive Media Queries ──────────────────────────────────────── */
 @media (max-width: 768px) {
+  .responsive-grid-2col {
+    grid-template-columns: 1fr !important;
+    gap: 10px;
+  }
+
+  .responsive-grid-4col {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px;
+  }
+
   .module-header {
     flex-direction: column;
     align-items: flex-start;
-    gap: 12px;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .module-header h1 {
+    font-size: 19px;
   }
 
   .module-actions {
     width: 100%;
+    gap: 8px;
   }
 
   .module-actions button,
   .module-actions a {
-    flex: 1;
+    flex: 1 1 auto;
     justify-content: center;
+    white-space: normal;
+    text-align: center;
+    padding: 8px 12px;
+    font-size: 12.5px;
   }
 
   .stats-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px !important;
+  }
+
+  .stat-card {
+    padding: 12px 14px !important;
   }
 
   .filters-card {
     flex-direction: column;
     align-items: stretch;
+    padding: 12px 14px;
+    gap: 10px;
   }
 
   .search-input {
@@ -696,14 +735,30 @@
   .pagination-container {
     flex-direction: column;
     align-items: center;
-    gap: 14px;
+    gap: 12px;
+    padding: 12px;
   }
 
   .form-row {
     grid-template-columns: 1fr;
   }
 
-  .modal-content {
-    padding: 20px 16px;
+  .modal-overlay {
+    padding: 8px;
+  }
+
+  .modal-content,
+  .modal-content.modal-large,
+  .modal-large {
+    padding: 16px 14px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    border-radius: 14px;
+  }
+}
+
+@media (max-width: 480px) {
+  .stats-grid {
+    grid-template-columns: 1fr !important;
   }
 }

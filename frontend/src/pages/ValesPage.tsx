@@ -323,9 +323,6 @@ export default function ValesPage() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
               <div style={{ fontSize: 12.5, fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                 <span>🖨️ VALES Y QR ÚNICO POR SECTOR:</span>
-                <span style={{ fontSize: 11.5, fontWeight: 500, color: '#64748b' }}>
-                  Imprime los vales individuales (4 por hoja) o genera <strong>1 solo QR Único Colectivo</strong> para entregar a todo el sector al escanear
-                </span>
               </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button
@@ -352,7 +349,7 @@ export default function ValesPage() {
                   }}
                   title="Genera 1 hoja oficial con QR Único por cada sector para escanear y entregar a todo el sector de una sola vez"
                 >
-                  📲 QR Único Todos los Sectores ({sectoresSummary.length})
+                  📲 QR Sectores ({sectoresSummary.length})
                 </button>
                 <button
                   type="button"
@@ -377,7 +374,7 @@ export default function ValesPage() {
                     gap: 6,
                   }}
                 >
-                  🖨️ Imprimir Todos los Vales ({vales.length})
+                  🖨️ Todos los Vales ({vales.length})
                 </button>
               </div>
             </div>

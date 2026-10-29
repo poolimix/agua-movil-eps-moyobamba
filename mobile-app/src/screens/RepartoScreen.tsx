@@ -1695,10 +1695,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
               </Text>
             </View>
             <Text style={styles.progTitle}>
-              Hoja de Ruta y Asignación de Cisterna
-            </Text>
-            <Text style={styles.progSubtitle}>
-              EPS Moyobamba S.A. • Distribución fiscalizada de agua potable en cisternas
+              Hoja de Ruta y Cisterna Asignada
             </Text>
           </View>
 
@@ -1764,12 +1761,6 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
               </View>
               <View style={styles.volumenProgressBarBg}>
                 <View style={[styles.volumenProgressBarFill, { width: '100%' }]} />
-              </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Ionicons name="water-outline" size={12} color="#64748b" />
-                <Text style={styles.volumenHint}>
-                  Tanque asignado para abastecimiento directo a beneficiarios
-                </Text>
               </View>
             </View>
           </View>
@@ -2084,26 +2075,20 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
 
                       return (
                         <View key={b.id || b.dni} style={styles.progBenefItemRow}>
-                          <View style={{ flex: 1, marginRight: 8 }}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                              <Text style={styles.progBenefItemName} numberOfLines={1}>
-                                {b.nombres || b.nombres_apellidos}
-                              </Text>
-                              {b.vale_codigo ? (
-                                <View style={styles.miniValeBadge}>
-                                  <Text style={styles.miniValeBadgeText}>{b.vale_codigo}</Text>
-                                </View>
-                              ) : null}
-                            </View>
-                            <Text style={styles.progBenefItemSub}>
+                          <View style={{ flex: 1, minWidth: 0, marginRight: 8 }}>
+                            <Text style={styles.progBenefItemName} numberOfLines={1}>
+                              {b.nombres || b.nombres_apellidos}
+                            </Text>
+                            <Text style={styles.progBenefItemSub} numberOfLines={1}>
                               DNI: <Text style={{ fontWeight: '700', color: '#0f172a' }}>{b.dni}</Text> • 📍 {b.sector || 'Sector'}
                             </Text>
 
                             {/* AVANCE SEMANAL INDIVIDUAL DEL BENEFICIARIO */}
-                            <View style={{ marginTop: 5 }}>
+                            <View style={{ marginTop: 4 }}>
                               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
                                 <Text style={{ fontSize: 9.5, fontWeight: '700', color: '#64748b' }}>
-                                  Avance Semanal: <Text style={{ color: atendido ? '#15803d' : '#0284c7' }}>{entregado} / {cuota} L</Text>
+                                  Semanal: <Text style={{ color: atendido ? '#15803d' : '#0284c7' }}>{entregado}/{cuota} L</Text>
+                                  {saldo > 0 ? ` (Resta: ${saldo} L)` : ''}
                                 </Text>
                                 <Text style={{ fontSize: 9.5, fontWeight: '800', color: atendido ? '#15803d' : (entregado > 0 ? '#b45309' : '#64748b') }}>
                                   {pctBenef}%
@@ -2115,7 +2100,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                             </View>
                           </View>
 
-                          <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                          <View style={{ alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
                             <View style={atendido ? styles.benefStatusOk : styles.benefStatusPending}>
                               <Ionicons
                                 name={atendido ? "checkmark-circle" : "time-outline"}
@@ -2551,29 +2536,22 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
 
                   return (
                     <View key={b.id || b.dni} style={styles.benefCardItem}>
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                        <View style={{ flex: 1, marginRight: 8 }}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                            <Text style={styles.benefNombreText} numberOfLines={1}>
-                              {b.nombres}
-                            </Text>
-                            {b.vale_codigo ? (
-                              <View style={styles.miniValeBadge}>
-                                <Text style={styles.miniValeBadgeText}>{b.vale_codigo}</Text>
-                              </View>
-                            ) : null}
-                          </View>
-                          <Text style={styles.benefDniText}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 6 }}>
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text style={styles.benefNombreText} numberOfLines={1}>
+                            {b.nombres}
+                          </Text>
+                          <Text style={styles.benefDniText} numberOfLines={1}>
                             DNI: <Text style={{ fontWeight: '800', color: '#0f172a' }}>{b.dni}</Text> • 📍 {b.sector || 'Sector'}
                           </Text>
-                          {b.direccion ? (
+                          {b.direccion && b.direccion !== '-' ? (
                             <Text style={styles.benefDirText} numberOfLines={1}>
                               🏠 {b.direccion}
                             </Text>
                           ) : null}
                         </View>
 
-                        <View style={atendido ? styles.benefStatusOk : styles.benefStatusPending}>
+                        <View style={[atendido ? styles.benefStatusOk : styles.benefStatusPending, { flexShrink: 0 }]}>
                           <Ionicons 
                             name={atendido ? "checkmark-circle" : "time-outline"} 
                             size={11} 
@@ -2586,14 +2564,14 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                         </View>
                       </View>
 
-                      {/* BARRA Y PORCENTAJE DE AVANCE SEMANAL INDIVIDUAL */}
-                      <View style={{ marginTop: 8, marginBottom: 8 }}>
+                      {/* BARRA Y MÉTRICAS COMPACTAS EN UNA SOLA SECCIÓN */}
+                      <View style={{ marginTop: 6, marginBottom: 6 }}>
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
-                          <Text style={{ fontSize: 10, fontWeight: '700', color: '#64748b' }}>
-                            Avance Semanal: <Text style={{ color: atendido ? '#15803d' : '#0284c7' }}>{entregado} de {cuota} Litros</Text>
+                          <Text style={{ fontSize: 10.5, fontWeight: '700', color: '#475569' }}>
+                            Semanal: <Text style={{ fontWeight: '800', color: '#0369a1' }}>{cuota} L</Text> • Entregado: <Text style={{ fontWeight: '800', color: '#059669' }}>{entregado} L</Text>
                           </Text>
-                          <Text style={{ fontSize: 10, fontWeight: '800', color: atendido ? '#15803d' : (entregado > 0 ? '#b45309' : '#64748b') }}>
-                            {pctBenef}% Cubierto
+                          <Text style={{ fontSize: 10.5, fontWeight: '800', color: pendiente > 0 ? '#b45309' : '#15803d' }}>
+                            {pendiente > 0 ? `Resta: ${pendiente} L` : '100% Cubierto'}
                           </Text>
                         </View>
                         <View style={styles.benefMiniProgressBarBg}>
@@ -2601,37 +2579,17 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                         </View>
                       </View>
 
-                      {/* BARRA DE CUOTA Y METROS CÚBICOS */}
-                      <View style={styles.benefMetricsRow}>
-                        <View style={styles.benefMetricMiniBox}>
-                          <Text style={styles.benefMetricMiniLabel}>CUOTA SEMANAL</Text>
-                          <Text style={styles.benefMetricMiniVal}>{cuota.toLocaleString()} L</Text>
-                        </View>
-                        <View style={styles.benefMetricMiniBox}>
-                          <Text style={styles.benefMetricMiniLabel}>ENTREGADO ESTA SEM.</Text>
-                          <Text style={[styles.benefMetricMiniVal, { color: atendido ? '#059669' : '#0284c7' }]}>
-                            {entregado.toLocaleString()} L
-                          </Text>
-                        </View>
-                        <View style={styles.benefMetricMiniBox}>
-                          <Text style={styles.benefMetricMiniLabel}>SALDO RESTANTE</Text>
-                          <Text style={[styles.benefMetricMiniVal, { color: pendiente > 0 ? '#b45309' : '#059669' }]}>
-                            {pendiente.toLocaleString()} L
-                          </Text>
-                        </View>
-                      </View>
-
                       {/* BOTÓN DE SELECCIÓN DIRECTA */}
                       <TouchableOpacity
-                        style={styles.benefSelectBtn}
+                        style={[styles.benefSelectBtn, { paddingVertical: 8 }]}
                         onPress={() => handleSelectBeneficiarioFromList(b)}
                         activeOpacity={0.85}
                       >
-                        <Ionicons name="water-outline" size={15} color="#ffffff" />
+                        <Ionicons name="water-outline" size={14} color="#ffffff" />
                         <Text style={styles.benefSelectBtnText}>
-                          {atendido ? 'Registrar Otra Entrega' : 'Seleccionar para Entrega'}
+                          {atendido ? 'Otra Entrega' : 'Entregar Agua'}
                         </Text>
-                        <Ionicons name="arrow-forward" size={14} color="#ffffff" />
+                        <Ionicons name="arrow-forward" size={13} color="#ffffff" />
                       </TouchableOpacity>
                     </View>
                   );
@@ -2941,11 +2899,11 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
             <Ionicons name="water" size={18} color="#ffffff" />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: '#ffffff', fontSize: 13, fontWeight: '900' }}>
-              🚰 ENTREGA EN DEPÓSITO ÚNICO (SECTOR)
+            <Text style={{ color: '#ffffff', fontSize: 13, fontWeight: '900' }} numberOfLines={1}>
+              🚰 DEPÓSITO ÚNICO POR SECTOR
             </Text>
-            <Text style={{ color: '#e0f2fe', fontSize: 10.5, fontWeight: '600' }}>
-              Marca todos los beneficiarios del sector y divide el agua entregada hoy
+            <Text style={{ color: '#e0f2fe', fontSize: 10.5, fontWeight: '600' }} numberOfLines={1}>
+              Entrega grupal a todos los beneficiarios del sector
             </Text>
           </View>
         </View>
@@ -3252,35 +3210,39 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
 
             return (
               <View style={styles.waterCalcBox}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, flex: 1, marginRight: 6 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, flexWrap: 'wrap', gap: 4 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, flex: 1 }}>
                     <Ionicons name="water-outline" size={15} color="#0369a1" />
                     <Text style={[styles.waterCalcTitle, { flexShrink: 1 }]} numberOfLines={1}>
-                      Dotación Familiar Semanal
+                      Dotación Semanal
                     </Text>
                   </View>
-                  <Text style={styles.dotacionPill}>{DOTACION_POR_HABITANTE} L/hab/día</Text>
+                  <View style={{ flexDirection: 'row', gap: 5, flexWrap: 'wrap' }}>
+                    <Text style={styles.dotacionPill}>
+                      👥 {beneficiario.num_miembros || 1} hab.
+                    </Text>
+                    <Text style={styles.dotacionPill}>
+                      ☀️ {(beneficiario.num_miembros || 1) * DOTACION_POR_HABITANTE} L/día
+                    </Text>
+                    <Text style={[styles.dotacionPill, { backgroundColor: '#bae6fd', color: '#0c4a6e' }]}>
+                      📅 Sem: {cuotaTotal} L
+                    </Text>
+                  </View>
                 </View>
 
-                <Text style={styles.waterCalcSub}>
-                  👥 Personas: {beneficiario.num_miembros || 1} integrantes (Titular + Familiares){'\n'}
-                  💧 Dotación Diaria: {beneficiario.num_miembros || 1} pers. × {DOTACION_POR_HABITANTE} L = {(beneficiario.num_miembros || 1) * DOTACION_POR_HABITANTE} Lts/día{'\n'}
-                  📅 Vale Semanal (7 días): {(beneficiario.num_miembros || 1) * DOTACION_POR_HABITANTE} L × 7 días = <Text style={{ fontWeight: '800', color: '#0369a1' }}>{cuotaTotal} Litros</Text>
-                </Text>
-
                 {tieneEntregaPrevia ? (
-                  <View style={{ backgroundColor: '#fef3c7', padding: 8, borderRadius: 8, marginVertical: 6, borderWidth: 1, borderColor: '#fde68a' }}>
-                    <Text style={{ fontSize: 11.5, color: '#92400e', fontWeight: '700' }}>
-                      ⚠️ Historial en esta ruta: Ya recibió {entregadoPrevio} Lts previamente.
+                  <View style={{ backgroundColor: '#fef3c7', paddingVertical: 5, paddingHorizontal: 8, borderRadius: 8, marginBottom: 6, borderWidth: 1, borderColor: '#fde68a', flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+                    <Text style={{ fontSize: 11, color: '#92400e', fontWeight: '700' }}>
+                      ⚠️ Ya recibió: {entregadoPrevio} L
                     </Text>
-                    <Text style={{ fontSize: 11, color: '#b45309', marginTop: 2 }}>
-                      Saldo pendiente inicial: {saldoPendiente} Lts por entregar.
+                    <Text style={{ fontSize: 11, color: '#b45309', fontWeight: '800' }}>
+                      Saldo previo: {saldoPendiente} L
                     </Text>
                   </View>
                 ) : null}
 
                 <View style={styles.litersInputRow}>
-                  <Text style={styles.litersInputLabel}>Litros a Entregar Ahora:</Text>
+                  <Text style={styles.litersInputLabel}>Litros a Entregar:</Text>
                   <View style={styles.litersInputContainer}>
                     <TextInput
                       style={styles.litersInput}
@@ -3296,38 +3258,30 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                   </View>
                 </View>
 
-                {/* VISOR EN TIEMPO REAL DE SALDO PENDIENTE */}
+                {/* VISOR COMPACTO EN TIEMPO REAL DE SALDO PENDIENTE */}
                 {excedeCuota ? (
-                  <View style={{ backgroundColor: '#eff6ff', padding: 8, borderRadius: 8, marginTop: 8, borderWidth: 1, borderColor: '#bfdbfe' }}>
-                    <Text style={{ fontSize: 11.5, color: '#1d4ed8', fontWeight: '700' }}>
-                      ℹ️ Dotación Especial: Se entregan {ltsNum} Lts (Excede la cuota sugerida en {ltsNum - saldoBase} Lts).
+                  <View style={{ backgroundColor: '#eff6ff', paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, marginTop: 6, borderWidth: 1, borderColor: '#bfdbfe' }}>
+                    <Text style={{ fontSize: 11, color: '#1d4ed8', fontWeight: '700' }}>
+                      ℹ️ Dotación Especial: {ltsNum} L (+{ltsNum - saldoBase} L sobre cuota)
                     </Text>
                   </View>
                 ) : esParcial ? (
-                  <View style={{ backgroundColor: '#fffbeb', padding: 10, borderRadius: 8, marginTop: 8, borderWidth: 1.5, borderColor: '#f59e0b' }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <Ionicons name="alert-circle" size={16} color="#d97706" />
-                      <Text style={{ fontSize: 12, color: '#b45309', fontWeight: '900' }}>
-                        ENTREGA PARCIAL DETECTADA
+                  <View style={{ backgroundColor: '#fffbeb', paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, marginTop: 6, borderWidth: 1, borderColor: '#f59e0b', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                      <Ionicons name="alert-circle" size={14} color="#d97706" />
+                      <Text style={{ fontSize: 11.5, color: '#b45309', fontWeight: '800' }}>
+                        Entrega Parcial ({ltsNum} L)
                       </Text>
                     </View>
-                    <Text style={{ fontSize: 11.5, color: '#78350f', marginTop: 4 }}>
-                      • Se registrarán: <Text style={{ fontWeight: '800' }}>{ltsNum} Litros entregados</Text>
-                    </Text>
-                    <Text style={{ fontSize: 12, color: '#b45309', fontWeight: '800', marginTop: 2 }}>
-                      • Saldo que quedará pendiente: {saldoQueQuedara} Litros por entregar
+                    <Text style={{ fontSize: 11.5, color: '#92400e', fontWeight: '900' }}>
+                      Resta: {saldoQueQuedara} L
                     </Text>
                   </View>
                 ) : (
-                  <View style={{ backgroundColor: '#f0fdf4', padding: 10, borderRadius: 8, marginTop: 8, borderWidth: 1.5, borderColor: '#22c55e' }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <Ionicons name="checkmark-circle" size={16} color="#16a34a" />
-                      <Text style={{ fontSize: 12, color: '#15803d', fontWeight: '900' }}>
-                        ENTREGA COMPLETA (100% CUBIERTA)
-                      </Text>
-                    </View>
-                    <Text style={{ fontSize: 11.5, color: '#166534', marginTop: 3 }}>
-                      Se entrega la cuota total de {ltsNum} Lts. No queda saldo pendiente.
+                  <View style={{ backgroundColor: '#f0fdf4', paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, marginTop: 6, borderWidth: 1, borderColor: '#22c55e', flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Ionicons name="checkmark-circle" size={14} color="#16a34a" />
+                    <Text style={{ fontSize: 11.5, color: '#15803d', fontWeight: '800' }}>
+                      Cuota Semanal 100% Cubierta ({ltsNum} L)
                     </Text>
                   </View>
                 )}

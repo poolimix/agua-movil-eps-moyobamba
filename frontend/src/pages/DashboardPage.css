@@ -354,9 +354,11 @@ body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: #
 .main-content {
   flex: 1;
   margin-left: 260px;
-  padding: 28px 36px;
+  padding: 24px 32px;
   max-width: 1720px;
   width: calc(100% - 260px);
+  min-width: 0;
+  overflow-x: hidden;
   background: #f8fafc;
   transition: margin-left 0.28s cubic-bezier(0.4, 0, 0.2, 1), width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -385,7 +387,8 @@ body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: #
 
 .dash-header-left {
   flex: 1;
-  min-width: 340px;
+  min-width: 260px;
+  max-width: 100%;
   display: flex;
   flex-direction: column;
 }
@@ -1905,10 +1908,17 @@ body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: #
     display: flex;
   }
 
-  .main-content {
-    margin-left: 0;
-    width: 100%;
-    padding: 76px 16px 32px;
+  .main-content,
+  .main-content.main-content-collapsed {
+    margin-left: 0 !important;
+    width: 100% !important;
+    max-width: 100vw !important;
+    padding: 72px 12px 28px !important;
+    overflow-x: hidden;
+  }
+
+  .dash-header-left {
+    min-width: 0;
   }
 
   .dash-header {

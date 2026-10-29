@@ -677,7 +677,7 @@ export default function EntregasPage() {
               fontWeight: 700,
             }}
           >
-            🚰 Entrega Completa en Depósito Único por Sector
+            🚰 Depósito por Sector
           </button>
           <button className="btn-secondary" onClick={fetchEntregas} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             🔄 Actualizar
@@ -1259,7 +1259,7 @@ export default function EntregasPage() {
               <div className="modal-header">
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                    <h2 style={{ margin: 0 }}>🚰 Entrega Completa en Depósito Único por Sector</h2>
+                    <h2 style={{ margin: 0 }}>🚰 Entrega en Depósito Único por Sector</h2>
                     {sectorDeposito && benefsDelSector.length > 0 && (
                       <button
                         type="button"
@@ -1292,19 +1292,16 @@ export default function EntregasPage() {
                         }}
                         title="Imprimir un solo QR colectivo para todo este sector (al escanearlo en la app móvil se entregan todos los beneficiarios del sector)"
                       >
-                        📲 Imprimir QR Único del Sector
+                        📲 QR Único Sector
                       </button>
                     )}
                   </div>
-                  <p style={{ margin: '4px 0 0', fontSize: 12, color: '#64748b' }}>
-                    Las entregas se registran diariamente y van descontando de la <strong>Cantidad Estimada para la Semana</strong> según los beneficiarios marcados.
-                  </p>
                 </div>
                 <button className="close-btn" onClick={() => !savingDeposito && setDepositoModalOpen(false)}>✕</button>
               </div>
 
               <form onSubmit={handleSubmitDepositoSector}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 12 }}>
+                <div className="responsive-grid-2col" style={{ marginBottom: 12 }}>
                   <div className="form-group" style={{ marginBottom: 0 }}>
                     <label style={{ fontWeight: 700, fontSize: 12 }}>1. Sector de Entrega *</label>
                     <select
@@ -1365,7 +1362,7 @@ export default function EntregasPage() {
                     </span>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+                  <div className="responsive-grid-4col">
                     <div style={{ background: '#ffffff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '8px 10px' }}>
                       <div style={{ fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
                         Estimado de la Semana
@@ -1461,13 +1458,10 @@ export default function EntregasPage() {
                   </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1.25fr 0.75fr', gap: 14, marginBottom: 14 }}>
+                <div className="responsive-grid-2col" style={{ marginBottom: 14 }}>
                   <div className="form-group" style={{ marginBottom: 0 }}>
                     <label style={{ fontWeight: 700, fontSize: 12 }}>
-                      2. Agua Total Entregada en el Depósito (Litros) *
-                      <span style={{ fontWeight: 600, color: '#2563eb', marginLeft: 6 }}>
-                        (Estimado Semanal: {cuotaSemanalTotal.toLocaleString('es-PE')} L • Restante: {restanteAntesDeHoy.toLocaleString('es-PE')} L)
-                      </span>
+                      2. Agua Entregada en Depósito (Litros) *
                     </label>
                     <input
                       type="number"
