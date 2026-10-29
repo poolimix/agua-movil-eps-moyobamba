@@ -803,3 +803,581 @@ export async function imprimirValesLote(
   `);
   printWindow.document.close();
 }
+
+/**
+ * Imprimir un SOLO QR Oficial Colectivo para todo un Sector (Depósito Único / Entrega Grupal por Sector).
+ * Al escanear este QR desde la App Móvil, se abre automáticamente la entrega grupal con todos los beneficiarios del sector marcados.
+ */
+export async function imprimirValeSectorUnico(
+  sectorName: string,
+  valesSector: ValePrintData[],
+  config?: ConfigPrintData
+) {
+  await imprimirTodosValesSectorUnico(
+    [{ sector: sectorName, items: valesSector }],
+    config,
+    `Vale Colectivo QR Único - Sector ${sectorName}`
+  );
+}
+
+/**
+ * Imprimir Hojas de QR Único por Sector (1 Hoja Oficial A4 por Sector)
+ */
+export async function imprimirTodosValesSectorUnico(
+  sectoresList: { sector: string; items: ValePrintData[] }[],
+  config?: ConfigPrintData,
+  titulo?: string
+) {
+  if (!sectoresList || sectoresList.length === 0) return;
+
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) return;
+
+  printWindow.document.write(`
+    <!DOCTYPE html>
+    <html lang="es">
+      <head><meta charset="UTF-8" /><title>Generando QR Único por Sector...</title></head>
+      <body style="font-family: sans-serif; padding: 40px; text-align: center; color: #0369a1;">
+        <h2>⏳ Generando Cartilla Oficial con QR Único de Sector...</h2>
+      </body>
+    </html>
+  `);
+
+  const dotDiaria = Number(config?.dotacion_diaria_litros) || 50;
+  const dias = Number(config?.dias_entrega_semanal) || 7;
+  const dotPorPersona = dotDiaria * dias;
+
+  const paginasHtml: string[] = [];
+
+  for (const secGroup of sectoresList) {
+    const sectorLimpio = (secGroup.sector || 'SECTOR GENERAL').trim().toUpperCase();
+    const items = secGroup.items || [];
+    const totalFamilias = items.length;
+
+    let totalHabitantes = 0;
+    let totalLitrosSemanal = 0;
+
+    for (const v of items) {
+      const rawMiembros = Number(v.num_miembros) || 0;
+      const rawLitros = Number(v.litros_sugeridos) || 0;
+      const miembros =
+        rawMiembros > 0
+          ? rawMiembros
+          : rawLitros > 0
+          ? Math.max(1, Math.round(rawLitros / dotPorPersona))
+          : 1;
+      const litros = rawLitros > 0 ? rawLitros : miembros * dotPorPersona;
+      totalHabitantes += miembros;
+      totalLitrosSemanal += litros;
+    }
+
+    const totalLitrosDiario = totalHabitantes * dotDiaria;
+    const m3Semanal = (totalLitrosSemanal / 1000).toFixed(2);
+    const m3Diario = (totalLitrosDiario / 1000).toFixed(2);
+
+    const sectorSlug = sectorLimpio.replace(/[^A-Z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const codigoSerieSector = `VALE-SECTOR-2026-${sectorSlug}`;
+    // Payload oficial que lee el escáner QR de la App Móvil para activar entrega a todo el sector:
+    const qrPayload = `SECTOR-QR|${sectorLimpio}|${totalFamilias}|${totalHabitantes}|${totalLitrosSemanal}L`;
+    const qrUrl = await generateQr(qrPayload);
+
+    const previewBeneficiarios = items
+      .slice(0, 18)
+      .map((b, i) => {
+        const nom = b.beneficiario_nombre || b.nombres_apellidos || 'Beneficiario';
+        const dni = b.beneficiario_dni || b.dni || '-';
+        const hab = Number(b.num_miembros) || 1;
+        return `<div class="benef-chip"><strong>${i + 1}.</strong> ${nom} <span class="benef-meta">(DNI: ${dni} • ${hab} hab.)</span></div>`;
+      })
+      .join('');
+
+    const restantesCount = Math.max(0, items.length - 18);
+
+    paginasHtml.push(`
+      <div class="sector-page">
+        <div class="sector-card">
+          <div class="sector-banner">
+            <div class="banner-top">💧 EPS MOYOBAMBA S.A. • PROGRAMA NACIONAL DE SANEAMIENTO URBANO</div>
+            <div class="banner-main">CARTILLA OFICIAL DE ENTREGA COLECTIVA POR SECTOR (QR ÚNICO)</div>
+            <div class="banner-sub">CONVENIO N° 023-2026/VIVIENDA/VMCS/PNSU/DE • ABASTECIMIENTO GRATUITO EN CAMIÓN CISTERNA</div>
+          </div>
+
+          <div class="sector-header-box">
+            <div>
+              <div class="sector-label">📍 SECTOR / ASENTAMIENTO HUMANO HABILITADO:</div>
+              <div class="sector-title">${sectorLimpio}</div>
+              <div class="sector-code">SERIE COLECTIVA: ${codigoSerieSector}</div>
+            </div>
+            <div class="anual-pill">
+              🌟 QR ÚNICO DEL SECTOR<br/>
+              <span>ENTREGA A TODOS LOS BENEFICIARIOS</span>
+            </div>
+          </div>
+
+          <div class="sector-body-grid">
+            <div class="sector-stats-col">
+              <div class="kpi-grid">
+                <div class="kpi-box kpi-blue">
+                  <div class="kpi-label">👨‍👩‍👧‍👦 FAMILIAS EMPADRONADAS</div>
+                  <div class="kpi-val">${totalFamilias} Beneficiarios</div>
+                  <div class="kpi-sub">Padrón activo del sector</div>
+                </div>
+                <div class="kpi-box kpi-green">
+                  <div class="kpi-label">👥 POBLACIÓN TOTAL</div>
+                  <div class="kpi-val">${totalHabitantes} Habitantes</div>
+                  <div class="kpi-sub">Dotación: ${dotDiaria} L/hab/día</div>
+                </div>
+              </div>
+
+              <div class="quota-highlight-box">
+                <div class="quota-row">
+                  <div>
+                    <div class="quota-tag">📅 DOTACIÓN ESTIMADA SEMANAL (${dias} DÍAS)</div>
+                    <div class="quota-big">${totalLitrosSemanal.toLocaleString('es-PE')} LITROS</div>
+                    <div class="quota-m3">Equivalente a <strong>${m3Semanal} m³</strong> por semana (${totalHabitantes} hab. × ${dotPorPersona} L/sem)</div>
+                  </div>
+                  <div class="daily-pill">
+                    <div class="daily-label">☀️ RACIÓN DIARIA (1/7)</div>
+                    <div class="daily-val">${totalLitrosDiario.toLocaleString('es-PE')} L / día</div>
+                    <div class="daily-sub">(${m3Diario} m³ diarios)</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="instructions-box">
+                <div class="inst-title">📲 ¿CÓMO FUNCIONA ESTE QR ÚNICO EN CAMPO?</div>
+                <ol class="inst-list">
+                  <li>Al escanear este <strong>QR Único</strong> con la App Móvil <strong>AguaTrack</strong>, se seleccionan automáticamente los <strong>${totalFamilias} beneficiarios del sector ${sectorLimpio}</strong>.</li>
+                  <li>El operador ingresa el volumen total descargado en el depósito comunal del día (con opción de desmarcar algún caso especial si no recibió).</li>
+                  <li>El sistema divide automáticamente los litros entregados entre los beneficiarios marcados y actualiza el saldo restante de la semana.</li>
+                </ol>
+              </div>
+            </div>
+
+            <div class="sector-qr-col">
+              <div class="qr-giant-frame">
+                ${qrUrl ? `<img src="${qrUrl}" alt="QR Sector ${sectorLimpio}" />` : ''}
+              </div>
+              <div class="qr-scan-badge">📲 ESCANEAR CON APP AGUATRACK</div>
+              <div class="qr-sector-caption">ENTREGA MASIVA: ${sectorLimpio}</div>
+            </div>
+          </div>
+
+          <div class="padron-preview-box">
+            <div class="padron-preview-title">
+              📋 BENEFICIARIOS INCLUIDOS AUTOMÁTICAMENTE AL ESCANEAR ESTE QR (${totalFamilias} TITULARES):
+            </div>
+            <div class="benef-chips-grid">
+              ${previewBeneficiarios}
+              ${restantesCount > 0 ? `<div class="benef-chip benef-more">+ ${restantesCount} beneficiarios adicionales empadronados en ${sectorLimpio}</div>` : ''}
+            </div>
+          </div>
+
+          <div class="sector-signatures">
+            <div class="sig-block">
+              <div class="sig-space"></div>
+              <div class="sig-line">FIRMA Y SELLO DIRIGENTE / REPRESENTANTE DEL SECTOR</div>
+              <div class="sig-sub">Sector: ${sectorLimpio} (${totalFamilias} Familias)</div>
+            </div>
+            <div class="sig-block">
+              <div class="sig-space"></div>
+              <div class="sig-line">FIRMA Y SELLO CONDUCTOR / GESTOR DE ENTREGA EPS</div>
+              <div class="sig-sub">EPS Moyobamba S.A. • Control de Cisterna</div>
+            </div>
+          </div>
+
+          <div class="sector-footer">
+            DISTRIBUCIÓN 100% GRATUITA • PROHIBIDA SU VENTA • FISCALIZADO POR SUNASS Y MINISTERIO DE VIVIENDA (PNSU)
+          </div>
+        </div>
+      </div>
+    `);
+  }
+
+  printWindow.document.write(`
+    <!DOCTYPE html>
+    <html lang="es">
+      <head>
+        <meta charset="UTF-8" />
+        <title>${titulo || 'QR Único por Sector - EPS Moyobamba'}</title>
+        <style>
+          @page {
+            size: A4 portrait;
+            margin: 8mm;
+          }
+          * {
+            box-sizing: border-box;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            color-adjust: exact !important;
+          }
+          @media print {
+            html, body {
+              margin: 0 !important;
+              padding: 0 !important;
+              background: #ffffff !important;
+            }
+            .no-print { display: none !important; }
+            .sector-page {
+              page-break-after: always;
+              break-after: page;
+              margin: 0 !important;
+            }
+            .sector-page:last-child {
+              page-break-after: auto;
+              break-after: auto;
+            }
+          }
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: #e2e8f0;
+            color: #0f172a;
+            margin: 0;
+            padding: 14px;
+          }
+          .sector-page {
+            max-width: 210mm;
+            margin: 0 auto 18px auto;
+            background: #ffffff;
+          }
+          .sector-card {
+            border: 3px solid #0284c7;
+            border-radius: 16px;
+            padding: 18px 20px;
+            background: #ffffff;
+          }
+          .sector-banner {
+            background: linear-gradient(135deg, #0c4a6e 0%, #0284c7 100%);
+            color: #ffffff;
+            text-align: center;
+            padding: 14px 16px;
+            border-radius: 12px;
+            margin-bottom: 14px;
+          }
+          .banner-top {
+            font-size: 11px;
+            font-weight: 900;
+            color: #bae6fd;
+            letter-spacing: 0.6px;
+          }
+          .banner-main {
+            font-size: 19px;
+            font-weight: 900;
+            color: #ffffff;
+            margin-top: 3px;
+            letter-spacing: 0.4px;
+          }
+          .banner-sub {
+            font-size: 10px;
+            font-weight: 800;
+            color: #e0f2fe;
+            margin-top: 4px;
+          }
+          .sector-header-box {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #f0f9ff;
+            border: 2px solid #0284c7;
+            border-radius: 12px;
+            padding: 12px 16px;
+            margin-bottom: 14px;
+            gap: 12px;
+          }
+          .sector-label {
+            font-size: 10.5px;
+            font-weight: 900;
+            color: #0369a1;
+            letter-spacing: 0.4px;
+          }
+          .sector-title {
+            font-size: 26px;
+            font-weight: 900;
+            color: #0f172a;
+            line-height: 1.1;
+            margin-top: 2px;
+          }
+          .sector-code {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 13px;
+            font-weight: 900;
+            color: #0369a1;
+            margin-top: 4px;
+          }
+          .anual-pill {
+            background: #dcfce7;
+            border: 2px solid #16a34a;
+            color: #14532d;
+            font-size: 12px;
+            font-weight: 900;
+            padding: 8px 14px;
+            border-radius: 10px;
+            text-align: center;
+          }
+          .anual-pill span {
+            display: block;
+            font-size: 9.5px;
+            color: #15803d;
+            margin-top: 2px;
+          }
+          .sector-body-grid {
+            display: flex;
+            gap: 18px;
+            align-items: stretch;
+            margin-bottom: 14px;
+          }
+          .sector-stats-col {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+          }
+          .kpi-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+          }
+          .kpi-box {
+            padding: 10px 12px;
+            border-radius: 10px;
+          }
+          .kpi-blue {
+            background: #eff6ff;
+            border: 1.5px solid #93c5fd;
+          }
+          .kpi-green {
+            background: #f0fdf4;
+            border: 1.5px solid #86efac;
+          }
+          .kpi-label {
+            font-size: 10px;
+            font-weight: 900;
+            color: #1e3a8a;
+          }
+          .kpi-green .kpi-label {
+            color: #14532d;
+          }
+          .kpi-val {
+            font-size: 20px;
+            font-weight: 900;
+            color: #0f172a;
+            margin-top: 2px;
+          }
+          .kpi-sub {
+            font-size: 10.5px;
+            font-weight: 700;
+            color: #475569;
+          }
+          .quota-highlight-box {
+            background: linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%);
+            border: 2px solid #0284c7;
+            border-radius: 12px;
+            padding: 12px 14px;
+          }
+          .quota-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+          }
+          .quota-tag {
+            font-size: 10.5px;
+            font-weight: 900;
+            color: #0369a1;
+          }
+          .quota-big {
+            font-size: 26px;
+            font-weight: 900;
+            color: #0c4a6e;
+            line-height: 1.1;
+            margin-top: 2px;
+          }
+          .quota-m3 {
+            font-size: 11.5px;
+            font-weight: 800;
+            color: #0369a1;
+            margin-top: 3px;
+          }
+          .daily-pill {
+            background: #ffffff;
+            border: 1.5px solid #0284c7;
+            border-radius: 10px;
+            padding: 8px 12px;
+            text-align: center;
+            flex-shrink: 0;
+          }
+          .daily-label {
+            font-size: 9px;
+            font-weight: 900;
+            color: #0369a1;
+          }
+          .daily-val {
+            font-size: 15px;
+            font-weight: 900;
+            color: #0f172a;
+            margin-top: 2px;
+          }
+          .daily-sub {
+            font-size: 9.5px;
+            font-weight: 700;
+            color: #64748b;
+          }
+          .instructions-box {
+            background: #fffbeb;
+            border: 1.5px solid #fcd34d;
+            border-radius: 10px;
+            padding: 10px 14px;
+          }
+          .inst-title {
+            font-size: 11px;
+            font-weight: 900;
+            color: #92400e;
+            margin-bottom: 4px;
+          }
+          .inst-list {
+            margin: 0;
+            padding-left: 16px;
+            font-size: 11px;
+            color: #78350f;
+            font-weight: 600;
+            line-height: 1.4;
+          }
+          .inst-list li {
+            margin-bottom: 3px;
+          }
+          .sector-qr-col {
+            width: 265px;
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: #f8fafc;
+            border: 2.5px dashed #0284c7;
+            border-radius: 14px;
+            padding: 12px;
+          }
+          .qr-giant-frame {
+            background: #ffffff;
+            border: 3px solid #0284c7;
+            border-radius: 12px;
+            padding: 6px;
+            box-shadow: 0 4px 12px rgba(2, 132, 199, 0.15);
+          }
+          .qr-giant-frame img {
+            width: 225px;
+            height: 225px;
+            display: block;
+          }
+          .qr-scan-badge {
+            background: #0284c7;
+            color: #ffffff;
+            font-size: 11px;
+            font-weight: 900;
+            padding: 5px 14px;
+            border-radius: 999px;
+            margin-top: 8px;
+            letter-spacing: 0.4px;
+          }
+          .qr-sector-caption {
+            font-size: 10.5px;
+            font-weight: 900;
+            color: #0f172a;
+            margin-top: 4px;
+            text-align: center;
+          }
+          .padron-preview-box {
+            background: #f8fafc;
+            border: 1.5px solid #cbd5e1;
+            border-radius: 10px;
+            padding: 10px 12px;
+            margin-bottom: 14px;
+          }
+          .padron-preview-title {
+            font-size: 10.5px;
+            font-weight: 900;
+            color: #334155;
+            margin-bottom: 6px;
+          }
+          .benef-chips-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4px 10px;
+          }
+          .benef-chip {
+            font-size: 10px;
+            font-weight: 700;
+            color: #0f172a;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            padding: 2px 0;
+            border-bottom: 1px dotted #e2e8f0;
+          }
+          .benef-meta {
+            color: #475569;
+            font-weight: 600;
+          }
+          .benef-more {
+            color: #0284c7;
+            font-weight: 900;
+          }
+          .sector-signatures {
+            display: flex;
+            gap: 24px;
+            margin-top: 12px;
+            margin-bottom: 12px;
+          }
+          .sig-block {
+            flex: 1;
+            text-align: center;
+          }
+          .sig-space {
+            height: 42px;
+          }
+          .sig-line {
+            border-top: 1.5px dashed #334155;
+            padding-top: 5px;
+            font-size: 10.5px;
+            font-weight: 900;
+            color: #0f172a;
+          }
+          .sig-sub {
+            font-size: 9.5px;
+            font-weight: 700;
+            color: #64748b;
+            margin-top: 2px;
+          }
+          .sector-footer {
+            text-align: center;
+            background: #f0f9ff;
+            border: 1.5px solid #bae6fd;
+            color: #0369a1;
+            font-size: 9.5px;
+            font-weight: 900;
+            padding: 6px;
+            border-radius: 8px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="no-print" style="background: #0f172a; color: #fff; padding: 12px 18px; border-radius: 8px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; max-width: 210mm; margin-left: auto; margin-right: auto;">
+          <div>
+            <strong style="font-size: 14px;">📲 ${titulo || 'Cartilla Oficial con QR Único por Sector'}</strong>
+            <div style="font-size: 12px; color: #94a3b8; margin-top: 2px;">Al escanear este QR en la App Móvil se seleccionan todos los beneficiarios del sector para entrega grupal.</div>
+          </div>
+          <button onclick="window.print()" style="background: #16a34a; color: #fff; border: none; padding: 9px 18px; border-radius: 6px; font-weight: 900; cursor: pointer; font-size: 13px;">
+            🖨️ Imprimir QR de Sector (${sectoresList.length})
+          </button>
+        </div>
+        ${paginasHtml.join('')}
+        <script>
+          window.onload = function() {
+            setTimeout(function() { window.print(); }, 350);
+          };
+        </script>
+      </body>
+    </html>
+  `);
+  printWindow.document.close();
+}

@@ -315,9 +315,9 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
     }
   };
 
-  const loadBeneficiariosSector = async (progId?: number) => {
+  const loadBeneficiariosSector = async (progId?: number): Promise<any[]> => {
     const id = progId || selectedProg?.id;
-    if (!id) return;
+    if (!id) return beneficiariosSector;
     setLoadingBeneficiarios(true);
     try {
       const res = await fetch(`${BACKEND_URL}/programaciones/${id}/beneficiarios`);
@@ -340,7 +340,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
             atendido_esta_semana: !!b.ha_recibido_esta_semana || !!b.atendido_esta_semana || (Number(b.saldo_semanal) <= 0 && Number(b.litros_entregados_semana) > 0)
           }));
           setBeneficiariosSector(normalizados);
-          return;
+          return normalizados;
         }
       }
       // Fallback local SQLite si no hay conexión a internet
@@ -364,9 +364,12 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
         LEFT JOIN vales_consumo v ON v.beneficiario_id = b.id
         ORDER BY b.nombres_apellidos ASC
       `);
-      setBeneficiariosSector(rows || []);
+      const fallbackList = rows || [];
+      setBeneficiariosSector(fallbackList);
+      return fallbackList;
     } catch (err) {
       console.warn('Error cargando beneficiarios de sector:', err);
+      return beneficiariosSector;
     } finally {
       setLoadingBeneficiarios(false);
     }
@@ -502,29 +505,52 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
     if (sug > 0) setLitrosTotalesDeposito(String(sug));
   };
 
-  const handleOpenDepositoModal = async (initialSec?: string) => {
-    if (beneficiariosSector.length === 0 && selectedProg?.id) {
-      await loadBeneficiariosSector(selectedProg.id);
+  const handleOpenDepositoModal = async (initialSec?: string, qrLitrosOverride?: string) => {
+    let sourceBenefs = beneficiariosSector;
+    if (sourceBenefs.length === 0 && selectedProg?.id) {
+      sourceBenefs = await loadBeneficiariosSector(selectedProg.id);
     }
     const opciones = getSectoresDisponiblesDeposito();
-    const targetSec =
+    const normalizeSec = (s: string) =>
+      String(s || '')
+        .toUpperCase()
+        .replace(/[^A-Z0-9ÑÁÉÍÓÚ]+/g, ' ')
+        .trim();
+
+    let targetSec =
       initialSec && initialSec !== 'TODOS'
         ? initialSec
         : sectorSeleccionado && sectorSeleccionado !== 'TODOS'
         ? sectorSeleccionado
         : opciones[0] || 'SOL DE INDAÑE';
 
+    if (initialSec && initialSec !== 'TODOS') {
+      const normInit = normalizeSec(initialSec);
+      const matchedOpt = opciones.find(
+        (opt) => normalizeSec(opt) === normInit || normalizeSec(opt).includes(normInit) || normInit.includes(normalizeSec(opt))
+      );
+      if (matchedOpt) {
+        targetSec = matchedOpt;
+      }
+    }
+
     setSectorDeposito(targetSec);
-    const lista = beneficiariosSector.filter((b) =>
-      String(b.sector || b.sector_aahh || '')
-        .toLowerCase()
-        .includes(targetSec.toLowerCase())
-    );
+    const normTarget = normalizeSec(targetSec);
+    const lista = sourceBenefs.filter((b) => {
+      const bSec = normalizeSec(b.sector || b.sector_aahh || '');
+      return bSec === normTarget || bSec.includes(normTarget) || normTarget.includes(bSec);
+    });
     // Marcar TODOS los beneficiarios del sector por defecto
     setSelectedBenefIdsDeposito(lista.map((b: any) => Number(b.id)));
     const calc = calcularEstimadoSemanalListaApp(lista);
     const sug = calc.restanteSemana > 0 ? calc.restanteSemana : calc.cuotaSemanal;
-    setLitrosTotalesDeposito(String(sug || 15000));
+    const finalLitros =
+      sug > 0
+        ? String(sug)
+        : qrLitrosOverride && Number(qrLitrosOverride) > 0
+        ? String(qrLitrosOverride)
+        : '15000';
+    setLitrosTotalesDeposito(finalLitros);
     setFiltroBusquedaDeposito('');
     setFotoDepositoUri(null);
     setDepositoModalVisible(true);
@@ -991,7 +1017,30 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
       return;
     }
 
-    // Extraer partes si es QR estructurado: "VALE-20260826-001|47891234|200L"
+    // Extraer partes si es QR Único Colectivo de Sector: "SECTOR-QR|LAS BRISAS DEL MAYO|32|118|41300L" o "VALE-SECTOR-2026-LAS-BRISAS-DEL-MAYO"
+    const rawUpper = raw.toUpperCase();
+    if (rawUpper.startsWith('SECTOR-QR|') || rawUpper.startsWith('VALE-SECTOR-')) {
+      let sectorFromQr = '';
+      let litrosFromQr = '';
+      if (rawUpper.startsWith('SECTOR-QR|')) {
+        const parts = raw.split('|');
+        sectorFromQr = (parts[1] || '').trim();
+        if (parts.length > 4) {
+          litrosFromQr = parts[4].replace(/[^\d.]/g, '');
+        }
+      } else {
+        sectorFromQr = rawUpper
+          .replace(/^VALE-SECTOR-(\d{4}-)?/, '')
+          .replace(/-/g, ' ')
+          .trim();
+      }
+      setDni('');
+      setActiveTab('REPARTO');
+      await handleOpenDepositoModal(sectorFromQr, litrosFromQr);
+      return;
+    }
+
+    // Extraer partes si es QR estructurado individual: "VALE-20260826-001|47891234|200L"
     let codigoVale = '';
     let queryTerm = raw;
     let qrLitros = '';
@@ -1422,8 +1471,8 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
         <View style={styles.scannerOverlay}>
           {/* HEADER */}
           <View style={styles.scannerHeader}>
-            <Text style={styles.scannerTitle}>Escanear Vale / DNI</Text>
-            <Text style={styles.scannerSubtitle}>Apunte la cámara al código QR de agua</Text>
+            <Text style={styles.scannerTitle}>Escanear Vale / QR Único de Sector</Text>
+            <Text style={styles.scannerSubtitle}>Apunte al QR de un beneficiario o al QR colectivo de todo el sector</Text>
           </View>
 
           {/* TARGET SQUARE WITH CORNERS */}

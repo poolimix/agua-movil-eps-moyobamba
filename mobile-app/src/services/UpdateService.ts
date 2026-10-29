@@ -127,6 +127,8 @@ export interface ManualUpdateCheckResult {
  * Consulta manualmente si hay una nueva versión OTA publicada en EAS Update
  */
 export async function manualCheckForUpdates(): Promise<ManualUpdateCheckResult> {
+  const currentVersion = Constants.expoConfig?.version || '1.0.3';
+  const shortUpdateId = Updates.updateId ? ` • OTA ${Updates.updateId.slice(0, 7)}` : '';
   try {
     if (__DEV__) {
       return {
@@ -138,7 +140,7 @@ export async function manualCheckForUpdates(): Promise<ManualUpdateCheckResult> 
     if (!Updates.isEnabled) {
       return {
         status: 'NOT_SUPPORTED',
-        message: 'Las actualizaciones OTA automáticas se gestionan por la versión instalada (v1.0.2).',
+        message: `Las actualizaciones OTA automáticas se gestionan por la versión instalada (v${currentVersion}).`,
       };
     }
 
@@ -146,14 +148,14 @@ export async function manualCheckForUpdates(): Promise<ManualUpdateCheckResult> 
     if (check.isAvailable) {
       return {
         status: 'UPDATE_AVAILABLE',
-        message: '¡Hay una nueva versión disponible en la nube! Se aplicarán las mejoras de cisternas, conductores y fotos opcionales.',
+        message: '¡Hay una nueva versión disponible en la nube! Se aplicarán las mejoras de entrega por sector, QR único y teclado adaptativo.',
         updateId: check.manifest?.id || '',
       };
     }
 
     return {
       status: 'ALREADY_UP_TO_DATE',
-      message: 'Tu aplicación ya cuenta con la versión más reciente en este dispositivo (AguaTrack v1.0.2).',
+      message: `Tu aplicación ya cuenta con la versión más reciente en este dispositivo (AguaTrack v${currentVersion}${shortUpdateId}).`,
     };
   } catch (error: any) {
     console.warn('[UpdateService] Error al verificar actualización manual:', error);

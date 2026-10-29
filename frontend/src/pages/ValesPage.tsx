@@ -3,7 +3,12 @@ import Layout from '../components/Layout';
 import Pagination from '../components/Pagination';
 import api, { API_BASE_URL } from '../config/api';
 import { dialogConfirm, dialogAlert } from '../context/DialogContext';
-import { imprimirValeIndividual, imprimirValesLote } from '../utils/printVouchers';
+import {
+  imprimirValeIndividual,
+  imprimirValesLote,
+  imprimirValeSectorUnico,
+  imprimirTodosValesSectorUnico,
+} from '../utils/printVouchers';
 import './Modules.css';
 
 interface Vale {
@@ -316,37 +321,65 @@ export default function ValesPage() {
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
-              <div style={{ fontSize: 12.5, fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span>🖨️ IMPRIMIR VALES POR SECTOR (TALONARIO A4):</span>
+              <div style={{ fontSize: 12.5, fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                <span>🖨️ VALES Y QR ÚNICO POR SECTOR:</span>
                 <span style={{ fontSize: 11.5, fontWeight: 500, color: '#64748b' }}>
-                  Haz clic en un sector para imprimir todos los vales de ese sector o filtrarlos en la tabla
+                  Imprime los vales individuales (4 por hoja) o genera <strong>1 solo QR Único Colectivo</strong> para entregar a todo el sector al escanear
                 </span>
               </div>
-              <button
-                type="button"
-                onClick={() =>
-                  imprimirValesLote(
-                    vales,
-                    configSistema,
-                    `Padrón Completo de Vales (${vales.length} Beneficiarios) - EPS Moyobamba`
-                  )
-                }
-                style={{
-                  background: '#0284c7',
-                  color: '#ffffff',
-                  border: '1px solid #0284c7',
-                  borderRadius: 8,
-                  padding: '6px 12px',
-                  fontSize: 12,
-                  fontWeight: 800,
-                  cursor: 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                }}
-              >
-                🖨️ Imprimir Todos los Sectores ({vales.length})
-              </button>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() =>
+                    imprimirTodosValesSectorUnico(
+                      sectoresSummary.map((s) => ({ sector: s.sector, items: s.items })),
+                      configSistema,
+                      `Cartillas de QR Único por Sector (${sectoresSummary.length} Sectores) - EPS Moyobamba`
+                    )
+                  }
+                  style={{
+                    background: '#16a34a',
+                    color: '#ffffff',
+                    border: '1px solid #15803d',
+                    borderRadius: 8,
+                    padding: '6px 12px',
+                    fontSize: 12,
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                  title="Genera 1 hoja oficial con QR Único por cada sector para escanear y entregar a todo el sector de una sola vez"
+                >
+                  📲 QR Único Todos los Sectores ({sectoresSummary.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    imprimirValesLote(
+                      vales,
+                      configSistema,
+                      `Padrón Completo de Vales (${vales.length} Beneficiarios) - EPS Moyobamba`
+                    )
+                  }
+                  style={{
+                    background: '#0284c7',
+                    color: '#ffffff',
+                    border: '1px solid #0284c7',
+                    borderRadius: 8,
+                    padding: '6px 12px',
+                    fontSize: 12,
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                >
+                  🖨️ Imprimir Todos los Vales ({vales.length})
+                </button>
+              </div>
             </div>
 
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -386,6 +419,25 @@ export default function ValesPage() {
                     <button
                       type="button"
                       onClick={() =>
+                        imprimirValeSectorUnico(s.sector, s.items, configSistema)
+                      }
+                      style={{
+                        background: '#16a34a',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderLeft: '1px solid #cbd5e1',
+                        padding: '6px 9px',
+                        fontSize: 11.5,
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                      }}
+                      title={`Generar 1 solo QR Único para todo el sector ${s.sector} (${s.count} beneficiarios)`}
+                    >
+                      📲 QR Sector
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
                         imprimirValesLote(
                           s.items,
                           configSistema,
@@ -402,9 +454,9 @@ export default function ValesPage() {
                         fontWeight: 700,
                         cursor: 'pointer',
                       }}
-                      title={`Imprimir directamente los ${s.count} vales del sector ${s.sector} en formato A4`}
+                      title={`Imprimir directamente los ${s.count} vales individuales del sector ${s.sector} (4 por hoja A4)`}
                     >
-                      🖨️ Imprimir
+                      🖨️ Vales ({s.count})
                     </button>
                   </div>
                 );

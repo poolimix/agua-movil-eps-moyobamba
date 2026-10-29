@@ -129,10 +129,10 @@ export default function AppUpdateModal({ visible, onClose }: AppUpdateModalProps
 
                 <View style={styles.improvementsBox}>
                   <Text style={styles.improvementsTitle}>Novedades incluidas:</Text>
-                  <Text style={styles.improvementItem}>✓ Búsqueda por DNI, código de vale y nombre</Text>
+                  <Text style={styles.improvementItem}>✓ Escaneo de QR Único Colectivo por Sector</Text>
+                  <Text style={styles.improvementItem}>✓ Entrega en depósito único con control semanal</Text>
+                  <Text style={styles.improvementItem}>✓ Teclado adaptativo en todas las pantallas y modales</Text>
                   <Text style={styles.improvementItem}>✓ Selector de 7 días (LUN - DOM) con fecha real</Text>
-                  <Text style={styles.improvementItem}>✓ Teclado adaptativo para no tapar el campo</Text>
-                  <Text style={styles.improvementItem}>✓ Cisterna y conductor asignados siempre visibles</Text>
                   <Text style={styles.improvementItem}>✓ Fotografía de evidencia 100% opcional</Text>
                 </View>
 

@@ -3,6 +3,7 @@ import Layout from '../components/Layout';
 import Pagination from '../components/Pagination';
 import api, { API_BASE_URL } from '../config/api';
 import { dialogConfirm, dialogAlert } from '../context/DialogContext';
+import { imprimirValeSectorUnico } from '../utils/printVouchers';
 import './Modules.css';
 
 interface Entrega {
@@ -1256,8 +1257,45 @@ export default function EntregasPage() {
               onClick={(e) => e.stopPropagation()}
             >
               <div className="modal-header">
-                <div>
-                  <h2 style={{ margin: 0 }}>🚰 Entrega Completa en Depósito Único por Sector</h2>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <h2 style={{ margin: 0 }}>🚰 Entrega Completa en Depósito Único por Sector</h2>
+                    {sectorDeposito && benefsDelSector.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          imprimirValeSectorUnico(
+                            sectorDeposito,
+                            benefsDelSector.map((b: any) => ({
+                              codigo_unico: `VALE-ANUAL-2026-${b.dni}`,
+                              beneficiario_dni: b.dni,
+                              beneficiario_nombre: b.nombres_apellidos || b.nombres,
+                              sector: b.sector_aahh || b.sector || sectorDeposito,
+                              direccion: b.calle_direccion || b.direccion || '-',
+                              num_miembros: b.num_miembros || 1,
+                              litros_sugeridos: Number(b.num_miembros || 1) * 350,
+                            }))
+                          )
+                        }
+                        style={{
+                          background: '#16a34a',
+                          color: '#ffffff',
+                          border: '1px solid #15803d',
+                          borderRadius: 8,
+                          padding: '6px 12px',
+                          fontSize: 12,
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6,
+                        }}
+                        title="Imprimir un solo QR colectivo para todo este sector (al escanearlo en la app móvil se entregan todos los beneficiarios del sector)"
+                      >
+                        📲 Imprimir QR Único del Sector
+                      </button>
+                    )}
+                  </div>
                   <p style={{ margin: '4px 0 0', fontSize: 12, color: '#64748b' }}>
                     Las entregas se registran diariamente y van descontando de la <strong>Cantidad Estimada para la Semana</strong> según los beneficiarios marcados.
                   </p>
