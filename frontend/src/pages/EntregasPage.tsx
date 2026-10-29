@@ -798,27 +798,24 @@ export default function EntregasPage() {
         <table className="custom-table">
           <thead>
             <tr>
-              <th>ID / Local ID</th>
-              <th>Fecha y Hora</th>
-              <th>Beneficiario</th>
-              <th>Sector / Zona</th>
+              <th># / Fecha</th>
+              <th>Beneficiario y Sector</th>
               <th>Volumen y Saldo</th>
-              <th>Ubicación GPS Satelital</th>
-              <th>Foto</th>
-              <th>Firma Digital</th>
-              <th>Acciones</th>
+              <th>GPS</th>
+              <th>Evidencia (Foto / Firma)</th>
+              <th style={{ textAlign: 'right' }}>Acciones</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={9} className="empty-state">
+                <td colSpan={6} className="empty-state">
                   <span>⏳</span> Cargando planilla de entregas...
                 </td>
               </tr>
             ) : filtered.length === 0 ? (
               <tr>
-                <td colSpan={9} className="empty-state">
+                <td colSpan={6} className="empty-state">
                   <span>💧</span> No hay entregas registradas en campo aún.
                 </td>
               </tr>
@@ -826,246 +823,251 @@ export default function EntregasPage() {
               paginatedData.map((e) => {
                 const saldo = Number(e.saldo_pendiente || 0);
                 const esParcial = e.estado_entrega === 'PARCIAL' || saldo > 0;
+                const litrosFmt = Number(e.litros_entregados || 0).toLocaleString('es-PE', { maximumFractionDigits: 2 });
+                const saldoFmt = Number(saldo).toLocaleString('es-PE', { maximumFractionDigits: 2 });
+                const cuotaFmt = Number(e.cuota_programada || e.litros_entregados || 0).toLocaleString('es-PE', { maximumFractionDigits: 2 });
 
                 return (
                   <tr key={e.id}>
-                    <td>
-                      <strong>#{e.id}</strong>
-                      {e.local_id ? (
-                        <div style={{ fontSize: 10, color: '#64748b', fontFamily: 'monospace' }}>
-                          {e.local_id.slice(0, 14)}...
-                        </div>
-                      ) : null}
-                    </td>
-                    <td>
-                      {new Date(e.fecha_captura || e.fecha_hora).toLocaleDateString('es-PE')}
-                      <div style={{ fontSize: 11, color: '#64748b' }}>
+                    <td style={{ whiteSpace: 'nowrap' }} title={e.local_id ? `ID Local Móvil: ${e.local_id}` : `Registro #${e.id}`}>
+                      <strong style={{ color: '#0f172a', fontSize: 13.5 }}>#{e.id}</strong>
+                      <div style={{ fontSize: 11.5, color: '#475569', fontWeight: 600 }}>
+                        {new Date(e.fecha_captura || e.fecha_hora).toLocaleDateString('es-PE')}
+                      </div>
+                      <div style={{ fontSize: 10.5, color: '#64748b' }}>
                         {new Date(e.fecha_captura || e.fecha_hora).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}
                       </div>
                     </td>
                     <td>
-                      <strong>{e.nombres_apellidos || 'Beneficiario'}</strong>
-                      <div style={{ fontSize: 11, color: '#64748b' }}>DNI: {e.dni}</div>
+                      <div style={{ fontWeight: 700, color: '#0f172a', fontSize: 13 }}>
+                        {e.nombres_apellidos || 'Beneficiario'}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 3 }}>
+                        <span style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>DNI: {e.dni}</span>
+                        <span
+                          className="badge-count"
+                          style={{
+                            background: '#e0f2fe',
+                            color: '#0369a1',
+                            fontSize: 10.5,
+                            padding: '1px 7px',
+                            fontWeight: 700,
+                          }}
+                        >
+                          📍 {e.sector || e.zona || 'Moyobamba'}
+                        </span>
+                      </div>
                     </td>
-                    <td>
-                      <span className="badge-count" style={{ background: '#e0f2fe', color: '#0369a1' }}>
-                        {e.sector || e.zona || 'Moyobamba'}
-                      </span>
-                    </td>
-                    <td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
                       {esParcial ? (
                         <div>
-                          <span className="badge-count" style={{ background: '#fef3c7', color: '#b45309', fontWeight: 800 }}>
-                            🟡 {e.litros_entregados} Lts (Parcial)
+                          <span className="badge-count" style={{ background: '#fef3c7', color: '#b45309', fontWeight: 800, fontSize: 11.5, padding: '2px 8px' }}>
+                            🟡 {litrosFmt} L (Parcial)
                           </span>
-                          <div style={{ fontSize: 11, color: '#b45309', fontWeight: 700, marginTop: 3 }}>
-                            Quedan: {saldo} Lts pendientes
-                          </div>
-                          <div style={{ fontSize: 10, color: '#64748b' }}>
-                            Cuota: {e.cuota_programada || e.litros_entregados} Lts
+                          <div style={{ fontSize: 10.5, color: '#b45309', fontWeight: 700, marginTop: 2 }}>
+                            Resta: {saldoFmt} L / {cuotaFmt} L
                           </div>
                         </div>
                       ) : (
                         <div>
-                          <span className="badge-count" style={{ background: '#dcfce7', color: '#15803d', fontWeight: 800 }}>
-                            🟢 {e.litros_entregados} Lts (100%)
-                          </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+                            <span className="badge-count" style={{ background: '#dcfce7', color: '#15803d', fontWeight: 800, fontSize: 11.5, padding: '2px 8px' }}>
+                              🟢 {litrosFmt} L (100%)
+                            </span>
+                            {e.lote_deposito_id && (
+                              <span
+                                style={{
+                                  background: '#ccfbf1',
+                                  color: '#0f766e',
+                                  border: '1px solid #99f6e4',
+                                  borderRadius: 6,
+                                  padding: '1px 5px',
+                                  fontSize: 9.5,
+                                  fontWeight: 800,
+                                }}
+                                title={`Lote de Depósito Único: ${e.lote_deposito_id}`}
+                              >
+                                🚰 Lote
+                              </span>
+                            )}
+                          </div>
                           <div style={{ fontSize: 10.5, color: '#16a34a', marginTop: 2 }}>
                             Completa • Sin saldo
                           </div>
-                          {e.lote_deposito_id && (
-                            <div
-                              style={{
-                                marginTop: 4,
-                                display: 'inline-block',
-                                background: '#ccfbf1',
-                                color: '#0f766e',
-                                border: '1px solid #99f6e4',
-                                borderRadius: 6,
-                                padding: '2px 6px',
-                                fontSize: 10,
-                                fontWeight: 800,
-                              }}
-                              title={`Lote de Depósito Único: ${e.lote_deposito_id}`}
-                            >
-                              🚰 Depósito Único
-                            </div>
-                          )}
                         </div>
                       )}
                     </td>
-                    <td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
                       {e.latitud && e.longitud ? (
                         <div>
                           <a
                             href={`https://www.google.com/maps?q=${e.latitud},${e.longitud}`}
                             target="_blank"
                             rel="noopener noreferrer"
+                            title={`Coordenadas: ${parseFloat(String(e.latitud)).toFixed(5)}, ${parseFloat(String(e.longitud)).toFixed(5)}`}
                             style={{
                               display: 'inline-flex',
                               alignItems: 'center',
                               gap: 4,
+                              background: '#f0f9ff',
+                              border: '1px solid #bae6fd',
+                              borderRadius: 6,
+                              padding: '3px 7px',
                               color: '#0284c7',
-                              fontWeight: 600,
-                              fontSize: 12,
+                              fontWeight: 700,
+                              fontSize: 11,
                               textDecoration: 'none',
                             }}
                           >
-                            📍 {parseFloat(String(e.latitud)).toFixed(5)}, {parseFloat(String(e.longitud)).toFixed(5)}
+                            📍 Mapa {e.precision_gps ? `(±${Math.round(Number(e.precision_gps))}m)` : '↗'}
                           </a>
-                          {e.precision_gps ? (
-                            <div style={{ fontSize: 10.5, color: '#16a34a', fontWeight: 600 }}>
-                              Precisión: ±{Math.round(Number(e.precision_gps))}m
-                            </div>
-                          ) : null}
                         </div>
                       ) : (
-                        <span style={{ color: '#94a3b8', fontSize: 12 }}>Sin coordenadas</span>
+                        <span style={{ color: '#94a3b8', fontSize: 11 }}>Sin GPS</span>
                       )}
                     </td>
                     <td>
-                      {e.foto_url ? (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <img
-                            src={`${API_BASE_URL}${e.foto_url}?t=${new Date(e.fecha_hora).getTime() || 1}`}
-                            alt="Evidencia"
-                            style={{
-                              width: 44,
-                              height: 44,
-                              borderRadius: 8,
-                              objectFit: 'cover',
-                              border: '1px solid #cbd5e1',
-                              cursor: 'pointer',
-                            }}
-                            onClick={() => setSelectedPhoto({ url: `${API_BASE_URL}${e.foto_url}`, entrega: e, cacheBust: Date.now() })}
-                            title="Clic para ampliar o cambiar foto"
-                          />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'nowrap' }}>
+                        {e.foto_url ? (
+                          <>
+                            <img
+                              src={`${API_BASE_URL}${e.foto_url}?t=${new Date(e.fecha_hora).getTime() || 1}`}
+                              alt="Evidencia"
+                              style={{
+                                width: 38,
+                                height: 38,
+                                borderRadius: 7,
+                                objectFit: 'cover',
+                                border: '1px solid #cbd5e1',
+                                cursor: 'pointer',
+                                flexShrink: 0,
+                              }}
+                              onClick={() => setSelectedPhoto({ url: `${API_BASE_URL}${e.foto_url}`, entrega: e, cacheBust: Date.now() })}
+                              title="Clic para ampliar foto"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedPhoto({ url: `${API_BASE_URL}${e.foto_url}`, entrega: e, cacheBust: Date.now() });
+                                triggerPhotoSelector(e);
+                              }}
+                              style={{
+                                background: '#eff6ff',
+                                border: '1px solid #bfdbfe',
+                                color: '#1d4ed8',
+                                borderRadius: 6,
+                                padding: '4px 6px',
+                                fontSize: 11,
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                              }}
+                              title="Cambiar fotografía de evidencia"
+                            >
+                              📷
+                            </button>
+                          </>
+                        ) : (
                           <button
                             type="button"
                             onClick={() => {
-                              setSelectedPhoto({ url: `${API_BASE_URL}${e.foto_url}`, entrega: e, cacheBust: Date.now() });
+                              setSelectedPhoto({ url: null, entrega: e, cacheBust: Date.now() });
                               triggerPhotoSelector(e);
                             }}
                             style={{
-                              background: '#eff6ff',
-                              border: '1px solid #bfdbfe',
-                              color: '#1d4ed8',
+                              background: '#fef2f2',
+                              border: '1px dashed #f87171',
+                              color: '#dc2626',
                               borderRadius: 6,
                               padding: '4px 7px',
-                              fontSize: 11,
+                              fontSize: 10.5,
                               fontWeight: 700,
                               cursor: 'pointer',
+                              whiteSpace: 'nowrap',
                             }}
-                            title="Cambiar fotografía de evidencia"
+                            title="Subir nueva fotografía de evidencia"
                           >
-                            📷 Cambiar
+                            📷 Subir
                           </button>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedPhoto({ url: null, entrega: e, cacheBust: Date.now() });
-                            triggerPhotoSelector(e);
-                          }}
+                        )}
+
+                        {e.firma_base64 && e.firma_base64.startsWith('data:image') && (
+                          <img
+                            src={e.firma_base64}
+                            alt="Firma"
+                            style={{
+                              height: 30,
+                              maxWidth: 52,
+                              cursor: 'pointer',
+                              border: '1px solid #cbd5e1',
+                              borderRadius: 4,
+                              background: '#fff',
+                              flexShrink: 0,
+                            }}
+                            onClick={() => setSelectedSignature(e.firma_base64)}
+                            title="Clic para ver firma digital completa"
+                          />
+                        )}
+                      </div>
+                    </td>
+                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'inline-flex', gap: 5, alignItems: 'center' }}>
+                        <a
+                          href={`${API_BASE_URL}/api/v1/entregas/${e.id}/pdf`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn-secondary"
                           style={{
-                            background: '#fef2f2',
-                            border: '1px dashed #f87171',
-                            color: '#dc2626',
-                            borderRadius: 6,
-                            padding: '5px 9px',
-                            fontSize: 11,
-                            fontWeight: 700,
-                            cursor: 'pointer',
+                            textDecoration: 'none',
+                            padding: '4px 7px',
+                            fontSize: 11.5,
                             display: 'inline-flex',
                             alignItems: 'center',
-                            gap: 4,
+                            gap: 3,
+                            color: '#0284c7',
+                            fontWeight: 700,
                           }}
-                          title="Subir nueva fotografía de evidencia"
+                          title="Ver / Descargar Acta Oficial de Conformidad en PDF"
                         >
-                          📷 Subir foto
+                          📄 PDF
+                        </a>
+                        {e.lote_deposito_id && (
+                          <>
+                            <button
+                              type="button"
+                              className="btn-secondary"
+                              onClick={() => handleEditLoteDeposito(e.lote_deposito_id!, e.sector || 'Sector')}
+                              title="Editar litros totales del Lote de Depósito Único"
+                              style={{ padding: '4px 6px', fontSize: 11, color: '#0f766e', borderColor: '#99f6e4', background: '#f0fdfa', fontWeight: 700 }}
+                            >
+                              ✏️ Lote
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-danger"
+                              onClick={() => handleDeleteLoteDeposito(e.lote_deposito_id!, e.sector || 'Sector')}
+                              title="Eliminar todo el Lote de Depósito Único"
+                              style={{ padding: '4px 6px', fontSize: 11 }}
+                            >
+                              🗑️ Lote
+                            </button>
+                          </>
+                        )}
+                        <button
+                          className="btn-danger"
+                          onClick={() => handleDeleteEntrega(e.id)}
+                          title="Eliminar esta entrega individual"
+                          style={{ padding: '4px 7px', fontSize: 11.5 }}
+                        >
+                          🗑️
                         </button>
-                      )}
+                      </div>
                     </td>
-                    <td>
-                      {e.firma_base64 && e.firma_base64.startsWith('data:image') ? (
-                        <img
-                          src={e.firma_base64}
-                          alt="Firma"
-                          style={{
-                            height: 32,
-                            maxWidth: 70,
-                            cursor: 'pointer',
-                            border: '1px solid #e2e8f0',
-                            borderRadius: 4,
-                            background: '#fff',
-                          }}
-                          onClick={() => setSelectedSignature(e.firma_base64)}
-                          title="Clic para ver firma completa"
-                        />
-                      ) : (
-                        <span style={{ color: '#64748b', fontSize: 11, fontStyle: 'italic' }}>Sin firma (Opcional)</span>
-                      )}
-                    </td>
-                  <td>
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      <a
-                        href={`${API_BASE_URL}/api/v1/entregas/${e.id}/pdf`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="btn-secondary"
-                        style={{
-                          textDecoration: 'none',
-                          padding: '4px 8px',
-                          fontSize: 12,
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 4,
-                          color: '#0284c7',
-                          fontWeight: 600
-                        }}
-                        title="Ver / Descargar Acta Oficial de Conformidad en PDF"
-                      >
-                        📄 Acta PDF
-                      </a>
-                      {e.lote_deposito_id && (
-                        <>
-                          <button
-                            type="button"
-                            className="btn-secondary"
-                            onClick={() => handleEditLoteDeposito(e.lote_deposito_id!, e.sector || 'Sector')}
-                            title="Editar litros totales del Lote de Depósito Único (recalcula todos los beneficiarios del lote)"
-                            style={{ padding: '4px 8px', fontSize: 11, color: '#0f766e', borderColor: '#99f6e4', background: '#f0fdfa', fontWeight: 700 }}
-                          >
-                            ✏️ Lote
-                          </button>
-                          <button
-                            type="button"
-                            className="btn-danger"
-                            onClick={() => handleDeleteLoteDeposito(e.lote_deposito_id!, e.sector || 'Sector')}
-                            title="Eliminar todo el Lote de Depósito Único en un solo clic"
-                            style={{ padding: '4px 8px', fontSize: 11 }}
-                          >
-                            🗑️ Lote
-                          </button>
-                        </>
-                      )}
-                      <button
-                        className="btn-danger"
-                        onClick={() => handleDeleteEntrega(e.id)}
-                        title="Eliminar esta entrega individual"
-                        style={{ padding: '4px 8px' }}
-                      >
-                        🗑️
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })
-          )}
-        </tbody>
-      </table>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
 
         {/* PAGINATION */}
         <Pagination

@@ -657,89 +657,97 @@ export default function BeneficiariosPage() {
         <table className="custom-table">
           <thead>
             <tr>
-              <th>DNI</th>
-              <th>Nombres y Apellidos</th>
-              <th>Sector / AA.HH</th>
-              <th>N° Viv / Mz-Lt</th>
-              <th>Dirección / Calle</th>
-              <th>Personas (Titular+Fam)</th>
-              <th>Dotación Semanal (Vale)</th>
-              <th>Carnet QR</th>
-              <th>Acciones</th>
+              <th>Beneficiario / DNI</th>
+              <th>Sector y Dirección</th>
+              <th>Grupo Familiar</th>
+              <th>Dotación Semanal</th>
+              <th style={{ textAlign: 'right' }}>Carnet QR y Acciones</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={9} className="empty-state">
+                <td colSpan={5} className="empty-state">
                   <span>⏳</span> Cargando beneficiarios...
                 </td>
               </tr>
             ) : filtered.length === 0 ? (
               <tr>
-                <td colSpan={9} className="empty-state">
+                <td colSpan={5} className="empty-state">
                   <span>👥</span> No se encontraron beneficiarios registrados.
                 </td>
               </tr>
             ) : (
-              paginatedData.map((b) => (
-                <tr key={b.id}>
-                  <td style={{ whiteSpace: 'nowrap' }}><strong style={{ fontFamily: 'ui-monospace, monospace', color: '#0f172a' }}>{b.dni}</strong></td>
-                  <td><div style={{ minWidth: 170, fontWeight: 600, color: '#0f172a' }}>{b.nombres_apellidos}</div></td>
-                  <td>
-                    <span className="badge-count" style={{ background: '#e0f2fe', color: '#0369a1', borderColor: '#bae6fd' }}>
-                      📍 {b.sector_aahh || b.sector || 'Moyobamba'}
-                    </span>
-                  </td>
-                  <td>
-                    <div style={{ minWidth: 120 }}>
-                      {b.num_vivienda ? `Viv. ${b.num_vivienda} ` : ''}
-                      {b.mz ? `(Mz ${b.mz} Lt ${b.lt})` : ''}
-                    </div>
-                  </td>
-                  <td><div style={{ minWidth: 140, color: '#475569' }}>{b.calle_direccion || b.direccion || '-'}</div></td>
-                  <td style={{ whiteSpace: 'nowrap' }}>
-                    <strong style={{ color: '#0f172a' }}>{b.num_miembros} pers.</strong>
-                    <div style={{ fontSize: 10.5, color: '#64748b' }}>Titular + Fam.</div>
-                  </td>
-                  <td style={{ whiteSpace: 'nowrap' }}>
-                    <span className="badge-count" style={{ background: '#dcfce7', color: '#15803d', borderColor: '#bbf7d0', fontWeight: 700 }}>
-                      💧 {b.litros_sugeridos || (b.num_miembros * 350)} Lts/sem
-                    </span>
-                    <div style={{ fontSize: 10.5, color: '#0369a1', marginTop: 2 }}>
-                      {((b.num_miembros || 1) * 50)} L/día × 7d
-                    </div>
-                  </td>
-                  <td style={{ whiteSpace: 'nowrap' }}>
-                    <button
-                      className="btn-secondary"
-                      style={{ padding: '5px 10px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                      onClick={() => setQrModalBeneficiario(b)}
-                    >
-                      📷 Ver QR
-                    </button>
-                  </td>
-                  <td style={{ whiteSpace: 'nowrap' }}>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button
-                        className="btn-secondary"
-                        style={{ padding: '6px 10px', fontSize: 12 }}
-                        onClick={() => handleOpenEditModal(b)}
-                        title="Editar Beneficiario"
-                      >
-                        ✏️
-                      </button>
-                      <button
-                        className="btn-danger"
-                        onClick={() => handleDeleteBeneficiario(b.id)}
-                        title="Eliminar Beneficiario"
-                      >
-                        🗑️
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))
+              paginatedData.map((b) => {
+                const detalleViv = [
+                  b.num_vivienda ? `Viv. ${b.num_vivienda}` : '',
+                  b.mz ? `Mz ${b.mz}${b.lt ? ` Lt ${b.lt}` : ''}` : '',
+                  b.calle_direccion || b.direccion || '',
+                ]
+                  .filter(Boolean)
+                  .join(' • ');
+
+                return (
+                  <tr key={b.id}>
+                    <td>
+                      <div style={{ fontWeight: 700, color: '#0f172a', fontSize: 13 }}>{b.nombres_apellidos}</div>
+                      <div style={{ fontSize: 11.5, color: '#475569', fontFamily: 'ui-monospace, monospace', fontWeight: 600, marginTop: 2 }}>
+                        DNI: {b.dni}
+                      </div>
+                    </td>
+                    <td>
+                      <span className="badge-count" style={{ background: '#e0f2fe', color: '#0369a1', borderColor: '#bae6fd', fontSize: 11, padding: '2px 8px' }}>
+                        📍 {b.sector_aahh || b.sector || 'Moyobamba'}
+                      </span>
+                      {detalleViv && (
+                        <div style={{ fontSize: 11.5, color: '#475569', marginTop: 3 }}>
+                          🏠 {detalleViv}
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <strong style={{ color: '#0f172a', fontSize: 13 }}>👥 {b.num_miembros} hab.</strong>
+                      <div style={{ fontSize: 10.5, color: '#64748b' }}>Titular + Familia</div>
+                    </td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <span className="badge-count" style={{ background: '#dcfce7', color: '#15803d', borderColor: '#bbf7d0', fontWeight: 800, fontSize: 11.5, padding: '2px 8px' }}>
+                        💧 {Number(b.litros_sugeridos || b.num_miembros * 350).toLocaleString('es-PE')} L/sem
+                      </span>
+                      <div style={{ fontSize: 10.5, color: '#0369a1', marginTop: 2 }}>
+                        {(b.num_miembros || 1) * 50} L/día × 7d
+                      </div>
+                    </td>
+                    <td style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
+                      <div style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                        <button
+                          className="btn-secondary"
+                          style={{ padding: '5px 9px', fontSize: 11.5, display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 700 }}
+                          onClick={() => setQrModalBeneficiario(b)}
+                          title="Ver e imprimir Carnet QR"
+                        >
+                          📷 QR
+                        </button>
+                        <button
+                          className="btn-secondary"
+                          style={{ padding: '5px 8px', fontSize: 12 }}
+                          onClick={() => handleOpenEditModal(b)}
+                          title="Editar Beneficiario"
+                        >
+                          ✏️
+                        </button>
+                        <button
+                          className="btn-danger"
+                          style={{ padding: '5px 8px', fontSize: 12 }}
+                          onClick={() => handleDeleteBeneficiario(b.id)}
+                          title="Eliminar Beneficiario"
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>

@@ -282,27 +282,25 @@ export default function CisternasPage() {
         <table className="custom-table">
           <thead>
             <tr>
-              <th>Placa</th>
-              <th>Marca y Modelo</th>
+              <th>Placa y Modelo</th>
               <th>Capacidad</th>
               <th>Chofer Asignado</th>
               <th>🛰️ GPS Satelital</th>
-              <th>SOAT</th>
-              <th>Rev. Técnica</th>
+              <th>SOAT y Rev. Técnica</th>
               <th>Estado</th>
-              <th>Acciones</th>
+              <th style={{ textAlign: 'right' }}>Acciones</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={9} className="empty-state">
+                <td colSpan={7} className="empty-state">
                   <span>⏳</span> Cargando flota de cisternas...
                 </td>
               </tr>
             ) : filtered.length === 0 ? (
               <tr>
-                <td colSpan={9} className="empty-state">
+                <td colSpan={7} className="empty-state">
                   <span>🚛</span> No se encontraron cisternas registradas.
                 </td>
               </tr>
@@ -310,24 +308,27 @@ export default function CisternasPage() {
               paginatedData.map((c) => (
                 <tr key={c.id}>
                   <td>
-                    <strong style={{ fontSize: 14, color: '#0369a1' }}>{c.placa}</strong>
+                    <strong style={{ fontSize: 13.5, color: '#0369a1' }}>🚛 {c.placa}</strong>
+                    <div style={{ fontSize: 11.5, color: '#475569', marginTop: 2 }}>{c.marca_modelo}</div>
                   </td>
-                  <td>{c.marca_modelo}</td>
-                  <td>
-                    <span className="badge-count" style={{ background: '#dcfce7', color: '#15803d', fontWeight: 800 }}>
-                      {c.capacidad_m3} m³ ({Number(c.capacidad_litros).toLocaleString()} Lts)
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    <span className="badge-count" style={{ background: '#dcfce7', color: '#15803d', fontWeight: 800, fontSize: 11.5, padding: '2px 8px' }}>
+                      {c.capacidad_m3} m³
                     </span>
+                    <div style={{ fontSize: 10.5, color: '#64748b', marginTop: 2 }}>
+                      {Number(c.capacidad_litros).toLocaleString()} Lts
+                    </div>
                   </td>
                   <td>
                     {c.conductor_habitual_nombre ? (
                       <div>
-                        <strong>👤 {c.conductor_habitual_nombre}</strong>
+                        <strong style={{ fontSize: 12.5 }}>👤 {c.conductor_habitual_nombre}</strong>
                         {c.conductor_habitual_telefono && (
                           <div style={{ fontSize: 11, color: '#64748b' }}>📞 {c.conductor_habitual_telefono}</div>
                         )}
                       </div>
                     ) : (
-                      <span style={{ color: '#94a3b8', fontSize: 12 }}>Sin asignar</span>
+                      <span style={{ color: '#94a3b8', fontSize: 11.5 }}>Sin asignar</span>
                     )}
                   </td>
                   <td>
@@ -336,75 +337,66 @@ export default function CisternasPage() {
                         <div style={{ fontSize: 11, fontWeight: 700, color: '#0369a1' }}>
                           🛰️ {c.codigo_gps || 'GPS Conectado'}
                         </div>
-                        <a
-                          href={`https://www.google.com/maps?q=${c.latitud_actual},${c.longitud_actual}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: 4,
-                            color: '#0284c7',
-                            fontWeight: 600,
-                            fontSize: 11.5,
-                            textDecoration: 'none',
-                            marginTop: 2,
-                          }}
-                        >
-                          📍 {parseFloat(String(c.latitud_actual)).toFixed(4)}, {parseFloat(String(c.longitud_actual)).toFixed(4)}
-                        </a>
-                        {c.enlace_gps_tracking ? (
-                          <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 3 }}>
+                          <a
+                            href={`https://www.google.com/maps?q=${c.latitud_actual},${c.longitud_actual}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title={`${parseFloat(String(c.latitud_actual)).toFixed(5)}, ${parseFloat(String(c.longitud_actual)).toFixed(5)}`}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 3,
+                              background: '#f0f9ff',
+                              border: '1px solid #bae6fd',
+                              borderRadius: 5,
+                              padding: '2px 6px',
+                              color: '#0284c7',
+                              fontWeight: 700,
+                              fontSize: 10.5,
+                              textDecoration: 'none',
+                            }}
+                          >
+                            📍 Mapa ↗
+                          </a>
+                          {c.enlace_gps_tracking && (
                             <a
                               href={c.enlace_gps_tracking}
                               target="_blank"
                               rel="noopener noreferrer"
                               style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: 3,
                                 fontSize: 10.5,
                                 color: (c.enlace_gps_tracking || '').includes('volvo') ? '#2563eb' : '#059669',
                                 fontWeight: 700,
                                 textDecoration: 'none',
-                                marginTop: 3,
                               }}
                             >
-                              {(c.enlace_gps_tracking || '').includes('volvo') ? '🚛 Volvo Connect' : '🔗 Plataforma Satelital'} ↗
+                              {(c.enlace_gps_tracking || '').includes('volvo') ? '🚛 Volvo' : '🔗 Satelital'} ↗
                             </a>
-                          </div>
-                        ) : null}
+                          )}
+                        </div>
                       </div>
                     ) : c.codigo_gps ? (
                       <div>
                         <div style={{ fontSize: 11, fontWeight: 700, color: '#2563eb' }}>
-                          🛰️ Vinculado a Volvo Connect
+                          🛰️ Volvo Connect
                         </div>
-                        <span style={{ fontSize: 10, color: '#64748b' }}>
-                          VIN: {c.codigo_gps.length > 14 ? c.codigo_gps.substring(0, 11) + '...' : c.codigo_gps}
-                        </span>
-                        <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
                           <span style={{ fontSize: 10, color: '#d97706', fontWeight: 600 }}>
-                            🟡 Esperando ignición (Camión apagado)
+                            🟡 Apagado
                           </span>
-                        </div>
-                        <div>
                           <a
                             href={c.enlace_gps_tracking || 'https://volvoconnect.com/'}
                             target="_blank"
                             rel="noopener noreferrer"
                             style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: 3,
                               fontSize: 10.5,
                               color: '#2563eb',
                               fontWeight: 700,
                               textDecoration: 'none',
-                              marginTop: 2,
                             }}
                           >
-                            🚛 Volvo Connect ↗
+                            Abrir ↗
                           </a>
                         </div>
                       </div>
@@ -412,18 +404,16 @@ export default function CisternasPage() {
                       <span style={{ color: '#94a3b8', fontSize: 11 }}>Sin GPS</span>
                     )}
                   </td>
-                  <td>
-                    {c.soat_vencimiento ? new Date(c.soat_vencimiento).toLocaleDateString('es-PE') : '-'}
-                  </td>
-                  <td>
-                    {c.revision_tecnica_vencimiento ? new Date(c.revision_tecnica_vencimiento).toLocaleDateString('es-PE') : '-'}
+                  <td style={{ whiteSpace: 'nowrap', fontSize: 11.5 }}>
+                    <div><strong style={{ color: '#475569' }}>SOAT:</strong> {c.soat_vencimiento ? new Date(c.soat_vencimiento).toLocaleDateString('es-PE') : '-'}</div>
+                    <div style={{ marginTop: 2 }}><strong style={{ color: '#475569' }}>Rev.:</strong> {c.revision_tecnica_vencimiento ? new Date(c.revision_tecnica_vencimiento).toLocaleDateString('es-PE') : '-'}</div>
                   </td>
                   <td>{getStatusBadge(c.estado)}</td>
-                  <td>
-                    <div style={{ display: 'flex', gap: 6 }}>
+                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <div style={{ display: 'inline-flex', gap: 6 }}>
                       <button
                         className="btn-secondary"
-                        style={{ padding: '6px 10px', fontSize: 12 }}
+                        style={{ padding: '5px 9px', fontSize: 12 }}
                         onClick={() => handleOpenModal(c)}
                         title="Editar Cisterna"
                       >
@@ -431,6 +421,7 @@ export default function CisternasPage() {
                       </button>
                       <button
                         className="btn-danger"
+                        style={{ padding: '5px 9px', fontSize: 12 }}
                         onClick={() => handleDelete(c.id)}
                         title="Eliminar Cisterna"
                       >

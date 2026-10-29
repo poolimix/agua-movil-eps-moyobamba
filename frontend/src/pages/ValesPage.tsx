@@ -598,51 +598,51 @@ export default function ValesPage() {
             <div style={{ padding: 40, textAlign: 'center', color: '#64748b' }}>No se encontraron vales con los filtros seleccionados.</div>
           ) : (
             <>
-              <table className="data-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <table className="custom-table">
                 <thead>
-                  <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left', color: '#475569' }}>
-                    <th style={{ padding: '12px 16px' }}>SERIE Y CORRELATIVO</th>
-                    <th style={{ padding: '12px 16px' }}>BENEFICIARIO (PUB)</th>
-                    <th style={{ padding: '12px 16px' }}>SECTOR</th>
-                    <th style={{ padding: '12px 16px' }}>DOTACIÓN SEMANAL</th>
-                    <th style={{ padding: '12px 16px' }}>PROGRAMACIÓN</th>
-                    <th style={{ padding: '12px 16px' }}>ESTADO</th>
-                    <th style={{ padding: '12px 16px', textAlign: 'center' }}>ACCIONES</th>
+                  <tr>
+                    <th>CÓDIGO DE VALE / PROG.</th>
+                    <th>BENEFICIARIO Y SECTOR</th>
+                    <th>DOTACIÓN SEMANAL</th>
+                    <th>ESTADO</th>
+                    <th style={{ textAlign: 'right' }}>ACCIONES</th>
                   </tr>
                 </thead>
                 <tbody>
                   {paginatedVales.map((v) => (
-                    <tr key={v.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '12px 16px' }}>
-                        <span style={{ fontFamily: 'monospace', fontWeight: 800, color: '#0284c7', background: '#f0f9ff', padding: '2px 6px', borderRadius: 4 }}>
+                    <tr key={v.id}>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        <span style={{ fontFamily: 'monospace', fontWeight: 800, color: '#0284c7', background: '#f0f9ff', padding: '2px 6px', borderRadius: 4, fontSize: 12 }}>
                           {v.codigo_unico}
                         </span>
-                      </td>
-                      <td style={{ padding: '12px 16px' }}>
-                        <div style={{ fontWeight: 600 }}>{v.beneficiario_nombre || 'Beneficiario no asignado'}</div>
-                        <div style={{ fontSize: 11, color: '#64748b' }}>
-                          DNI: {v.beneficiario_dni || 'S/N'} • 👥 {v.num_miembros || 1} hab.
+                        <div style={{ fontSize: 11, color: '#64748b', marginTop: 3 }}>
+                          📅 {v.programacion_fecha ? new Date(v.programacion_fecha).toLocaleDateString('es-PE') : 'Prog. Anual'}
                         </div>
                       </td>
-                      <td style={{ padding: '12px 16px', color: '#475569' }}>
-                        {v.sector || 'Moyobamba'}
+                      <td>
+                        <div style={{ fontWeight: 700, color: '#0f172a', fontSize: 13 }}>{v.beneficiario_nombre || 'Beneficiario no asignado'}</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 3 }}>
+                          <span style={{ fontSize: 11, color: '#64748b' }}>
+                            DNI: {v.beneficiario_dni || 'S/N'} • 👥 {v.num_miembros || 1} hab.
+                          </span>
+                          <span className="badge-count" style={{ background: '#e0f2fe', color: '#0369a1', fontSize: 10.5, padding: '1px 7px' }}>
+                            📍 {v.sector || 'Moyobamba'}
+                          </span>
+                        </div>
                       </td>
-                      <td style={{ padding: '12px 16px' }}>
-                        <strong style={{ color: '#0284c7' }}>{Number(v.litros_sugeridos).toLocaleString('es-PE')} Lts</strong>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        <strong style={{ color: '#0284c7', fontSize: 13 }}>{Number(v.litros_sugeridos).toLocaleString('es-PE')} Lts</strong>
                         <div style={{ fontSize: 10.5, color: '#64748b' }}>{v.num_miembros || 1} hab. × 350 L/sem</div>
                       </td>
-                      <td style={{ padding: '12px 16px', fontSize: 12, color: '#64748b' }}>
-                        {v.programacion_fecha ? new Date(v.programacion_fecha).toLocaleDateString('es-PE') : 'Programación Genérica'}
-                      </td>
-                      <td style={{ padding: '12px 16px' }}>
+                      <td style={{ whiteSpace: 'nowrap' }}>
                         {getEstadoBadge(v.estado)}
                       </td>
-                      <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                        <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
+                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        <div style={{ display: 'inline-flex', gap: 6, justifyContent: 'flex-end' }}>
                           <button 
                             onClick={() => imprimirValeTicket(v)}
                             title="Imprimir Ticket de Vale con QR"
-                            style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '4px 8px', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}
+                            style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '4px 8px', borderRadius: 6, cursor: 'pointer', fontSize: 11.5, fontWeight: 600 }}
                           >
                             🖨️ Imprimir
                           </button>
@@ -650,7 +650,7 @@ export default function ValesPage() {
                             <button 
                               onClick={() => handleCambiarEstado(v.id, 'ANULADO')}
                               title="Anular Vale"
-                              style={{ background: '#fee2e2', border: '1px solid #fca5a5', color: '#b91c1c', padding: '4px 8px', borderRadius: 4, cursor: 'pointer', fontSize: 11 }}
+                              style={{ background: '#fee2e2', border: '1px solid #fca5a5', color: '#b91c1c', padding: '4px 8px', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}
                             >
                               Anular
                             </button>

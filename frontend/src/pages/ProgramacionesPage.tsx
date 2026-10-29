@@ -733,40 +733,41 @@ export default function ProgramacionesPage() {
       </div>
 
       <div className="table-card" style={{ minHeight: 250 }}>
-        <table className="custom-table" style={{ minWidth: 1260 }}>
+        <table className="custom-table">
           <thead>
             <tr>
-              <th style={{ minWidth: 120 }}>ID / Rango Fechas</th>
-              <th style={{ minWidth: 260 }}>Sectores Asignados</th>
-              <th style={{ minWidth: 220 }}>Cisterna y Cuadrilla</th>
-              <th style={{ minWidth: 140 }}>Viajes Programados</th>
-              <th style={{ minWidth: 110 }}>Estado</th>
-              <th style={{ minWidth: 175 }}>Vol. Repartido y Población</th>
-              <th style={{ minWidth: 150 }}>Control Sanitario</th>
-              <th style={{ textAlign: 'center', minWidth: 220 }}>Acciones y Gestión</th>
+              <th># / Fechas y Estado</th>
+              <th>Sectores y Frecuencia</th>
+              <th>Cisterna y Cuadrilla</th>
+              <th>Viajes y Avance</th>
+              <th>Control Sanitario</th>
+              <th style={{ textAlign: 'right' }}>Acciones</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={8} className="empty-state">
+                <td colSpan={6} className="empty-state">
                   <span>⏳</span> Cargando programaciones...
                 </td>
               </tr>
             ) : filtered.length === 0 ? (
               <tr>
-                <td colSpan={8} className="empty-state">
+                <td colSpan={6} className="empty-state">
                   <span>📋</span> No hay programaciones registradas.
                 </td>
               </tr>
             ) : (
               paginatedData.map((p) => (
                 <tr key={p.id}>
-                  <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <strong>#{p.id}</strong>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+                      <strong style={{ fontSize: 13.5 }}>#{p.id}</strong>
+                      <span className={`status-badge ${p.estado === 'Activa' ? 'status-active' : 'status-pending'}`} style={{ padding: '2px 8px', fontSize: 10.5 }}>
+                        {p.estado}
+                      </span>
                       {p.es_anual && (
-                        <span className="badge-count" style={{ background: '#ecfdf5', color: '#047857', fontSize: 10, fontWeight: 800, padding: '1px 6px' }}>
+                        <span className="badge-count" style={{ background: '#ecfdf5', color: '#047857', fontSize: 9.5, fontWeight: 800, padding: '1px 5px' }}>
                           🌟 Anual
                         </span>
                       )}
@@ -774,13 +775,12 @@ export default function ProgramacionesPage() {
                     <div style={{ fontSize: 11, color: '#0369a1', fontWeight: 700, marginTop: 3 }}>
                       {p.fecha_inicio ? new Date(p.fecha_inicio).toLocaleDateString('es-PE') : new Date(p.fecha).toLocaleDateString('es-PE')}
                       {p.fecha_fin && p.fecha_fin !== p.fecha_inicio && (
-                        <span> al {new Date(p.fecha_fin).toLocaleDateString('es-PE')}</span>
+                        <span> → {new Date(p.fecha_fin).toLocaleDateString('es-PE')}</span>
                       )}
                     </div>
                   </td>
-                  <td style={{ minWidth: 240 }}>
+                  <td>
                     {(() => {
-                      // Parse individual clean sector names
                       const rawSectores = (p.sectores_seleccionados || p.zona || '')
                         .split(',')
                         .map(s => s.trim().replace(/^(ZONAS CONVENIO META 228 \()?/i, '').replace(/\)$/, '').trim())
@@ -789,17 +789,17 @@ export default function ProgramacionesPage() {
                       const diasResumen = formatDiasReparto(p.dias_semana);
 
                       return (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }} title={`Sectores Asignados (${count}):\n${rawSectores.join('\n')}\n\nFrecuencia:\n${p.dias_semana || 'Lunes a Domingo'}`}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }} title={`Sectores Asignados (${count}):\n${rawSectores.join('\n')}\n\nFrecuencia:\n${p.dias_semana || 'Lunes a Domingo'}`}>
                           {count > 2 ? (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
                               <span
                                 style={{
                                   background: '#e0f2fe',
                                   color: '#0369a1',
                                   border: '1px solid #bae6fd',
-                                  fontSize: 11.5,
+                                  fontSize: 11,
                                   fontWeight: 800,
-                                  padding: '2px 8px',
+                                  padding: '2px 7px',
                                   borderRadius: 6,
                                   display: 'inline-flex',
                                   alignItems: 'center',
@@ -808,7 +808,7 @@ export default function ProgramacionesPage() {
                               >
                                 📍 {count} Sectores
                               </span>
-                              <span style={{ fontSize: 11.5, color: '#475569', fontWeight: 600 }}>
+                              <span style={{ fontSize: 11, color: '#475569', fontWeight: 600 }}>
                                 {rawSectores[0]}, {rawSectores[1]}... <span style={{ color: '#0284c7', fontWeight: 700 }}>+{count - 2}</span>
                               </span>
                             </div>
@@ -821,7 +821,7 @@ export default function ProgramacionesPage() {
                                     background: '#f0f9ff',
                                     color: '#0369a1',
                                     border: '1px solid #bae6fd',
-                                    fontSize: 11.5,
+                                    fontSize: 11,
                                     fontWeight: 700,
                                     padding: '2px 7px',
                                     borderRadius: 6
@@ -833,71 +833,53 @@ export default function ProgramacionesPage() {
                             </div>
                           )}
 
-                          <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>
+                          <div style={{ fontSize: 10.5, color: '#64748b', fontWeight: 600 }}>
                             {diasResumen}
                           </div>
                         </div>
                       );
                     })()}
                   </td>
-                  <td style={{ minWidth: 220 }}>
+                  <td>
                     {p.cisterna_placa ? (
                       <div>
-                        <span className="badge-count" style={{ background: '#dbeafe', color: '#1e40af', fontWeight: 800 }}>
-                          🚛 {p.cisterna_placa}
-                        </span>
-                        <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
-                          Cap: {p.cisterna_capacidad_m3} m³ ({Number(p.cisterna_capacidad_litros || 15000).toLocaleString()} Lts)
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          <span className="badge-count" style={{ background: '#dbeafe', color: '#1e40af', fontWeight: 800, fontSize: 11, padding: '2px 7px' }}>
+                            🚛 {p.cisterna_placa}
+                          </span>
+                          <span style={{ fontSize: 10.5, color: '#64748b', fontWeight: 600 }}>
+                            {p.cisterna_capacidad_m3} m³
+                          </span>
                         </div>
                         {p.conductor_nombre && (
-                          <div style={{ fontSize: 11.5, color: '#1e293b', fontWeight: 700, marginTop: 4 }}>
-                            👤 Chofer: {p.conductor_nombre}
+                          <div style={{ fontSize: 11, color: '#1e293b', fontWeight: 700, marginTop: 3 }}>
+                            👤 {p.conductor_nombre}
                           </div>
                         )}
-                        {p.ayudante_nombre ? (
-                          <div style={{ fontSize: 11, color: '#0369a1', fontWeight: 600, marginTop: 1 }}>
-                            🤝 Gestor de Entrega: {p.ayudante_nombre}
-                          </div>
-                        ) : (
-                          <div style={{ fontSize: 10.5, color: '#94a3b8', fontStyle: 'italic', marginTop: 1 }}>
-                            (Sin gestor asignado)
+                        {p.ayudante_nombre && (
+                          <div style={{ fontSize: 10.5, color: '#0369a1', fontWeight: 600 }}>
+                            🤝 {p.ayudante_nombre}
                           </div>
                         )}
                       </div>
                     ) : (
-                      <span style={{ color: '#94a3b8', fontSize: 12 }}>Sin asignar</span>
+                      <span style={{ color: '#94a3b8', fontSize: 11.5 }}>Sin asignar</span>
                     )}
                   </td>
-                  <td>
-                    <span className="badge-count" style={{ background: '#fef3c7', color: '#b45309', fontWeight: 800 }}>
-                      🏁 {p.viajes_estimados || 1} {p.viajes_estimados === 1 ? 'Viaje' : 'Viajes'}
-                    </span>
-                    <div style={{ fontSize: 10.5, color: '#64748b', marginTop: 2 }}>
-                      Demanda: {(p.litros_programados || 0).toLocaleString()} Lts
-                    </div>
-                  </td>
-                  <td>
-                    <span className={`status-badge ${p.estado === 'Activa' ? 'status-active' : 'status-pending'}`}>
-                      {p.estado}
-                    </span>
-                  </td>
-                  <td style={{ minWidth: 175 }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 12.5, fontWeight: 800, color: '#0f172a' }}>
                         🚰 {Number(p.total_litros || 0).toLocaleString()} Lts
                       </span>
-                      <span style={{ fontSize: 11, color: '#0369a1', fontWeight: 700 }}>
-                        📊 Prom: {p.volumen_promedio ? `${Number(p.volumen_promedio).toLocaleString()} L/fam` : '350 L/fam'}
-                      </span>
-                      <span style={{ fontSize: 11, color: '#166534', fontWeight: 600 }}>
-                        👥 {p.poblacion_beneficiada ? `${p.poblacion_beneficiada} hab. atendidos` : `${p.poblacion_programada || 140} hab. proy.`}
-                      </span>
-                      <span style={{ fontSize: 10.5, color: '#b45309', fontWeight: 700 }}>
-                        💰 S/. {Number(p.monto_valorizado || p.monto_programado || 0).toFixed(2)}
+                      <span className="badge-count" style={{ background: '#fef3c7', color: '#b45309', fontWeight: 800, fontSize: 10, padding: '1px 6px' }}>
+                        🏁 {p.viajes_estimados || 1} v.
                       </span>
                     </div>
+                    <div style={{ fontSize: 10.5, color: '#166534', fontWeight: 600, marginTop: 2 }}>
+                      👥 {p.poblacion_beneficiada ? `${p.poblacion_beneficiada} hab.` : `${p.poblacion_programada || 140} hab. proy.`} • 💰 S/. {Number(p.monto_valorizado || p.monto_programado || 0).toFixed(2)}
+                    </div>
                   </td>
-                  <td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
                     <a 
                       href={`/calidad?programacion_id=${p.id}`} 
                       style={{ textDecoration: 'none', display: 'block', cursor: 'pointer' }}
@@ -908,18 +890,17 @@ export default function ProgramacionesPage() {
                           <span className="badge-count" style={{ background: '#dcfce7', color: '#15803d', fontWeight: 800, fontSize: 11 }}>
                             ✅ 2/2 Conforme
                           </span>
-                          <div style={{ fontSize: 10.5, color: '#166534', marginTop: 2 }}>
-                            💧 Carga + 🚚 Ruta
-                            {Number(p.calidad_adicional || 0) > 0 ? ` (+${p.calidad_adicional})` : ''}
+                          <div style={{ fontSize: 10, color: '#166534', marginTop: 2 }}>
+                            💧 Carga + 🚚 Ruta{Number(p.calidad_adicional || 0) > 0 ? ` (+${p.calidad_adicional})` : ''}
                           </div>
                         </div>
                       ) : Number(p.calidad_carga || 0) >= 1 ? (
                         <div>
                           <span className="badge-count" style={{ background: '#fef3c7', color: '#b45309', fontWeight: 800, fontSize: 11 }}>
-                            ⏳ 1/2 Falta en Ruta
+                            ⏳ 1/2 Falta Ruta
                           </span>
-                          <div style={{ fontSize: 10.5, color: '#92400e', marginTop: 2 }}>
-                            💧 Carga Ok • Pendiente sector
+                          <div style={{ fontSize: 10, color: '#92400e', marginTop: 2 }}>
+                            💧 Carga Ok • Pendiente
                           </div>
                         </div>
                       ) : (
@@ -927,14 +908,14 @@ export default function ProgramacionesPage() {
                           <span className="badge-count" style={{ background: '#fee2e2', color: '#b91c1c', fontWeight: 800, fontSize: 11 }}>
                             🔴 0/2 Sin Control
                           </span>
-                          <div style={{ fontSize: 10.5, color: '#991b1b', marginTop: 2 }}>
-                            🧪 Clic para evaluar
+                          <div style={{ fontSize: 10, color: '#991b1b', marginTop: 2 }}>
+                            🧪 Evaluar
                           </div>
                         </div>
                       )}
                     </a>
                   </td>
-                  <td style={{ position: 'relative', textAlign: 'center', minWidth: 195 }}>
+                  <td style={{ position: 'relative', textAlign: 'right', whiteSpace: 'nowrap' }}>
                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                       {/* ACCIÓN PRINCIPAL 1: CALENDARIO */}
                       <button

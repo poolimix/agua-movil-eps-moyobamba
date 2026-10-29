@@ -277,29 +277,28 @@
   width: 100%;
   border-collapse: collapse;
   text-align: left;
-  font-size: 13.5px;
-  min-width: 800px;
+  font-size: 13px;
 }
 
 .custom-table th {
   background: #f8fafc;
   color: #475569;
   font-weight: 700;
-  padding: 14px 18px;
+  padding: 10px 12px;
   border-bottom: 2px solid #e2e8f0;
   text-transform: uppercase;
-  font-size: 11px;
-  letter-spacing: 0.6px;
+  font-size: 10.5px;
+  letter-spacing: 0.4px;
   white-space: nowrap;
   vertical-align: middle;
 }
 
 .custom-table td {
-  padding: 14px 18px;
+  padding: 10px 12px;
   border-bottom: 1px solid #f1f5f9;
   color: #1e293b;
   vertical-align: middle;
-  line-height: 1.45;
+  line-height: 1.4;
 }
 
 .custom-table tbody tr {

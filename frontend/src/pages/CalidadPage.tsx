@@ -672,46 +672,46 @@ export default function CalidadPage() {
                 <thead>
                   <tr>
                     <th style={{ whiteSpace: 'nowrap' }}>FECHA Y HORA</th>
-                    <th>ETAPA (TDR) / PUNTO</th>
+                    <th>ETAPA (TDR) Y PUNTO</th>
                     <th style={{ whiteSpace: 'nowrap' }}>CISTERNA / CHOFER</th>
-                    <th style={{ whiteSpace: 'nowrap', minWidth: 155 }}>CLORO RESIDUAL</th>
-                    <th style={{ whiteSpace: 'nowrap', minWidth: 155 }}>TURBIEDAD</th>
-                    <th>ASPECTO ORGANOLÉPTICO</th>
-                    <th style={{ whiteSpace: 'nowrap' }}>ESTADO SANITARIO</th>
-                    <th>SUPERVISOR</th>
+                    <th>CLORO RESIDUAL</th>
+                    <th>TURBIEDAD Y ASPECTO</th>
+                    <th style={{ whiteSpace: 'nowrap' }}>ESTADO / SUPERVISOR</th>
                   </tr>
                 </thead>
                 <tbody>
                   {paginatedControles.map((c) => (
                     <tr key={c.id}>
                       <td style={{ whiteSpace: 'nowrap' }}>
-                        <div style={{ fontWeight: 700, color: '#0f172a', fontSize: 13.5 }}>
+                        <div style={{ fontWeight: 700, color: '#0f172a', fontSize: 13 }}>
                           {isNaN(new Date(c.fecha_hora).getTime())
                             ? c.fecha_hora
                             : new Date(c.fecha_hora).toLocaleDateString('es-PE')}
                         </div>
-                        <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 2, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                          <span>🕒</span>
-                          <span>
-                            {isNaN(new Date(c.fecha_hora).getTime())
-                              ? ''
-                              : new Date(c.fecha_hora).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                          </span>
+                        <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                          🕒{' '}
+                          {isNaN(new Date(c.fecha_hora).getTime())
+                            ? ''
+                            : new Date(c.fecha_hora).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}
                         </div>
                       </td>
                       <td>
                         {getEtapaBadge(c.etapa_control)}
-                        <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 4, minWidth: 160 }}>
+                        <div style={{ fontSize: 11, color: '#64748b', marginTop: 3 }}>
                           📍 {c.punto_muestreo || 'Punto de entrega'}
                         </div>
                       </td>
                       <td style={{ whiteSpace: 'nowrap' }}>
-                        <div style={{ fontWeight: 700, color: '#0284c7' }}>🚛 {c.cisterna_placa || 'Cisterna General'}</div>
-                        <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 2 }}>{c.conductor_nombre || 'Conductor asignado'}</div>
+                        <div style={{ fontWeight: 700, color: '#0284c7', fontSize: 12.5 }}>🚛 {c.cisterna_placa || 'Cisterna General'}</div>
+                        <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{c.conductor_nombre || 'Conductor asignado'}</div>
                       </td>
                       <td style={{ whiteSpace: 'nowrap' }}>{getCloroBadge(c.cloro_residual_ppm)}</td>
-                      <td style={{ whiteSpace: 'nowrap' }}>{getTurbiedadBadge(c.turbiedad_ntu)}</td>
-                      <td style={{ color: '#475569', minWidth: 120 }}>{c.aspecto_organoleptico}</td>
+                      <td>
+                        <div>{getTurbiedadBadge(c.turbiedad_ntu)}</div>
+                        <div style={{ fontSize: 11, color: '#475569', marginTop: 3 }}>
+                          💧 {c.aspecto_organoleptico}
+                        </div>
+                      </td>
                       <td style={{ whiteSpace: 'nowrap' }}>
                         {c.conforme_sanitario ? (
                           <span className="status-badge-compact status-cumplido">
@@ -724,9 +724,9 @@ export default function CalidadPage() {
                             <span>Alerta</span>
                           </span>
                         )}
-                      </td>
-                      <td style={{ fontSize: 12, color: '#64748b', minWidth: 120 }}>
-                        {c.registrado_por}
+                        <div style={{ fontSize: 10.5, color: '#64748b', marginTop: 3 }}>
+                          👤 {c.registrado_por}
+                        </div>
                       </td>
                     </tr>
                   ))}
