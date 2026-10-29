@@ -65,10 +65,14 @@ export const getAllProgramaciones = async (req: Request, res: Response) => {
         (SELECT COUNT(*) FROM entregas_agua e WHERE e.programacion_id = p.id) as total_entregas,
         (SELECT COALESCE(SUM(litros_entregados), 0) FROM entregas_agua e WHERE e.programacion_id = p.id) as total_litros,
         (SELECT CASE WHEN COUNT(*) > 0 THEN ROUND(COALESCE(SUM(litros_entregados), 0) / COUNT(*), 0) ELSE 0 END FROM entregas_agua e WHERE e.programacion_id = p.id) as volumen_promedio,
-        (SELECT COALESCE(SUM(b.num_miembros), 0) FROM entregas_agua e JOIN beneficiarios b ON e.beneficiario_id = b.id WHERE e.programacion_id = p.id) as poblacion_beneficiada,
+        (SELECT COALESCE(SUM(b.num_miembros), 0) FROM (
+          SELECT DISTINCT ON (e.beneficiario_id) e.beneficiario_id 
+          FROM entregas_agua e 
+          WHERE e.programacion_id = p.id
+        ) eb JOIN beneficiarios b ON eb.beneficiario_id = b.id) as poblacion_beneficiada,
         (SELECT ROUND((COALESCE(SUM(litros_entregados), 0)::numeric / 1000.0) * 39.13, 2) FROM entregas_agua e WHERE e.programacion_id = p.id) as monto_valorizado,
         ROUND((COALESCE(p.litros_programados, 15000)::numeric / 1000.0) * 39.13, 2) as monto_programado,
-        ROUND(COALESCE(p.litros_programados, 15000)::numeric / 350.0 * 4) as poblacion_programada,
+        ROUND(COALESCE(p.litros_programados, 15000)::numeric / 350.0) as poblacion_programada,
         (SELECT COALESCE(SUM(litros_entregados), 0) FROM entregas_agua e WHERE e.programacion_id = p.id AND e.fecha_hora >= date_trunc('week', CURRENT_DATE)) as litros_esta_semana,
         (SELECT COALESCE(SUM(litros_entregados), 0) FROM entregas_agua e WHERE e.programacion_id = p.id AND e.fecha_hora >= date_trunc('month', CURRENT_DATE)) as litros_este_mes,
         (SELECT COUNT(DISTINCT e.beneficiario_id) FROM entregas_agua e WHERE e.programacion_id = p.id AND e.fecha_hora >= date_trunc('week', CURRENT_DATE)) as familias_esta_semana,
