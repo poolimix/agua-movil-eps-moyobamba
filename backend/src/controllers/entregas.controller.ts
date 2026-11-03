@@ -8,27 +8,32 @@ import { stampWatermarkOnImage } from '../utils/watermark';
 
 export const getAllEntregas = async (req: Request, res: Response) => {
   try {
-    const { page, limit, search, programacion_id } = req.query;
+    const { page, limit, search, programacion_id, fecha } = req.query;
+
+    let whereClauses: string[] = [];
+    let params: any[] = [];
+
+    if (search) {
+      params.push(`%${String(search).trim()}%`);
+      whereClauses.push(`(b.dni ILIKE $${params.length} OR b.nombres_apellidos ILIKE $${params.length} OR b.sector_aahh ILIKE $${params.length} OR e.local_id ILIKE $${params.length})`);
+    }
+
+    if (programacion_id) {
+      params.push(programacion_id);
+      whereClauses.push(`e.programacion_id = $${params.length}`);
+    }
+
+    if (fecha) {
+      params.push(String(fecha).trim());
+      whereClauses.push(`(e.fecha_asignada = $${params.length} OR TO_CHAR(e.fecha_hora, 'YYYY-MM-DD') = $${params.length})`);
+    }
+
+    const whereStr = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
 
     if (page || limit) {
       const pageNum = Math.max(1, parseInt(String(page), 10) || 1);
       const limitNum = Math.max(1, parseInt(String(limit), 10) || 20);
       const offset = (pageNum - 1) * limitNum;
-
-      let whereClauses: string[] = [];
-      let params: any[] = [];
-
-      if (search) {
-        params.push(`%${String(search).trim()}%`);
-        whereClauses.push(`(b.dni ILIKE $${params.length} OR b.nombres_apellidos ILIKE $${params.length} OR b.sector_aahh ILIKE $${params.length} OR e.local_id ILIKE $${params.length})`);
-      }
-
-      if (programacion_id) {
-        params.push(programacion_id);
-        whereClauses.push(`e.programacion_id = $${params.length}`);
-      }
-
-      const whereStr = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
 
       const countRes = await query(`
         SELECT COUNT(*) as total 
@@ -90,8 +95,9 @@ export const getAllEntregas = async (req: Request, res: Response) => {
       LEFT JOIN programaciones p ON e.programacion_id = p.id
       LEFT JOIN cisternas c ON e.cisterna_id = c.id
       LEFT JOIN cisternas pc ON p.cisterna_id = pc.id
+      ${whereStr}
       ORDER BY e.fecha_hora DESC
-    `);
+    `, params);
     res.json(result.rows);
   } catch (error: any) {
     console.error('Error fetching entregas:', error);
@@ -921,7 +927,7 @@ export const actualizarFotoEntrega = async (req: Request, res: Response) => {
     } else if (req.body.fotoBase64 || req.body.foto_base64) {
       const rawBase64 = String(req.body.fotoBase64 || req.body.foto_base64);
       const b64Clean = rawBase64.replace(/^data:image\/\w+;base64,/, '');
-      const safeName = `entrega-web-${id}-${Date.now()}.jpg`;
+      const safeName = `entrega-web-${id}-${Date.now()}.webp`;
       const filePath = path.join(uploadDir, safeName);
       fs.writeFileSync(filePath, Buffer.from(b64Clean, 'base64'));
       fotoUrl = `/uploads/registros/${safeName}`;
@@ -937,7 +943,7 @@ export const actualizarFotoEntrega = async (req: Request, res: Response) => {
           ? new Date(fechaRef).toLocaleString('es-PE')
           : new Date().toLocaleString('es-PE');
 
-        await stampWatermarkOnImage(localSavedFilePath, {
+        const stampedWebp = await stampWatermarkOnImage(localSavedFilePath, {
           beneficiario: entrega.nombres_apellidos || 'Beneficiario Acreditado',
           dni: entrega.dni || '-',
           sector: entrega.sector || 'Moyobamba',
@@ -948,6 +954,10 @@ export const actualizarFotoEntrega = async (req: Request, res: Response) => {
           fechaHora: dateStr,
           cisterna: entrega.cisterna_placa || 'CAT-849',
         });
+
+        if (stampedWebp) {
+          fotoUrl = `/uploads/registros/${path.basename(stampedWebp)}`;
+        }
       } catch (wmErr) {
         console.warn('Error estampando membrete en foto actualizada:', wmErr);
       }
@@ -1109,7 +1119,7 @@ export const registrarEntregaGrupalSector = async (req: Request, res: Response) 
       try {
         const rawBase64 = String(req.body.fotoBase64 || req.body.foto_base64);
         const b64Clean = rawBase64.replace(/^data:image\/\w+;base64,/, '');
-        const safeName = `entrega-deposito-sector-${Date.now()}.jpg`;
+        const safeName = `entrega-deposito-sector-${Date.now()}.webp`;
         const filePath = path.join(uploadDir, safeName);
         fs.writeFileSync(filePath, Buffer.from(b64Clean, 'base64'));
         fotoUrl = `/uploads/registros/${safeName}`;
@@ -1124,10 +1134,10 @@ export const registrarEntregaGrupalSector = async (req: Request, res: Response) 
       : new Date();
     const fechaAsignadaStr = fecha_entrega ? String(fecha_entrega).slice(0, 10) : fechaHoraRegistro.toISOString().slice(0, 10);
 
-    // Estampar membrete oficial en la foto del depósito único
+    // Estampar membrete oficial en la foto del depósito único y comprimir a WebP
     if (localSavedFilePath && fs.existsSync(localSavedFilePath)) {
       try {
-        await stampWatermarkOnImage(localSavedFilePath, {
+        const stampedWebp = await stampWatermarkOnImage(localSavedFilePath, {
           beneficiario: `DEPÓSITO ÚNICO (${idsArray.length} BENEFICIARIOS)`,
           dni: `${Math.round(litrosTotales)} L TOTAL`,
           sector: String(sector || 'Sector Moyobamba'),
@@ -1138,6 +1148,10 @@ export const registrarEntregaGrupalSector = async (req: Request, res: Response) 
           fechaHora: fechaHoraRegistro.toLocaleString('es-PE'),
           cisterna: cisternaPlaca,
         });
+
+        if (stampedWebp) {
+          fotoUrl = `/uploads/registros/${path.basename(stampedWebp)}`;
+        }
       } catch (wmErr) {
         console.warn('Error estampando membrete en depósito grupal:', wmErr);
       }

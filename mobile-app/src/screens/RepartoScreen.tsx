@@ -23,7 +23,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Location from 'expo-location';
 import { getDatabase } from '../database/schema';
-import { syncData } from '../services/SyncService';
+import { syncData, autoRecoverPendingSync } from '../services/SyncService';
 import { BACKEND_URL } from '../config/api';
 import AppUpdateModal from '../components/AppUpdateModal';
 
@@ -67,6 +67,35 @@ export const getDiasCicloSemanal = () => {
       esHoy,
     };
   });
+};
+
+export const getFechaLarga = (dia: any) => {
+  if (!dia) return 'Hoy';
+  const meses = [
+    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+  ];
+  if (dia.fechaIso) {
+    const parts = String(dia.fechaIso).split('-');
+    if (parts.length === 3) {
+      const anio = parts[0];
+      const mesIdx = parseInt(parts[1], 10) - 1;
+      const diaN = parseInt(parts[2], 10);
+      return `${dia.nombre}, ${diaN < 10 ? '0' + diaN : diaN} de ${meses[mesIdx] || ''} ${anio}`;
+    }
+  }
+  return dia.fechaDisplay || `${dia.nombre} ${dia.fechaCorta}`;
+};
+
+export const formatHoraEntrega = (fechaStr?: string) => {
+  if (!fechaStr) return '--:--';
+  try {
+    const d = new Date(fechaStr.replace(' ', 'T'));
+    if (isNaN(d.getTime())) return fechaStr.slice(11, 16) || '--:--';
+    return d.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', hour12: true });
+  } catch (_) {
+    return '--:--';
+  }
 };
 
 interface RepartoScreenProps {
@@ -158,6 +187,12 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
   const [fotoDepositoUri, setFotoDepositoUri] = useState<string | null>(null);
   const [savingDeposito, setSavingDeposito] = useState(false);
 
+  // Entregas registradas hoy / jornada seleccionada
+  const [entregasDelDia, setEntregasDelDia] = useState<any[]>([]);
+  const [loadingEntregasDia, setLoadingEntregasDia] = useState(false);
+  const [modalEntregasDiaVisible, setModalEntregasDiaVisible] = useState(false);
+  const [filtroModalEntregas, setFiltroModalEntregas] = useState('');
+
   const formatDiasSemana = (dias?: string) => {
     if (!dias) return 'Lunes a Viernes';
     const partes = dias.split(',').map((d) => d.trim()).filter(Boolean);
@@ -241,12 +276,34 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
 
   useEffect(() => {
     (async () => {
-      await fetchGpsLocation();
-      await loadCisternasAndConductores();
-      await loadProgramaciones();
-      await loadSystemConfig();
+      try {
+        await fetchGpsLocation();
+        await loadCisternasAndConductores();
+        await loadProgramaciones();
+        await loadSystemConfig();
+        await loadEntregasDelDia();
+        // Auto-recuperación al iniciar la App: verifica si hay entregas pendientes que ya existen en PostgreSQL
+        const rec = await autoRecoverPendingSync();
+        if (rec.recoveredCount > 0) {
+          if (selectedProg?.id) {
+            loadBeneficiariosSector(selectedProg.id).catch(() => {});
+          }
+          await loadEntregasDelDia();
+        }
+      } catch (initErr) {
+        console.warn('Error inicializando pantalla de reparto:', initErr);
+      } finally {
+        setIsSyncing(false);
+      }
     })();
   }, []);
+
+  // Recargar entregas cada vez que se cambie la jornada o día seleccionado
+  useEffect(() => {
+    if (diaSeleccionado?.fechaIso) {
+      loadEntregasDelDia(diaSeleccionado.fechaIso);
+    }
+  }, [diaSeleccionado?.fechaIso]);
 
   const loadSystemConfig = async () => {
     try {
@@ -372,6 +429,86 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
       return beneficiariosSector;
     } finally {
       setLoadingBeneficiarios(false);
+    }
+  };
+
+  // Cargar lista completa de entregas realizadas en la jornada de hoy / día seleccionado
+  const loadEntregasDelDia = async (targetFecha?: string) => {
+    const fIso = targetFecha || diaSeleccionado?.fechaIso || new Date().toISOString().slice(0, 10);
+    try {
+      setLoadingEntregasDia(true);
+      const db = await getDatabase();
+      const localRows: any[] = await db.getAllAsync(
+        `SELECT 
+          e.id,
+          e.local_id,
+          e.beneficiario_id,
+          e.programacion_id,
+          e.cisterna_id,
+          e.cuota_programada,
+          e.litros_entregados,
+          e.saldo_pendiente,
+          e.estado_entrega,
+          e.observaciones_entrega,
+          e.foto_local_uri,
+          e.latitud,
+          e.longitud,
+          e.precision_gps,
+          e.fecha_captura,
+          e.fecha_hora,
+          e.dia_entrega,
+          e.fecha_asignada,
+          e.sincronizado,
+          e.sync_status,
+          COALESCE(b.nombres_apellidos, 'Beneficiario #' || e.beneficiario_id) as nombres_apellidos,
+          b.dni,
+          COALESCE(b.sector_aahh, b.sector, 'Sector') as sector,
+          b.mz,
+          b.lt,
+          COALESCE(b.num_miembros, 1) as num_miembros
+        FROM entregas_agua e
+        LEFT JOIN beneficiarios b ON b.id = e.beneficiario_id
+        WHERE (
+          e.fecha_asignada = ?
+          OR substr(COALESCE(e.fecha_captura, e.fecha_hora, ''), 1, 10) = ?
+        )
+        ORDER BY e.id DESC`,
+        [fIso, fIso]
+      );
+
+      let mergedList: any[] = Array.isArray(localRows) ? [...localRows] : [];
+
+      try {
+        const res = await fetch(`${BACKEND_URL}/entregas?fecha=${fIso}&limit=300`);
+        if (res.ok) {
+          const json = await res.json();
+          const serverRows: any[] = Array.isArray(json) ? json : (json.data || []);
+          if (Array.isArray(serverRows) && serverRows.length > 0) {
+            const localKeys = new Set(
+              mergedList.map((m: any) => m.local_id || `b-${m.beneficiario_id}-${String(m.fecha_asignada || m.fecha_hora || '').slice(0, 10)}`)
+            );
+            for (const s of serverRows) {
+              const sKey = s.local_id || `b-${s.beneficiario_id}-${String(s.fecha_asignada || s.fecha_hora || '').slice(0, 10)}`;
+              if (!localKeys.has(sKey)) {
+                mergedList.push({
+                  ...s,
+                  sincronizado: 1,
+                  sync_status: 'SYNCED',
+                  nombres_apellidos: s.nombres_apellidos || `Beneficiario #${s.beneficiario_id}`,
+                  sector: s.sector || s.sector_aahh || 'Sector',
+                  num_miembros: s.num_miembros || 1,
+                });
+              }
+            }
+          }
+        }
+      } catch (_) {}
+
+      setEntregasDelDia(mergedList);
+    } catch (err) {
+      console.warn('Error al cargar entregas del día:', err);
+    } finally {
+      setLoadingEntregasDia(false);
     }
   };
 
@@ -576,7 +713,17 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
         quality: 0.8,
       });
       if (!res.canceled && res.assets && res.assets.length > 0) {
-        setFotoDepositoUri(res.assets[0].uri);
+        let photoUri = res.assets[0].uri;
+        // Optimizar y comprimir imagen en formato WEBP ultra-ligero para que suba rápido y no consuma megabytes en el celular
+        try {
+          const manipulated = await ImageManipulator.manipulateAsync(
+            photoUri,
+            [{ resize: { width: 1024 } }],
+            { compress: 0.75, format: ImageManipulator.SaveFormat.WEBP }
+          );
+          photoUri = manipulated.uri;
+        } catch (_) {}
+        setFotoDepositoUri(photoUri);
       }
     } catch (err: any) {
       Alert.alert('Error de cámara', err.message);
@@ -738,6 +885,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
               setDepositoModalVisible(false);
               await loadBeneficiariosSector(progId);
               await loadProgramaciones();
+              await loadEntregasDelDia(fechaIso);
 
               Alert.alert(
                 '✅ Entrega del Sector Registrada',
@@ -1240,13 +1388,13 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
         }
         setPhotoGpsCoords({ lat, lng, acc });
 
-        // 3. Optimización ligera de imagen para carga fluida (sin bloquear la UI)
+        // 3. Optimización y compresión a WEBP ultra-ligero (reduce ~60% peso respecto a JPEG)
         let finalDisplayUri = rawUri;
         try {
           const manipulated = await ImageManipulator.manipulateAsync(
             rawUri,
-            [{ resize: { width: 1200 } }],
-            { compress: 0.82, format: ImageManipulator.SaveFormat.JPEG }
+            [{ resize: { width: 1024 } }],
+            { compress: 0.75, format: ImageManipulator.SaveFormat.WEBP }
           );
           finalDisplayUri = manipulated.uri;
         } catch (_) {}
@@ -1272,8 +1420,8 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
         if (!dirInfo.exists) {
           await FileSystem.makeDirectoryAsync(dirPath, { intermediates: true });
         }
-        const ext = tempPhotoUri.split('.').pop()?.split('?')[0] || 'jpg';
-        const targetPath = `${dirPath}evidencia_${Date.now()}.${ext}`;
+        const ext = tempPhotoUri.split('.').pop()?.split('?')[0] || 'webp';
+        const targetPath = `${dirPath}evidencia_${Date.now()}.${ext === 'jpg' || ext === 'jpeg' ? 'webp' : ext}`;
         await FileSystem.copyAsync({ from: tempPhotoUri, to: targetPath });
         permanentUri = targetPath;
       }
@@ -1414,6 +1562,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
       syncData().catch(() => {});
       loadBeneficiariosSector(progId).catch(() => {});
       loadProgramaciones().catch(() => {});
+      loadEntregasDelDia(diaSeleccionado?.fechaIso).catch(() => {});
 
       // Reset Form
       handleCancelBeneficiary();
@@ -1434,13 +1583,60 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
 
   const handleManualSync = async () => {
     setIsSyncing(true);
-    const res = await syncData(true);
-    setIsSyncing(false);
-    if (selectedProg?.id) {
-      loadBeneficiariosSector(selectedProg.id).catch(() => {});
-      loadProgramaciones().catch(() => {});
+
+    let timedOut = false;
+    // Timeout de Seguridad: si tarda más de 20s, fuerza isSyncing = false y muestra la alerta solicitada
+    const safetyTimer = setTimeout(() => {
+      timedOut = true;
+      setIsSyncing(false);
+
+      // Ejecutar auto-recuperación en segundo plano por si el backend ya recibió la información
+      autoRecoverPendingSync()
+        .then((rec) => {
+          if (rec.recoveredCount > 0 && selectedProg?.id) {
+            loadBeneficiariosSector(selectedProg.id).catch(() => {});
+            loadProgramaciones().catch(() => {});
+          }
+        })
+        .catch(() => {});
+
+      Alert.alert(
+        'Aviso de Sincronización',
+        'La sincronización tardó demasiado. Comprueba si los datos ya figuran en la lista o vuelve a intentar.'
+      );
+    }, 20000);
+
+    try {
+      // 1. Auto-recuperación previa al sincronizar: valida qué registros ya están en PostgreSQL
+      const rec = await autoRecoverPendingSync();
+
+      // 2. Ejecutar proceso de sincronización
+      const res = await syncData(true);
+
+      if (timedOut) return;
+      clearTimeout(safetyTimer);
+
+      Alert.alert(
+        res.success || rec.recoveredCount > 0 ? 'Sincronización Exitosa' : 'Aviso de Sincronización',
+        res.message
+      );
+    } catch (err: any) {
+      if (timedOut) return;
+      clearTimeout(safetyTimer);
+      console.error('Error en sync manual:', err);
+      Alert.alert(
+        'Aviso de Sincronización',
+        'No se pudo conectar con el servidor en este momento. Los datos siguen guardados localmente.'
+      );
+    } finally {
+      clearTimeout(safetyTimer);
+      setIsSyncing(false);
+      if (selectedProg?.id) {
+        loadBeneficiariosSector(selectedProg.id).catch(() => {});
+        loadProgramaciones().catch(() => {});
+      }
+      loadEntregasDelDia(diaSeleccionado?.fechaIso).catch(() => {});
     }
-    Alert.alert(res.success ? 'Sincronización Exitosa' : 'Aviso', res.message);
   };
 
   const handleLogoutConfirm = () => {
@@ -1517,6 +1713,40 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
   };
 
   const progMetrics = getProgMetrics(selectedProg);
+
+  // Métricas reales y comparativa de la jornada de hoy / día seleccionado
+  const fIsoActual = diaSeleccionado?.fechaIso || new Date().toISOString().slice(0, 10);
+  const esFechaHoy = diaSeleccionado?.esHoy ?? (fIsoActual === new Date().toISOString().slice(0, 10));
+
+  const litrosEntregadosDia = entregasDelDia.reduce((acc, curr) => acc + (Number(curr.litros_entregados) || 0), 0);
+  const distinctBenefIds = new Set(entregasDelDia.map(e => e.beneficiario_id).filter(Boolean));
+  const familiasAtendidasDia = distinctBenefIds.size || entregasDelDia.length;
+  
+  const poblacionAtendidaDia = entregasDelDia.reduce((acc, curr) => acc + (Number(curr.num_miembros) || 1), 0);
+  const montoValorizadoDia = Number(((litrosEntregadosDia / 1000) * 39.13).toFixed(2));
+  const volPromedioDia = familiasAtendidasDia > 0 ? Math.round(litrosEntregadosDia / familiasAtendidasDia) : 0;
+
+  // Comparativa: Meta del día (Cisterna asignada o programación) vs Entregado hoy
+  const metaLitrosDia = Number(
+    activeCisterna?.capacidad_litros || 
+    selectedProg?.cisterna_capacidad_litros || 
+    selectedProg?.litros_programados || 
+    19000
+  );
+  const totalFamiliasPadrón = beneficiariosSector.length || Number(selectedProg?.total_beneficiarios || selectedProg?.poblacion_programada || 0);
+  const familiasPendientesDia = Math.max(0, totalFamiliasPadrón - familiasAtendidasDia);
+  const litrosRestantesDia = Math.max(0, metaLitrosDia - litrosEntregadosDia);
+  const porcentajeAvanceLitros = metaLitrosDia > 0 ? Math.min(100, Math.round((litrosEntregadosDia / metaLitrosDia) * 100)) : 0;
+  const porcentajeAvanceFamilias = totalFamiliasPadrón > 0 ? Math.min(100, Math.round((familiasAtendidasDia / totalFamiliasPadrón) * 100)) : 0;
+
+  // Métricas consolidadas del día
+  const diaMetrics = {
+    volRepartido: litrosEntregadosDia > 0 ? litrosEntregadosDia : Number(selectedProg?.total_litros || 0),
+    volPromedio: volPromedioDia > 0 ? volPromedioDia : (Number(selectedProg?.volumen_promedio) || 0),
+    poblacion: poblacionAtendidaDia > 0 ? poblacionAtendidaDia : (Number(selectedProg?.poblacion_beneficiada) || 0),
+    monto: montoValorizadoDia > 0 ? montoValorizadoDia : (Number(selectedProg?.monto_valorizado) || 0),
+    familias: familiasAtendidasDia > 0 ? familiasAtendidasDia : Number(selectedProg?.total_entregas || 0),
+  };
 
   return (
     <KeyboardAvoidingView
@@ -2188,19 +2418,97 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
             </View>
           </View>
 
-          {/* CARD 5: AVANCE DE JORNADA & 4 INDICADORES CLAVE */}
+          {/* CARD 5: AVANCE DE JORNADA & COMPARATIVA DIARIA */}
           <View style={styles.avanceCard}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <View>
-                <Text style={styles.avanceLabel}>ENTREGAS HOY</Text>
-                <Text style={styles.avanceValue}>
-                  {selectedProg?.total_entregas || 0} Familias Atendidas
+            {/* ENCABEZADO CON FECHA DEL DÍA DESTACADA */}
+            <View style={styles.avanceHeaderContainer}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, marginRight: 8 }}>
+                  <Ionicons name="calendar" size={17} color="#0284c7" />
+                  <Text style={styles.avanceFechaTitle} numberOfLines={1}>
+                    {getFechaLarga(diaSeleccionado)}
+                  </Text>
+                </View>
+                <View style={[
+                  styles.avanceBadgeJornada,
+                  esFechaHoy ? styles.avanceBadgeJornadaHoy : styles.avanceBadgeJornadaDiferido
+                ]}>
+                  <Text style={[
+                    styles.avanceBadgeJornadaText,
+                    esFechaHoy ? styles.avanceBadgeJornadaTextHoy : styles.avanceBadgeJornadaTextDiferido
+                  ]}>
+                    {esFechaHoy ? '🟢 HOY' : `⚠️ ${diaSeleccionado?.codigo || 'DÍA'}`}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={styles.avanceSubHeader}>
+                  {esFechaHoy ? 'Jornada activa de reparto de agua' : `Regularización asignada al día ${diaSeleccionado?.nombre}`}
+                </Text>
+                <TouchableOpacity 
+                  style={styles.btnCambiarDiaInline}
+                  onPress={() => setDiaPickerModalVisible(true)}
+                  activeOpacity={0.75}
+                >
+                  <Ionicons name="swap-horizontal" size={12} color="#0284c7" />
+                  <Text style={styles.btnCambiarDiaInlineText}>Cambiar Día</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* COMPARATIVA DE JORNADA: META PROGRAMADA VS DESPACHADO REAL */}
+            <View style={styles.comparativaContainer}>
+              <View style={styles.comparativaCol}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 2 }}>
+                  <Ionicons name="flag-outline" size={12} color="#64748b" />
+                  <Text style={styles.comparativaColLabel}>META A ENTREGAR</Text>
+                </View>
+                <Text style={styles.comparativaColValue}>
+                  {metaLitrosDia.toLocaleString('es-PE')} Lts
+                </Text>
+                <Text style={styles.comparativaColSub}>
+                  🚛 Cisterna: {activeCisterna?.placa || selectedProg?.cisterna_placa || 'CAT-849'}
+                </Text>
+                <Text style={styles.comparativaColSub}>
+                  👥 {totalFamiliasPadrón} Familias en Padrón
                 </Text>
               </View>
-              <View style={{ alignItems: 'flex-end' }}>
-                <Text style={styles.avanceLabel}>VOLUMEN DESPACHADO</Text>
-                <Text style={[styles.avanceValue, { color: '#0284c7' }]}>
-                  {Number(selectedProg?.total_litros || 0).toLocaleString('es-PE')} Lts
+
+              <View style={styles.comparativaDivider} />
+
+              <View style={[styles.comparativaCol, { alignItems: 'flex-end' }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 2 }}>
+                  <Ionicons name="water" size={12} color="#0284c7" />
+                  <Text style={[styles.comparativaColLabel, { color: '#0284c7' }]}>LO QUE VOY ENTREGANDO</Text>
+                </View>
+                <Text style={[styles.comparativaColValue, { color: '#0284c7' }]}>
+                  {diaMetrics.volRepartido.toLocaleString('es-PE')} Lts
+                </Text>
+                <Text style={[styles.comparativaColSub, { color: '#0369a1', fontWeight: '800' }]}>
+                  ✅ {diaMetrics.familias} Familias Atendidas
+                </Text>
+                <Text style={styles.comparativaColSub}>
+                  ⏳ Resta: {litrosRestantesDia.toLocaleString('es-PE')} Lts ({Math.max(0, 100 - porcentajeAvanceLitros)}%)
+                </Text>
+              </View>
+            </View>
+
+            {/* BARRA VISUAL DE PROGRESO DE CISTERNA */}
+            <View style={styles.progressBarWrapper}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <Text style={styles.progressBarLabel}>Avance del Día en Cisterna</Text>
+                <Text style={styles.progressBarPercent}>{porcentajeAvanceLitros}% Despachado</Text>
+              </View>
+              <View style={styles.progressBarTrack}>
+                <View style={[styles.progressBarFill, { width: `${Math.min(100, Math.max(0, porcentajeAvanceLitros))}%` }]} />
+              </View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+                <Text style={styles.progressBarSub}>
+                  {diaMetrics.familias} de {totalFamiliasPadrón} Familias ({porcentajeAvanceFamilias}%)
+                </Text>
+                <Text style={styles.progressBarSub}>
+                  {litrosRestantesDia > 0 ? `${litrosRestantesDia.toLocaleString('es-PE')} L disponibles` : '¡Cisterna completada!'}
                 </Text>
               </View>
             </View>
@@ -2210,15 +2518,15 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
               <View style={[styles.metricQuadCard, { backgroundColor: '#f0f9ff', borderColor: '#bae6fd' }]}>
                 <Text style={[styles.metricQuadTag, { color: '#0369a1' }]}>🚰 VOL. REPARTIDO</Text>
                 <Text style={[styles.metricQuadValue, { color: '#0369a1' }]}>
-                  {progMetrics.volRepartido.toLocaleString()} L
+                  {diaMetrics.volRepartido.toLocaleString()} L
                 </Text>
-                <Text style={styles.metricQuadSub}>{(progMetrics.volRepartido / 1000).toFixed(1)} m³ fiscalizados</Text>
+                <Text style={styles.metricQuadSub}>{(diaMetrics.volRepartido / 1000).toFixed(1)} m³ fiscalizados</Text>
               </View>
 
               <View style={[styles.metricQuadCard, { backgroundColor: '#eef2ff', borderColor: '#c7d2fe' }]}>
                 <Text style={[styles.metricQuadTag, { color: '#3730a3' }]}>📊 VOL. PROMEDIO</Text>
                 <Text style={[styles.metricQuadValue, { color: '#3730a3' }]}>
-                  {progMetrics.volPromedio.toLocaleString()} L
+                  {diaMetrics.volPromedio.toLocaleString()} L
                 </Text>
                 <Text style={styles.metricQuadSub}>Por familia entregada</Text>
               </View>
@@ -2226,7 +2534,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
               <View style={[styles.metricQuadCard, { backgroundColor: '#faf5ff', borderColor: '#e9d5ff' }]}>
                 <Text style={[styles.metricQuadTag, { color: '#6b21a8' }]}>👥 POBLACIÓN</Text>
                 <Text style={[styles.metricQuadValue, { color: '#6b21a8' }]}>
-                  {progMetrics.poblacion.toLocaleString()} hab.
+                  {diaMetrics.poblacion.toLocaleString()} hab.
                 </Text>
                 <Text style={styles.metricQuadSub}>Beneficiarios en ruta</Text>
               </View>
@@ -2234,11 +2542,35 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
               <View style={[styles.metricQuadCard, { backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' }]}>
                 <Text style={[styles.metricQuadTag, { color: '#166534' }]}>💰 MONTO VALORIZADO</Text>
                 <Text style={[styles.metricQuadValue, { color: '#166534' }]}>
-                  S/. {progMetrics.monto.toFixed(2)}
+                  S/. {diaMetrics.monto.toFixed(2)}
                 </Text>
                 <Text style={styles.metricQuadSub}>Subsidio EPS / PNSU</Text>
               </View>
             </View>
+
+            {/* BOTÓN PARA VER REALMENTE LO QUE SE ENTREGÓ HOY */}
+            <TouchableOpacity
+              style={styles.btnVerDetalleEntregas}
+              onPress={() => setModalEntregasDiaVisible(true)}
+              activeOpacity={0.82}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+                <View style={styles.iconBoxDetalleEntregas}>
+                  <Ionicons name="clipboard-outline" size={18} color="#0284c7" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.btnVerDetalleEntregasText}>
+                    Ver Entregas Realizadas Hoy ({entregasDelDia.length})
+                  </Text>
+                  <Text style={styles.btnVerDetalleEntregasSub}>
+                    {entregasDelDia.length > 0
+                      ? `${diaMetrics.volRepartido.toLocaleString('es-PE')} L • ${diaMetrics.familias} familias atendidas`
+                      : 'Toca para auditar beneficiarios, firmas y fotos'}
+                  </Text>
+                </View>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="#0284c7" />
+            </TouchableOpacity>
           </View>
 
           {/* BOTÓN PRINCIPAL DE ACCIÓN: CONDUCCIÓN VS REGISTRO COORDINADOR */}
@@ -4545,6 +4877,218 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
         </View>
       </Modal>
 
+      {/* MODAL DETALLE DE ENTREGAS REALIZADAS HOY / FECHA SELECCIONADA */}
+      <Modal
+        visible={modalEntregasDiaVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setModalEntregasDiaVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.entregasDiaModalContent}>
+            {/* MODAL HEADER */}
+            <View style={styles.modalCalidadHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+                <View style={[styles.avatarCircle, { width: 38, height: 38, borderRadius: 19, backgroundColor: '#e0f2fe' }]}>
+                  <Ionicons name="clipboard" size={20} color="#0284c7" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.modalCalidadTitle}>Entregas Realizadas</Text>
+                  <Text style={styles.modalCalidadSubtitle}>
+                    {getFechaLarga(diaSeleccionado)}
+                  </Text>
+                </View>
+              </View>
+
+              <TouchableOpacity
+                onPress={() => setModalEntregasDiaVisible(false)}
+                style={styles.modalCloseCircle}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="close" size={20} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            {/* KPI CHIPS RESUMEN */}
+            <View style={styles.entregasKpiRow}>
+              <View style={styles.entregaKpiChip}>
+                <Ionicons name="water" size={12} color="#0284c7" />
+                <Text style={styles.entregaKpiChipText}>
+                  {diaMetrics.volRepartido.toLocaleString('es-PE')} Lts
+                </Text>
+              </View>
+
+              <View style={[styles.entregaKpiChip, { backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' }]}>
+                <Ionicons name="people" size={12} color="#16a34a" />
+                <Text style={[styles.entregaKpiChipText, { color: '#166534' }]}>
+                  {diaMetrics.familias} Familias
+                </Text>
+              </View>
+
+              <View style={[styles.entregaKpiChip, { backgroundColor: '#f8fafc', borderColor: '#cbd5e1' }]}>
+                <Ionicons name="cloud-done-outline" size={12} color="#0369a1" />
+                <Text style={[styles.entregaKpiChipText, { color: '#334155' }]}>
+                  {entregasDelDia.filter(e => e.sincronizado === 1 || e.sync_status === 'SYNCED').length} Sinc.
+                </Text>
+              </View>
+
+              {entregasDelDia.some(e => e.sincronizado === 0 || e.sync_status !== 'SYNCED') && (
+                <View style={[styles.entregaKpiChip, { backgroundColor: '#fef3c7', borderColor: '#fde68a' }]}>
+                  <Ionicons name="time-outline" size={12} color="#b45309" />
+                  <Text style={[styles.entregaKpiChipText, { color: '#b45309' }]}>
+                    {entregasDelDia.filter(e => e.sincronizado === 0 || e.sync_status !== 'SYNCED').length} Pend.
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            {/* BUSCADOR DENTRO DEL MODAL */}
+            <View style={styles.modalFilterSearchBox}>
+              <Ionicons name="search" size={15} color="#94a3b8" />
+              <TextInput
+                style={styles.modalFilterSearchInput}
+                placeholder="Buscar por nombre, DNI o sector..."
+                placeholderTextColor="#94a3b8"
+                value={filtroModalEntregas}
+                onChangeText={setFiltroModalEntregas}
+              />
+              {filtroModalEntregas.length > 0 && (
+                <TouchableOpacity onPress={() => setFiltroModalEntregas('')}>
+                  <Ionicons name="close-circle" size={16} color="#94a3b8" />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* LISTA DE ENTREGAS */}
+            {loadingEntregasDia ? (
+              <View style={{ paddingVertical: 40, alignItems: 'center' }}>
+                <ActivityIndicator size="large" color="#0284c7" />
+                <Text style={{ fontSize: 12, color: '#64748b', marginTop: 10 }}>Cargando registros...</Text>
+              </View>
+            ) : (() => {
+              const term = filtroModalEntregas.trim().toLowerCase();
+              const filtradas = entregasDelDia.filter((e) => {
+                if (!term) return true;
+                const nom = (e.nombres_apellidos || '').toLowerCase();
+                const d = (e.dni || '').toLowerCase();
+                const s = (e.sector || '').toLowerCase();
+                return nom.includes(term) || d.includes(term) || s.includes(term);
+              });
+
+              if (filtradas.length === 0) {
+                return (
+                  <View style={styles.entregasEmptyBox}>
+                    <Ionicons name="file-tray-outline" size={40} color="#cbd5e1" />
+                    <Text style={styles.entregasEmptyTitle}>
+                      {entregasDelDia.length === 0
+                        ? 'Sin entregas registradas en esta fecha'
+                        : 'No se encontraron coincidencias'}
+                    </Text>
+                    <Text style={styles.entregasEmptySub}>
+                      {entregasDelDia.length === 0
+                        ? 'Las entregas individuales y de depósitos únicos registradas para esta jornada se mostrarán aquí.'
+                        : 'Prueba con otro término de búsqueda.'}
+                    </Text>
+                  </View>
+                );
+              }
+
+              return (
+                <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false}>
+                  <View style={{ gap: 8, paddingVertical: 4 }}>
+                    {filtradas.map((item, idx) => {
+                      const esDep = String(item.local_id || '').startsWith('dep-') || String(item.observaciones_entrega || '').includes('Depósito Único');
+                      const isSynced = item.sincronizado === 1 || item.sync_status === 'SYNCED';
+                      const fotoUri = item.foto_local_uri || item.foto_evidencia;
+
+                      return (
+                        <View key={`ent-dia-${item.id || item.local_id || idx}`} style={styles.entregaDiaCard}>
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                            <View style={{ flex: 1, marginRight: 8 }}>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                <Text style={styles.entregaDiaNombre} numberOfLines={1}>
+                                  {idx + 1}. {item.nombres_apellidos}
+                                </Text>
+                                <View style={[styles.tagTipoEntrega, esDep ? styles.tagTipoDeposito : styles.tagTipoIndividual]}>
+                                  <Text style={[styles.tagTipoEntregaText, esDep ? styles.tagTipoDepositoText : styles.tagTipoIndividualText]}>
+                                    {esDep ? '🏢 Depósito' : '🏠 Domicilio'}
+                                  </Text>
+                                </View>
+                              </View>
+
+                              <Text style={styles.entregaDiaMeta}>
+                                DNI: {item.dni || 'Sin DNI'} • {item.sector || 'Sector'} {item.mz ? `• Mz. ${item.mz}` : ''} {item.lt ? `Lt. ${item.lt}` : ''}
+                              </Text>
+                            </View>
+
+                            <View style={styles.entregaDiaLitrosBadge}>
+                              <Ionicons name="water" size={11} color="#0284c7" />
+                              <Text style={styles.entregaDiaLitrosText}>
+                                {Number(item.litros_entregados || 0).toLocaleString('es-PE')} L
+                              </Text>
+                            </View>
+                          </View>
+
+                          <View style={styles.entregaDiaFooterRow}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                              <Ionicons name="time-outline" size={12} color="#64748b" />
+                              <Text style={styles.entregaDiaHoraText}>
+                                {formatHoraEntrega(item.fecha_captura || item.fecha_hora)}
+                              </Text>
+                            </View>
+
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              {fotoUri ? (
+                                <TouchableOpacity
+                                  style={styles.btnMiniVerFoto}
+                                  onPress={() => {
+                                    setTempPhotoUri(fotoUri);
+                                    setPhotoPreviewVisible(true);
+                                  }}
+                                  activeOpacity={0.7}
+                                >
+                                  <Ionicons name="image-outline" size={11} color="#0284c7" />
+                                  <Text style={styles.btnMiniVerFotoText}>Foto</Text>
+                                </TouchableOpacity>
+                              ) : null}
+
+                              <View style={[styles.tagSyncBadge, isSynced ? styles.tagSyncBadgeOk : styles.tagSyncBadgePend]}>
+                                <Ionicons
+                                  name={isSynced ? "cloud-done" : "cloud-upload-outline"}
+                                  size={10}
+                                  color={isSynced ? "#15803d" : "#b45309"}
+                                />
+                                <Text style={[styles.tagSyncBadgeText, isSynced ? styles.tagSyncBadgeTextOk : styles.tagSyncBadgeTextPend]}>
+                                  {isSynced ? 'Sincronizado' : 'En Celular'}
+                                </Text>
+                              </View>
+                            </View>
+                          </View>
+
+                          {item.observaciones_entrega && (
+                            <Text style={styles.entregaDiaObs} numberOfLines={2}>
+                              📝 {item.observaciones_entrega}
+                            </Text>
+                          )}
+                        </View>
+                      );
+                    })}
+                  </View>
+                </ScrollView>
+              );
+            })()}
+
+            <TouchableOpacity
+              style={[styles.modalCancelPillBtn, { marginTop: 14 }]}
+              onPress={() => setModalEntregasDiaVisible(false)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.modalCancelPillText}>Cerrar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       {/* MODAL DE ACTUALIZACIÓN DIRECTA EN 1 CLIC (EAS OTA) */}
       <AppUpdateModal
         visible={updateModalVisible}
@@ -5180,6 +5724,365 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: '#0f172a',
     marginTop: 3,
+  },
+  avanceHeaderContainer: {
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+    marginBottom: 8,
+  },
+  avanceFechaTitle: {
+    fontSize: 13.5,
+    fontWeight: '900',
+    color: '#0f172a',
+  },
+  avanceSubHeader: {
+    fontSize: 10.5,
+    color: '#64748b',
+    fontWeight: '600',
+    flex: 1,
+    marginRight: 6,
+  },
+  avanceBadgeJornada: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+  },
+  avanceBadgeJornadaHoy: {
+    backgroundColor: '#dcfce7',
+    borderWidth: 1,
+    borderColor: '#86efac',
+  },
+  avanceBadgeJornadaDiferido: {
+    backgroundColor: '#fef3c7',
+    borderWidth: 1,
+    borderColor: '#fde68a',
+  },
+  avanceBadgeJornadaText: {
+    fontSize: 10,
+    fontWeight: '900',
+  },
+  avanceBadgeJornadaTextHoy: {
+    color: '#15803d',
+  },
+  avanceBadgeJornadaTextDiferido: {
+    color: '#b45309',
+  },
+  btnCambiarDiaInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#f0f9ff',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#bae6fd',
+  },
+  btnCambiarDiaInlineText: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    color: '#0284c7',
+  },
+  // COMPARATIVA META VS DESPACHADO
+  comparativaContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#f8fafc',
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    marginTop: 8,
+    marginBottom: 6,
+  },
+  comparativaCol: {
+    flex: 1,
+  },
+  comparativaDivider: {
+    width: 1,
+    backgroundColor: '#e2e8f0',
+    marginHorizontal: 8,
+  },
+  comparativaColLabel: {
+    fontSize: 9.5,
+    fontWeight: '800',
+    color: '#64748b',
+    letterSpacing: 0.3,
+  },
+  comparativaColValue: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#0f172a',
+    marginVertical: 2,
+  },
+  comparativaColSub: {
+    fontSize: 10,
+    color: '#64748b',
+    fontWeight: '600',
+    marginTop: 1,
+  },
+  // BARRA PROGRESO CISTERNA
+  progressBarWrapper: {
+    backgroundColor: '#f8fafc',
+    padding: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    marginBottom: 6,
+  },
+  progressBarLabel: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    color: '#334155',
+  },
+  progressBarPercent: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#0284c7',
+  },
+  progressBarTrack: {
+    height: 8,
+    backgroundColor: '#e2e8f0',
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginVertical: 4,
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: '#0284c7',
+    borderRadius: 4,
+  },
+  progressBarSub: {
+    fontSize: 9.5,
+    color: '#64748b',
+    fontWeight: '600',
+  },
+  // BOTÓN VER DETALLE ENTREGAS REALIZADAS
+  btnVerDetalleEntregas: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#f0f9ff',
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1.5,
+    borderColor: '#bae6fd',
+    marginTop: 8,
+  },
+  iconBoxDetalleEntregas: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: '#e0f2fe',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  btnVerDetalleEntregasText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#0369a1',
+  },
+  btnVerDetalleEntregasSub: {
+    fontSize: 10,
+    color: '#0284c7',
+    fontWeight: '600',
+    marginTop: 1,
+  },
+  // MODAL ENTREGAS REALIZADAS DEL DÍA
+  entregasDiaModalContent: {
+    width: '92%',
+    maxWidth: 500,
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 14,
+    elevation: 8,
+  },
+  entregasKpiRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginVertical: 10,
+  },
+  entregaKpiChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#f0f9ff',
+    borderWidth: 1,
+    borderColor: '#bae6fd',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+  },
+  entregaKpiChipText: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    color: '#0369a1',
+  },
+  modalFilterSearchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#f8fafc',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    marginBottom: 8,
+  },
+  modalFilterSearchInput: {
+    flex: 1,
+    fontSize: 11.5,
+    color: '#0f172a',
+    padding: 0,
+  },
+  entregasEmptyBox: {
+    paddingVertical: 32,
+    alignItems: 'center',
+    gap: 6,
+  },
+  entregasEmptyTitle: {
+    fontSize: 13.5,
+    fontWeight: '800',
+    color: '#334155',
+    textAlign: 'center',
+  },
+  entregasEmptySub: {
+    fontSize: 11,
+    color: '#94a3b8',
+    textAlign: 'center',
+    paddingHorizontal: 16,
+  },
+  entregaDiaCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    padding: 10,
+    gap: 4,
+  },
+  entregaDiaNombre: {
+    fontSize: 12.5,
+    fontWeight: '800',
+    color: '#0f172a',
+    flexShrink: 1,
+  },
+  entregaDiaMeta: {
+    fontSize: 10.5,
+    color: '#64748b',
+    marginTop: 2,
+  },
+  entregaDiaLitrosBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#e0f2fe',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#bae6fd',
+  },
+  entregaDiaLitrosText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#0284c7',
+  },
+  entregaDiaFooterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 2,
+    paddingTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: '#f8fafc',
+  },
+  entregaDiaHoraText: {
+    fontSize: 10,
+    color: '#64748b',
+    fontWeight: '600',
+  },
+  btnMiniVerFoto: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#f0f9ff',
+    borderWidth: 1,
+    borderColor: '#bae6fd',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  btnMiniVerFotoText: {
+    fontSize: 9.5,
+    fontWeight: '800',
+    color: '#0284c7',
+  },
+  tagTipoEntrega: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  tagTipoDeposito: {
+    backgroundColor: '#eff6ff',
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+  },
+  tagTipoIndividual: {
+    backgroundColor: '#f1f5f9',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+  },
+  tagTipoEntregaText: {
+    fontSize: 9,
+    fontWeight: '800',
+  },
+  tagTipoDepositoText: {
+    color: '#1d4ed8',
+  },
+  tagTipoIndividualText: {
+    color: '#475569',
+  },
+  tagSyncBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  tagSyncBadgeOk: {
+    backgroundColor: '#dcfce7',
+    borderWidth: 1,
+    borderColor: '#bbf7d0',
+  },
+  tagSyncBadgePend: {
+    backgroundColor: '#fef3c7',
+    borderWidth: 1,
+    borderColor: '#fde68a',
+  },
+  tagSyncBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+  },
+  tagSyncBadgeTextOk: {
+    color: '#15803d',
+  },
+  tagSyncBadgeTextPend: {
+    color: '#b45309',
+  },
+  entregaDiaObs: {
+    fontSize: 9.5,
+    color: '#64748b',
+    backgroundColor: '#f8fafc',
+    padding: 4,
+    borderRadius: 6,
+    marginTop: 2,
   },
 
   // BOTÓN INICIAR REPARTO (PILL SHAPED)

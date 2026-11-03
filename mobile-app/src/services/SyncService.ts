@@ -5,6 +5,84 @@ import { getDatabase } from '../database/schema';
 
 import { BACKEND_URL } from '../config/api';
 
+/**
+ * Fetch con timeout de seguridad integrado para evitar que la app quede congelada indefinidamente
+ */
+const fetchWithTimeout = async (url: string, options: RequestInit, timeoutMs = 14000): Promise<Response> => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    return res;
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
+/**
+ * Auto-recuperación al iniciar la App o al abrir sincronización:
+ * Ejecuta GET /api/v1/sync/verificar-pendientes enviando los localIds de SQLite.
+ * Si el backend responde que esos registros ya existen en PostgreSQL,
+ * actualiza automáticamente SQLite local a sync_status = 'SYNCED' y sincronizado = 1.
+ */
+export const autoRecoverPendingSync = async (): Promise<{ recoveredCount: number; message: string }> => {
+  try {
+    const netInfo = await NetInfo.fetch();
+    if (!netInfo.isConnected) {
+      return { recoveredCount: 0, message: 'Sin conexión a internet' };
+    }
+
+    const db = await getDatabase();
+    const pendingRows = await db.getAllAsync(
+      `SELECT local_id FROM entregas_agua 
+       WHERE (sincronizado = 0 OR sync_status != 'SYNCED')
+         AND local_id IS NOT NULL AND local_id != ''
+       LIMIT 100`
+    ) as { local_id: string }[];
+
+    if (pendingRows.length === 0) {
+      return { recoveredCount: 0, message: 'No hay entregas pendientes' };
+    }
+
+    const localIds = pendingRows.map((r) => r.local_id).filter(Boolean);
+    if (localIds.length === 0) {
+      return { recoveredCount: 0, message: 'Sin localIds válidos' };
+    }
+
+    // Consulta GET /api/v1/sync/verificar-pendientes?localIds=...
+    const url = `${BACKEND_URL}/sync/verificar-pendientes?localIds=${encodeURIComponent(localIds.join(','))}`;
+    const response = await fetchWithTimeout(url, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+    }, 10000);
+
+    if (!response.ok) {
+      return { recoveredCount: 0, message: 'Error en respuesta de verificación' };
+    }
+
+    const json = await response.json();
+    const syncedLocalIds: string[] = Array.isArray(json.syncedLocalIds) ? json.syncedLocalIds : [];
+
+    if (syncedLocalIds.length > 0) {
+      for (const id of syncedLocalIds) {
+        await db.runAsync(
+          `UPDATE entregas_agua SET sincronizado = 1, sync_status = 'SYNCED', retry_count = 0 WHERE local_id = ?`,
+          [id]
+        );
+      }
+      return {
+        recoveredCount: syncedLocalIds.length,
+        message: `Se recuperaron y confirmaron ${syncedLocalIds.length} entregas ya existentes en el servidor.`,
+      };
+    }
+
+    return { recoveredCount: 0, message: 'Ninguna entrega figuraba aún en el servidor' };
+  } catch (error: any) {
+    console.warn('Error en autoRecoverPendingSync:', error?.message || error);
+    return { recoveredCount: 0, message: error?.message || 'Error de verificación' };
+  }
+};
+
 export const syncData = async (manualRetry = false): Promise<{ success: boolean; syncedCount: number; message: string }> => {
   try {
     const netInfo = await NetInfo.fetch();
@@ -13,32 +91,42 @@ export const syncData = async (manualRetry = false): Promise<{ success: boolean;
       return { success: false, syncedCount: 0, message: 'Sin conexión a internet. Los datos se guardan de forma segura en tu celular.' };
     }
 
+    // 0. Auto-recuperación previa: si la conexión parpadeó en un intento anterior,
+    // verifica cuáles registros ya existen en PostgreSQL para no re-enviarlos
+    try {
+      await autoRecoverPendingSync();
+    } catch (_) {}
+
     const db = await getDatabase();
 
-    // Si es sincronización manual solicitada por el operador, reintentar también registros en estado FAILED
+    // Si es sincronización manual solicitada por el operador, reintentar también registros en estado FAILED o atascados en SYNCING
     if (manualRetry) {
       try {
         await db.runAsync(
-          `UPDATE entregas_agua SET sync_status = 'PENDING', retry_count = 0 WHERE sync_status = 'FAILED' AND sincronizado = 0`
+          `UPDATE entregas_agua SET sync_status = 'PENDING', retry_count = 0 WHERE (sync_status = 'FAILED' OR sync_status = 'SYNCING') AND sincronizado = 0`
         );
       } catch (_) {}
     }
     
-    // Fetch deliveries pending synchronization
+    // Consultar entregas pendientes de sincronización (límite de 50 por bloque para no saturar memoria)
     const pendingEntregas = await db.getAllAsync(
-      `SELECT * FROM entregas_agua WHERE (sincronizado = 0 OR sync_status != 'SYNCED') AND COALESCE(retry_count, 0) < 5`
+      `SELECT * FROM entregas_agua 
+       WHERE (sincronizado = 0 OR sync_status = 'PENDING' OR sync_status = 'SYNCING') 
+         AND COALESCE(retry_count, 0) < 5
+       ORDER BY id ASC
+       LIMIT 50`
     ) as any[];
 
-    // Fetch quality control tests pending synchronization
+    // Consultar controles de calidad pendientes
     let pendingCalidad: any[] = [];
     try {
       pendingCalidad = await db.getAllAsync(
-        `SELECT * FROM control_calidad WHERE sincronizado = 0`
+        `SELECT * FROM control_calidad WHERE sincronizado = 0 ORDER BY id ASC LIMIT 20`
       ) as any[];
     } catch (_) {}
 
     if (pendingEntregas.length === 0 && pendingCalidad.length === 0) {
-      return { success: true, syncedCount: 0, message: 'Todo está sincronizado con la nube.' };
+      return { success: true, syncedCount: 0, message: 'Todo está al día. No hay entregas pendientes por sincronizar.' };
     }
 
     let successCount = 0;
@@ -47,7 +135,7 @@ export const syncData = async (manualRetry = false): Promise<{ success: boolean;
     // 1. Sincronizar controles de calidad pendientes (Offline -> Online)
     for (const cal of pendingCalidad) {
       try {
-        const resCal = await fetch(`${BACKEND_URL}/calidad/calidad`, {
+        const resCal = await fetchWithTimeout(`${BACKEND_URL}/calidad/calidad`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -66,7 +154,8 @@ export const syncData = async (manualRetry = false): Promise<{ success: boolean;
             longitud: cal.longitud || null,
             registrado_por: 'Operador Móvil (Sync Offline)',
           }),
-        });
+        }, 10000);
+
         if (resCal.ok) {
           await db.runAsync(`UPDATE control_calidad SET sincronizado = 1 WHERE id = ?`, [cal.id]);
           syncedCalidadCount++;
@@ -76,9 +165,9 @@ export const syncData = async (manualRetry = false): Promise<{ success: boolean;
       }
     }
 
-    for (const entrega of pendingEntregas) {
+    // 2. Sincronizar entregas en lotes concurrentes de 2 para máxima velocidad sin saturar el ancho de banda móvil
+    const syncSingleEntrega = async (entrega: any): Promise<boolean> => {
       try {
-        // Mark as SYNCING
         await db.runAsync(
           `UPDATE entregas_agua SET sync_status = 'SYNCING' WHERE id = ?`,
           [entrega.id]
@@ -116,85 +205,96 @@ export const syncData = async (manualRetry = false): Promise<{ success: boolean;
         }
         formData.append('fechaCaptura', String(entrega.fecha_captura || entrega.fecha_hora || new Date().toISOString()));
 
-        // Attach Photo file (Compatible con Web y Expo Nativo moderno)
+        // Empaquetado seguro de fotografía sin bloquear memoria
         if (entrega.foto_local_uri) {
-          const filename = `evidencia_${entrega.id || Date.now()}.jpg`;
-
-          // 1. Intentar adjuntar como Blob/File estándar para evitar 'Unsupported FormDataPart implementation'
-          try {
-            const res = await fetch(entrega.foto_local_uri);
-            const blob = await res.blob();
-            if (typeof File !== 'undefined') {
-              const file = new File([blob], filename, { type: 'image/jpeg' });
-              formData.append('foto', file);
-            } else {
-              (formData as any).append('foto', blob, filename);
-            }
-          } catch (blobErr) {
-            console.warn('No se pudo empaquetar foto como Blob/File:', blobErr);
-          }
-
-          // 2. Si es nativo, enviar además fotoBase64 como respaldo
+          let fileExists = true;
           if (Platform.OS !== 'web') {
             try {
-              if (entrega.foto_local_uri.startsWith('data:image')) {
-                formData.append('fotoBase64', entrega.foto_local_uri);
-              } else {
-                const base64 = await FileSystem.readAsStringAsync(entrega.foto_local_uri, {
-                  encoding: FileSystem.EncodingType.Base64,
-                });
-                if (base64) {
-                  formData.append('fotoBase64', base64);
-                }
-              }
-            } catch (fsErr) {
-              console.warn('No se pudo leer foto como base64:', fsErr);
+              const info = await FileSystem.getInfoAsync(entrega.foto_local_uri);
+              fileExists = info.exists;
+            } catch {
+              fileExists = false;
+            }
+          }
+
+          if (fileExists) {
+            const isPng = String(entrega.foto_local_uri).endsWith('.png');
+            const isJpg = String(entrega.foto_local_uri).endsWith('.jpg') || String(entrega.foto_local_uri).endsWith('.jpeg');
+            const ext = isPng ? 'png' : isJpg ? 'jpg' : 'webp';
+            const filename = `evidencia_${entrega.id || Date.now()}.${ext}`;
+            const mimeType = isPng ? 'image/png' : isJpg ? 'image/jpeg' : 'image/webp';
+
+            if (Platform.OS === 'web') {
+              try {
+                const res = await fetch(entrega.foto_local_uri);
+                const blob = await res.blob();
+                (formData as any).append('foto', blob, filename);
+              } catch (_) {}
+            } else {
+              // En React Native nativo, pasar el objeto con uri para que OkHttp lo transmita directamente por stream
+              formData.append('foto', {
+                uri: entrega.foto_local_uri,
+                name: filename,
+                type: mimeType,
+              } as any);
             }
           }
         }
 
-        const response = await fetch(`${BACKEND_URL}/sync/upload-delivery`, {
+        const response = await fetchWithTimeout(`${BACKEND_URL}/sync/upload-delivery`, {
           method: 'POST',
           body: formData,
           headers: {
             'Accept': 'application/json',
           },
-        });
+        }, 15000);
 
         if (response.ok) {
           await db.runAsync(
             `UPDATE entregas_agua SET sincronizado = 1, sync_status = 'SYNCED' WHERE id = ?`,
             [entrega.id]
           );
-          successCount++;
+          return true;
         } else {
-          const errText = await response.text();
-          console.warn(`Sync failed for entrega #${entrega.id}:`, errText);
           const currentRetries = (entrega.retry_count || 0) + 1;
           await db.runAsync(
             `UPDATE entregas_agua SET sync_status = ?, retry_count = ? WHERE id = ?`,
-            [currentRetries >= 3 ? 'FAILED' : 'PENDING', currentRetries, entrega.id]
+            [currentRetries >= 4 ? 'FAILED' : 'PENDING', currentRetries, entrega.id]
           );
+          return false;
         }
       } catch (itemErr: any) {
-        console.error(`Error uploading entrega #${entrega.id}:`, itemErr);
+        console.warn(`Error uploading entrega #${entrega.id}:`, itemErr?.message || itemErr);
         const currentRetries = (entrega.retry_count || 0) + 1;
         await db.runAsync(
           `UPDATE entregas_agua SET sync_status = ?, retry_count = ? WHERE id = ?`,
-          [currentRetries >= 3 ? 'FAILED' : 'PENDING', currentRetries, entrega.id]
+          [currentRetries >= 4 ? 'FAILED' : 'PENDING', currentRetries, entrega.id]
         );
+        return false;
+      }
+    };
+
+    // Procesar en chunks de 2 en paralelo
+    const CHUNK_SIZE = 2;
+    for (let i = 0; i < pendingEntregas.length; i += CHUNK_SIZE) {
+      const chunk = pendingEntregas.slice(i, i + CHUNK_SIZE);
+      const results = await Promise.allSettled(chunk.map((e) => syncSingleEntrega(e)));
+      for (const r of results) {
+        if (r.status === 'fulfilled' && r.value) {
+          successCount++;
+        }
       }
     }
 
-    // 3. Limpieza preventiva de fotos locales antiguas (>15 días) cuyas entregas ya están sincronizadas en el servidor
+    // 3. Limpieza de fotos antiguas ya sincronizadas (>3 días) para liberar espacio en el almacenamiento del celular
     if (Platform.OS !== 'web') {
       try {
         const oldSyncedWithPhotos = await db.getAllAsync(
           `SELECT id, foto_local_uri FROM entregas_agua
            WHERE sincronizado = 1 AND sync_status = 'SYNCED'
              AND foto_local_uri IS NOT NULL AND foto_local_uri != ''
-             AND datetime(COALESCE(fecha_captura, fecha_hora)) < datetime('now', '-15 days')
-           LIMIT 30`
+             AND datetime(COALESCE(fecha_captura, fecha_hora)) < datetime('now', '-3 days')
+           LIMIT 40`
         ) as any[];
 
         for (const item of oldSyncedWithPhotos) {
@@ -210,10 +310,10 @@ export const syncData = async (manualRetry = false): Promise<{ success: boolean;
     return {
       success: totalSynced > 0,
       syncedCount: totalSynced,
-      message: `Sincronización finalizada: ${successCount} entrega(s) y ${syncedCalidadCount} control(es) de calidad enviados con éxito.`,
+      message: `Sincronización completada: ${successCount} entrega(s) y ${syncedCalidadCount} control(es) subidos a la nube.`,
     };
   } catch (error: any) {
     console.error('Error general de sincronización:', error);
-    return { success: false, syncedCount: 0, message: `Error de sincronización: ${error.message}` };
+    return { success: false, syncedCount: 0, message: `Aviso de sincronización: ${error.message || 'Error de conexión'}` };
   }
 };

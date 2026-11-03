@@ -151,7 +151,7 @@ export const uploadDelivery = async (req: Request, res: Response) => {
       try {
         const rawBase64 = String(req.body.fotoBase64 || req.body.foto_base64);
         const b64Clean = rawBase64.replace(/^data:image\/\w+;base64,/, '');
-        const safeName = `entrega-${finalLocalId.replace(/[^a-zA-Z0-9_-]/g, '')}-${Date.now()}.jpg`;
+        const safeName = `entrega-${finalLocalId.replace(/[^a-zA-Z0-9_-]/g, '')}-${Date.now()}.webp`;
         const filePath = path.join(uploadDir, safeName);
         fs.writeFileSync(filePath, Buffer.from(b64Clean, 'base64'));
         fotoUrl = `/uploads/registros/${safeName}`;
@@ -161,7 +161,7 @@ export const uploadDelivery = async (req: Request, res: Response) => {
       }
     }
 
-    // 2.1 Estampar marca de agua oficial EPS Moyobamba en los píxeles de la fotografía
+    // 2.1 Estampar marca de agua oficial EPS Moyobamba en los píxeles de la fotografía y comprimir a WebP
     if (localSavedFilePath && fs.existsSync(localSavedFilePath)) {
       try {
         let benNombre = 'Beneficiario Acreditado';
@@ -194,7 +194,7 @@ export const uploadDelivery = async (req: Request, res: Response) => {
           ? new Date(finalFechaCaptura).toLocaleString('es-PE') 
           : new Date().toLocaleString('es-PE');
 
-        await stampWatermarkOnImage(localSavedFilePath, {
+        const stampedWebpPath = await stampWatermarkOnImage(localSavedFilePath, {
           beneficiario: benNombre,
           dni: benDni,
           sector: benSector,
@@ -205,6 +205,10 @@ export const uploadDelivery = async (req: Request, res: Response) => {
           fechaHora: dateStr,
           cisterna: cisternaPlaca,
         });
+
+        if (stampedWebpPath) {
+          fotoUrl = `/uploads/registros/${path.basename(stampedWebpPath)}`;
+        }
       } catch (watermarkErr) {
         console.warn('Error estampando marca de agua en entrega:', watermarkErr);
       }
@@ -305,6 +309,67 @@ export const uploadDelivery = async (req: Request, res: Response) => {
     console.error('Error uploading delivery:', error);
     res.status(500).json({
       message: 'Error al procesar la sincronización de la entrega.',
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Consulta de auto-recuperación de sincronización
+ * Recibe un conjunto de localIds y devuelve cuáles ya existen en PostgreSQL
+ */
+export const verificarPendientes = async (req: Request, res: Response) => {
+  try {
+    let ids: string[] = [];
+
+    // 1. Si viene por query GET: ?localIds=loc-1,loc-2 o ?localIds[]=loc-1
+    if (req.query.localIds) {
+      if (Array.isArray(req.query.localIds)) {
+        ids = req.query.localIds.map((item) => String(item).trim());
+      } else {
+        ids = String(req.query.localIds)
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean);
+      }
+    } else if (req.query.local_ids) {
+      ids = String(req.query.local_ids)
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+    } else if (req.body && (req.body.localIds || req.body.local_ids)) {
+      // 2. Si viene por body POST: { localIds: [...] }
+      const raw = req.body.localIds || req.body.local_ids;
+      ids = Array.isArray(raw)
+        ? raw.map((s: any) => String(s).trim()).filter(Boolean)
+        : String(raw).split(',').map((s) => s.trim()).filter(Boolean);
+    }
+
+    if (ids.length === 0) {
+      return res.json({
+        syncedLocalIds: [],
+        totalChecked: 0,
+        totalFound: 0,
+      });
+    }
+
+    const checkRes = await query(
+      `SELECT local_id FROM entregas_agua WHERE local_id = ANY($1::text[])`,
+      [ids]
+    );
+
+    const foundSet = new Set(checkRes.rows.map((r: any) => r.local_id));
+    const syncedLocalIds = ids.filter((id) => foundSet.has(id));
+
+    return res.json({
+      syncedLocalIds,
+      totalChecked: ids.length,
+      totalFound: syncedLocalIds.length,
+    });
+  } catch (error: any) {
+    console.error('Error al verificar entregas pendientes:', error);
+    return res.status(500).json({
+      message: 'Error verificando entregas pendientes.',
       error: error.message,
     });
   }

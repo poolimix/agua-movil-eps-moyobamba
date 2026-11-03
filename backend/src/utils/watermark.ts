@@ -28,18 +28,32 @@ function escapeXml(unsafe: string): string {
 
 /**
  * Estampa permanentemente la franja de fehaciencia y georreferenciación en los píxeles de la imagen
+ * y la comprime en formato WEBP ultra-ligero para optimizar almacenamiento y velocidad de carga.
+ * Retorna la ruta absoluta del archivo .webp generado.
  */
-export async function stampWatermarkOnImage(imagePath: string, data: WatermarkData): Promise<void> {
+export async function stampWatermarkOnImage(imagePath: string, data: WatermarkData): Promise<string> {
   try {
-    if (!fs.existsSync(imagePath)) return;
+    if (!fs.existsSync(imagePath)) return imagePath;
 
     const inputBuffer = fs.readFileSync(imagePath);
     const metadata = await sharp(inputBuffer).metadata();
     const width = metadata.width || 1024;
     const height = metadata.height || 768;
 
-    // Si la imagen es demasiado pequeña para estampar, omitir
-    if (width < 150 || height < 150) return;
+    // Ruta de salida final en formato WEBP
+    const webpPath = imagePath.replace(/\.[^.]+$/, '.webp');
+
+    // Si la imagen es demasiado pequeña para estampar, convertir directamente a WEBP
+    if (width < 150 || height < 150) {
+      const convertedBuffer = await sharp(inputBuffer)
+        .webp({ quality: 80, effort: 4 })
+        .toBuffer();
+      fs.writeFileSync(webpPath, convertedBuffer);
+      if (webpPath !== imagePath && fs.existsSync(imagePath)) {
+        try { fs.unlinkSync(imagePath); } catch (_) {}
+      }
+      return webpPath;
+    }
 
     // Calcular proporción de altura para el banner (aprox 20% de la altura de la imagen)
     const bannerHeight = Math.min(height - 10, Math.max(120, Math.min(260, Math.round(height * 0.20))));
@@ -81,7 +95,9 @@ export async function stampWatermarkOnImage(imagePath: string, data: WatermarkDa
 
     const svgBuffer = Buffer.from(svgOverlay);
 
+    // Comprimir en WebP de alta eficiencia y calidad 80 (reduce ~60% peso respecto a JPG)
     const stampedBuffer = await sharp(inputBuffer)
+      .resize({ width: Math.min(width, 1280), withoutEnlargement: true })
       .composite([
         {
           input: svgBuffer,
@@ -89,11 +105,21 @@ export async function stampWatermarkOnImage(imagePath: string, data: WatermarkDa
           left: 0,
         },
       ])
-      .jpeg({ quality: 85 })
+      .webp({ quality: 80, effort: 4 })
       .toBuffer();
 
-    fs.writeFileSync(imagePath, stampedBuffer);
+    fs.writeFileSync(webpPath, stampedBuffer);
+
+    // Si el archivo original era .jpg/.png diferente al .webp, eliminar el original para liberar espacio
+    if (webpPath !== imagePath && fs.existsSync(imagePath)) {
+      try {
+        fs.unlinkSync(imagePath);
+      } catch (_) {}
+    }
+
+    return webpPath;
   } catch (err) {
-    console.error('Error stamping watermark with Sharp:', err);
+    console.error('Error stamping watermark and converting to WEBP with Sharp:', err);
+    return imagePath;
   }
 }
