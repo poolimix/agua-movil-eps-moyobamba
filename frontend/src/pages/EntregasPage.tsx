@@ -280,6 +280,49 @@ export default function EntregasPage() {
     };
   };
 
+  /**
+   * Obtiene los IDs de los beneficiarios de un sector que aún tienen saldo semanal pendiente (> 0 litros).
+   * Si todos completaron el 100% o la lista es nueva, devuelve todos para no bloquear la operación.
+   */
+  const obtenerBeneficiariosPendientesSector = (
+    benefs: any[],
+    sectorName: string,
+    fechaBaseStr: string
+  ) => {
+    const { lunesIso, domingoIso } = getRangoSemanaIso(fechaBaseStr);
+    const entregadoMap = new Map<number, number>();
+    for (const e of entregas) {
+      const fStr = (e.fecha_captura || e.fecha_hora || '').slice(0, 10);
+      if (fStr >= lunesIso && fStr <= domingoIso) {
+        const bId = Number(e.beneficiario_id);
+        entregadoMap.set(bId, (entregadoMap.get(bId) || 0) + Number(e.litros_entregados || 0));
+      }
+    }
+
+    const benefsSector = benefs.filter(
+      (b: any) => (b.sector || '').trim().toUpperCase() === String(sectorName || '').trim().toUpperCase()
+    );
+
+    // Filtrar quienes aún no han completado el 100% de su cuota semanal
+    const pendientes = benefsSector.filter((b: any) => {
+      const miembros = Number(b.num_miembros || 1);
+      const cuotaSemanal = Number(b.dotacion_semanal_litros || b.litros_sugeridos || miembros * 350);
+      const entregado = entregadoMap.get(Number(b.id)) || 0;
+      return cuotaSemanal - entregado > 0.01;
+    });
+
+    // Si hay beneficiarios con saldo semanal pendiente, marcar solo esos; si todos están al 100%, marcar todos
+    const idsSeleccionados = pendientes.length > 0
+      ? pendientes.map((b: any) => Number(b.id))
+      : benefsSector.map((b: any) => Number(b.id));
+
+    return {
+      idsSeleccionados,
+      totalSector: benefsSector.length,
+      totalPendientes: pendientes.length,
+    };
+  };
+
   const handleOpenDepositoModal = async () => {
     try {
       const [benefRes, progRes] = await Promise.all([
@@ -297,14 +340,14 @@ export default function EntregasPage() {
       const initialSector = sectoresUnicos[0] || '';
       setSectorDeposito(initialSector);
 
-      const idsSector = benefs
-        .filter((b: any) => (b.sector || '').trim().toUpperCase() === initialSector.toUpperCase())
-        .map((b: any) => Number(b.id));
-      setSelectedBenefIdsDeposito(idsSector);
+      // Marcar inteligentemente solo los que tienen cuota semanal pendiente
+      const { idsSeleccionados } = obtenerBeneficiariosPendientesSector(benefs, initialSector, fechaDeposito);
+      setSelectedBenefIdsDeposito(idsSeleccionados);
 
-      const calc = calcularEstimadoSemanalParaIds(benefs, idsSector, fechaDeposito);
-      const sugeridoInicial = calc.restanteAntesDeHoy > 0 ? calc.restanteAntesDeHoy : calc.cuotaSemanalTotal;
-      setLitrosTotalesDeposito(String(sugeridoInicial || 19000));
+      // VOLUMEN DIARIO POR DEFECTO: Calculado estrictamente por la cantidad de familiares elegidos (50 L/hab/día)
+      const calc = calcularEstimadoSemanalParaIds(benefs, idsSeleccionados, fechaDeposito);
+      const volumenDiarioPorDefecto = calc.cuotaDiariaTotal > 0 ? calc.cuotaDiariaTotal : 5000;
+      setLitrosTotalesDeposito(String(volumenDiarioPorDefecto));
 
       if (progs.length > 0 && !programacionIdDeposito) {
         setProgramacionIdDeposito(String(progs[0].id));
@@ -323,22 +366,25 @@ export default function EntregasPage() {
 
   const handleChangeSectorDepositoWeb = (nuevoSector: string) => {
     setSectorDeposito(nuevoSector);
-    const idsSector = beneficiariosList
-      .filter((b: any) => (b.sector || '').trim().toUpperCase() === nuevoSector.toUpperCase())
-      .map((b: any) => Number(b.id));
-    setSelectedBenefIdsDeposito(idsSector);
+    const { idsSeleccionados } = obtenerBeneficiariosPendientesSector(beneficiariosList, nuevoSector, fechaDeposito);
+    setSelectedBenefIdsDeposito(idsSeleccionados);
 
-    const calc = calcularEstimadoSemanalParaIds(beneficiariosList, idsSector, fechaDeposito);
-    const sugerido = calc.restanteAntesDeHoy > 0 ? calc.restanteAntesDeHoy : calc.cuotaSemanalTotal;
-    if (sugerido > 0) {
-      setLitrosTotalesDeposito(String(sugerido));
-    }
+    // VOLUMEN DIARIO POR DEFECTO para el nuevo sector según los familiares elegidos
+    const calc = calcularEstimadoSemanalParaIds(beneficiariosList, idsSeleccionados, fechaDeposito);
+    const volumenDiarioPorDefecto = calc.cuotaDiariaTotal > 0 ? calc.cuotaDiariaTotal : 5000;
+    setLitrosTotalesDeposito(String(volumenDiarioPorDefecto));
   };
 
   const handleToggleBenefDepositoWeb = (id: number) => {
-    setSelectedBenefIdsDeposito((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
-    );
+    setSelectedBenefIdsDeposito((prev) => {
+      const next = prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id];
+      // Recalcular automáticamente el volumen diario según los familiares actualmente marcados
+      const calc = calcularEstimadoSemanalParaIds(beneficiariosList, next, fechaDeposito);
+      if (calc.cuotaDiariaTotal > 0) {
+        setLitrosTotalesDeposito(String(calc.cuotaDiariaTotal));
+      }
+      return next;
+    });
   };
 
   const handleSubmitDepositoSector = async (e: React.FormEvent) => {
@@ -1476,6 +1522,25 @@ export default function EntregasPage() {
                       style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1.5px solid #0d9488', fontWeight: 800, fontSize: 15, color: '#0f766e' }}
                     />
                     <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+                      {cuotaDiariaTotal > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setLitrosTotalesDeposito(String(cuotaDiariaTotal))}
+                          style={{
+                            padding: '4px 10px',
+                            borderRadius: 6,
+                            fontSize: 11.5,
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            border: Number(litrosTotalesDeposito) === cuotaDiariaTotal ? '2px solid #0d9488' : '1px solid #99f6e4',
+                            background: Number(litrosTotalesDeposito) === cuotaDiariaTotal ? '#ccfbf1' : '#f0fdfa',
+                            color: '#0f766e',
+                            boxShadow: Number(litrosTotalesDeposito) === cuotaDiariaTotal ? '0 1px 3px rgba(13,148,136,0.2)' : 'none',
+                          }}
+                        >
+                          ☀️ Cuota Diaria ({cuotaDiariaTotal.toLocaleString('es-PE')} L/día) • 50 L/hab
+                        </button>
+                      )}
                       {restanteAntesDeHoy > 0 && restanteAntesDeHoy !== cuotaSemanalTotal && (
                         <button
                           type="button"
@@ -1484,7 +1549,7 @@ export default function EntregasPage() {
                             padding: '3px 8px',
                             borderRadius: 6,
                             fontSize: 11,
-                            fontWeight: 800,
+                            fontWeight: 700,
                             cursor: 'pointer',
                             border: Number(litrosTotalesDeposito) === restanteAntesDeHoy ? '1.5px solid #d97706' : '1px solid #fcd34d',
                             background: Number(litrosTotalesDeposito) === restanteAntesDeHoy ? '#fef3c7' : '#fffbeb',
@@ -1502,35 +1567,17 @@ export default function EntregasPage() {
                             padding: '3px 8px',
                             borderRadius: 6,
                             fontSize: 11,
-                            fontWeight: 800,
+                            fontWeight: 700,
                             cursor: 'pointer',
                             border: Number(litrosTotalesDeposito) === cuotaSemanalTotal ? '1.5px solid #1d4ed8' : '1px solid #93c5fd',
                             background: Number(litrosTotalesDeposito) === cuotaSemanalTotal ? '#dbeafe' : '#eff6ff',
                             color: '#1e40af',
                           }}
                         >
-                          📅 Estimado Semana ({cuotaSemanalTotal.toLocaleString('es-PE')} L)
+                          📅 Meta Semanal ({cuotaSemanalTotal.toLocaleString('es-PE')} L)
                         </button>
                       )}
-                      {cuotaDiariaTotal > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => setLitrosTotalesDeposito(String(cuotaDiariaTotal))}
-                          style={{
-                            padding: '3px 8px',
-                            borderRadius: 6,
-                            fontSize: 11,
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                            border: Number(litrosTotalesDeposito) === cuotaDiariaTotal ? '1.5px solid #0d9488' : '1px solid #99f6e4',
-                            background: Number(litrosTotalesDeposito) === cuotaDiariaTotal ? '#ccfbf1' : '#f0fdfa',
-                            color: '#0f766e',
-                          }}
-                        >
-                          ☀️ Estimado Día 1/7 ({cuotaDiariaTotal.toLocaleString('es-PE')} L)
-                        </button>
-                      )}
-                      {['10000', '19000', '34000'].map((preset) => (
+                      {['10000', '15000', '19000'].map((preset) => (
                         <button
                           key={preset}
                           type="button"
@@ -1539,7 +1586,7 @@ export default function EntregasPage() {
                             padding: '3px 8px',
                             borderRadius: 6,
                             fontSize: 11,
-                            fontWeight: 700,
+                            fontWeight: 600,
                             cursor: 'pointer',
                             border: litrosTotalesDeposito === preset ? '1px solid #0d9488' : '1px solid #cbd5e1',
                             background: litrosTotalesDeposito === preset ? '#ccfbf1' : '#f8fafc',
@@ -1621,15 +1668,36 @@ export default function EntregasPage() {
                     <label style={{ fontWeight: 800, fontSize: 12.5, color: '#1e293b' }}>
                       3. Beneficiarios del Sector ({totalMarcados} de {benefsDelSector.length} marcados)
                     </label>
-                    <div style={{ display: 'flex', gap: 6 }}>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const { idsSeleccionados } = obtenerBeneficiariosPendientesSector(beneficiariosList, sectorDeposito, fechaDeposito);
+                          setSelectedBenefIdsDeposito(idsSeleccionados);
+                          const calc = calcularEstimadoSemanalParaIds(beneficiariosList, idsSeleccionados, fechaDeposito);
+                          if (calc.cuotaDiariaTotal > 0) setLitrosTotalesDeposito(String(calc.cuotaDiariaTotal));
+                        }}
+                        style={{
+                          background: '#fef3c7',
+                          border: '1px solid #fcd34d',
+                          color: '#b45309',
+                          padding: '4px 10px',
+                          borderRadius: 6,
+                          fontSize: 11,
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                        }}
+                        title="Marca solo a los beneficiarios que aún no completaron su meta de la semana"
+                      >
+                        ⏳ Solo Pendientes
+                      </button>
                       <button
                         type="button"
                         onClick={() => {
                           const allIds = benefsDelSector.map((b: any) => Number(b.id));
                           setSelectedBenefIdsDeposito(allIds);
                           const calc = calcularEstimadoSemanalParaIds(beneficiariosList, allIds, fechaDeposito);
-                          const sug = calc.restanteAntesDeHoy > 0 ? calc.restanteAntesDeHoy : calc.cuotaSemanalTotal;
-                          if (sug > 0) setLitrosTotalesDeposito(String(sug));
+                          if (calc.cuotaDiariaTotal > 0) setLitrosTotalesDeposito(String(calc.cuotaDiariaTotal));
                         }}
                         style={{
                           background: '#dcfce7',

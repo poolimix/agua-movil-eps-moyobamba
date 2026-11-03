@@ -55,3 +55,4 @@ export async function migrateExistingImagesToWebp(): Promise<void> {
     console.warn('Aviso en migración de imágenes a WEBP:', err);
   }
 }
+

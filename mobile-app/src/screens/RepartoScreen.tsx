@@ -654,13 +654,27 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
     };
   };
 
+  const isBeneficiarioPendienteSemanaApp = (b: any) => {
+    const dotacionDia = Number(systemConfig?.dotacion_diaria_litros || 50);
+    const diasSem = Number(systemConfig?.dias_entrega_semanal || 7);
+    const miembros = Number(b.num_miembros || 1);
+    const cSem = Number(b.cuota_semanal || b.litros_sugeridos || miembros * dotacionDia * diasSem);
+    const entregado = Number(b.litros_esta_semana || b.litros_entregados_semana || 0);
+    return (cSem - entregado) > 0.01;
+  };
+
   const handleChangeSectorDeposito = (secName: string) => {
     setSectorDeposito(secName);
     const lista = getBeneficiariosPorSectorNombre(secName);
-    setSelectedBenefIdsDeposito(lista.map((b: any) => Number(b.id)));
-    const calc = calcularEstimadoSemanalListaApp(lista);
-    const sug = calc.restanteSemana > 0 ? calc.restanteSemana : calc.cuotaSemanal;
-    if (sug > 0) setLitrosTotalesDeposito(String(sug));
+    // Filtrar automáticamente beneficiarios que aún tienen cuota pendiente (>0)
+    const pendientes = lista.filter(isBeneficiarioPendienteSemanaApp);
+    const seleccionInicial = pendientes.length > 0 ? pendientes : lista;
+    setSelectedBenefIdsDeposito(seleccionInicial.map((b: any) => Number(b.id)));
+
+    // VOLUMEN DIARIO POR DEFECTO según cantidad de familiares elegidos (50 L/hab/día)
+    const calc = calcularEstimadoSemanalListaApp(seleccionInicial);
+    const sug = calc.cuotaDiaria > 0 ? calc.cuotaDiaria : 5000;
+    setLitrosTotalesDeposito(String(sug));
   };
 
   const handleOpenDepositoModal = async (initialSec?: string, qrLitrosOverride?: string) => {
@@ -698,16 +712,20 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
       const bSec = normalizeSec(b.sector || b.sector_aahh || '');
       return bSec === normTarget || bSec.includes(normTarget) || normTarget.includes(bSec);
     });
-    // Marcar TODOS los beneficiarios del sector por defecto
-    setSelectedBenefIdsDeposito(lista.map((b: any) => Number(b.id)));
-    const calc = calcularEstimadoSemanalListaApp(lista);
-    const sug = calc.restanteSemana > 0 ? calc.restanteSemana : calc.cuotaSemanal;
+
+    // Marcar inteligentemente solo los que tienen saldo pendiente de la semana
+    const pendientes = lista.filter(isBeneficiarioPendienteSemanaApp);
+    const seleccionInicial = pendientes.length > 0 ? pendientes : lista;
+    setSelectedBenefIdsDeposito(seleccionInicial.map((b: any) => Number(b.id)));
+
+    // VOLUMEN DIARIO POR DEFECTO: Cuota diaria según las familias marcadas
+    const calc = calcularEstimadoSemanalListaApp(seleccionInicial);
     const finalLitros =
-      sug > 0
-        ? String(sug)
-        : qrLitrosOverride && Number(qrLitrosOverride) > 0
+      qrLitrosOverride && Number(qrLitrosOverride) > 0
         ? String(qrLitrosOverride)
-        : '15000';
+        : calc.cuotaDiaria > 0
+        ? String(calc.cuotaDiaria)
+        : '5000';
     setLitrosTotalesDeposito(finalLitros);
     setFiltroBusquedaDeposito('');
     setFotoDepositoUri(null);
@@ -716,9 +734,17 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
 
   const handleToggleBenefDeposito = (id: number) => {
     const numId = Number(id);
-    setSelectedBenefIdsDeposito((prev) =>
-      prev.includes(numId) ? prev.filter((item) => item !== numId) : [...prev, numId]
-    );
+    setSelectedBenefIdsDeposito((prev) => {
+      const next = prev.includes(numId) ? prev.filter((item) => item !== numId) : [...prev, numId];
+      // Recalcular dinámicamente la cuota diaria para las familias actualmente seleccionadas
+      const source = getBeneficiariosPorSectorNombre(sectorDeposito);
+      const marcados = source.filter((b: any) => next.includes(Number(b.id)));
+      const calc = calcularEstimadoSemanalListaApp(marcados);
+      if (calc.cuotaDiaria > 0) {
+        setLitrosTotalesDeposito(String(calc.cuotaDiaria));
+      }
+      return next;
+    });
   };
 
   const handleTakePhotoDeposito = async () => {
@@ -4430,14 +4456,14 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                       contentContainerStyle={{ gap: 6, marginTop: 6 }}
                     >
                       {[
+                        ...(cuotaDiariaSector > 0
+                          ? [{ label: `☀️ Cuota Día (${cuotaDiariaSector} L)`, val: String(cuotaDiariaSector) }]
+                          : []),
                         ...(restanteAntesDeHoySector > 0 && restanteAntesDeHoySector !== cuotaSemanalSector
                           ? [{ label: `⏳ Restante Sem. (${restanteAntesDeHoySector} L)`, val: String(restanteAntesDeHoySector) }]
                           : []),
                         ...(cuotaSemanalSector > 0
                           ? [{ label: `📅 Estimado Sem. (${cuotaSemanalSector} L)`, val: String(cuotaSemanalSector) }]
-                          : []),
-                        ...(cuotaDiariaSector > 0
-                          ? [{ label: `☀️ Cuota Día 1/7 (${cuotaDiariaSector} L)`, val: String(cuotaDiariaSector) }]
                           : []),
                         { label: '15,000 L (15m³)', val: '15000' },
                         { label: '19,000 L (19m³)', val: '19000' },
@@ -4496,11 +4522,27 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                     <View style={{ flexDirection: 'row', gap: 6 }}>
                       <TouchableOpacity
                         onPress={() => {
+                          const pendientes = listaDelSector.filter(isBeneficiarioPendienteSemanaApp);
+                          const pIds = (pendientes.length > 0 ? pendientes : listaDelSector).map((b: any) => Number(b.id));
+                          setSelectedBenefIdsDeposito(pIds);
+                          const calc = calcularEstimadoSemanalListaApp(pendientes.length > 0 ? pendientes : listaDelSector);
+                          if (calc.cuotaDiaria > 0) setLitrosTotalesDeposito(String(calc.cuotaDiaria));
+                        }}
+                        style={{
+                          backgroundColor: '#fef3c7',
+                          paddingHorizontal: 8,
+                          paddingVertical: 3,
+                          borderRadius: 8,
+                        }}
+                      >
+                        <Text style={{ fontSize: 10.5, fontWeight: '800', color: '#b45309' }}>⏳ Pendientes</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => {
                           const allIds = listaDelSector.map((b: any) => Number(b.id));
                           setSelectedBenefIdsDeposito(allIds);
                           const calc = calcularEstimadoSemanalListaApp(listaDelSector);
-                          const sug = calc.restanteSemana > 0 ? calc.restanteSemana : calc.cuotaSemanal;
-                          if (sug > 0) setLitrosTotalesDeposito(String(sug));
+                          if (calc.cuotaDiaria > 0) setLitrosTotalesDeposito(String(calc.cuotaDiaria));
                         }}
                         style={{
                           backgroundColor: '#e0f2fe',
