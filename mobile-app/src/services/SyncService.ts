@@ -83,6 +83,77 @@ export const autoRecoverPendingSync = async (): Promise<{ recoveredCount: number
   }
 };
 
+/**
+ * Reconciliación Bidireccional Servidor -> Celular (SQLite):
+ * 1. Purgar de SQLite las entregas locales que estaban marcadas como sincronizadas pero que fueron eliminadas en la Web.
+ * 2. Si se eliminó algo en la web, se borra de SQLite para que el total del celular coincida 100% con la web.
+ */
+export const reconcileServerEntregas = async (
+  targetFecha?: string
+): Promise<{ deletedCount: number; message: string }> => {
+  try {
+    const netInfo = await NetInfo.fetch();
+    if (!netInfo.isConnected) {
+      return { deletedCount: 0, message: 'Sin conexión para reconciliar' };
+    }
+
+    const fIso = targetFecha || new Date().toISOString().slice(0, 10);
+    const db = await getDatabase();
+
+    const res = await fetchWithTimeout(`${BACKEND_URL}/entregas?fecha=${fIso}&limit=1000`, {}, 12000);
+    if (!res.ok) return { deletedCount: 0, message: 'Error de respuesta del servidor' };
+
+    const json = await res.json();
+    const serverRows: any[] = Array.isArray(json) ? json : (json.data || []);
+    if (!Array.isArray(serverRows)) return { deletedCount: 0, message: 'Formato inválido de servidor' };
+
+    const serverLocalIds = new Set(serverRows.map((s: any) => s.local_id).filter(Boolean));
+    const serverBenefDateKeys = new Set(
+      serverRows.map((s: any) => `b-${s.beneficiario_id}-${String(s.fecha_asignada || s.fecha_hora || '').slice(0, 10)}`)
+    );
+    const serverIds = new Set(serverRows.map((s: any) => Number(s.id)).filter(Boolean));
+
+    const localRows: any[] = await db.getAllAsync(
+      `SELECT id, local_id, beneficiario_id, fecha_asignada, fecha_captura, fecha_hora, foto_local_uri, sincronizado, sync_status
+       FROM entregas_agua
+       WHERE (fecha_asignada = ? OR substr(COALESCE(fecha_captura, fecha_hora), 1, 10) = ?)`,
+      [fIso, fIso]
+    );
+
+    let deletedCount = 0;
+    for (const item of localRows) {
+      const isSynced = Number(item.sincronizado) === 1 || item.sync_status === 'SYNCED';
+      const localKey = item.local_id;
+      const sFecha = String(item.fecha_asignada || item.fecha_captura || item.fecha_hora || '').slice(0, 10);
+      const benefDateKey = `b-${item.beneficiario_id}-${sFecha}`;
+
+      const existsOnServer =
+        (localKey && serverLocalIds.has(localKey)) ||
+        serverBenefDateKeys.has(benefDateKey) ||
+        (item.id && serverIds.has(Number(item.id)));
+
+      // Si estaba sincronizada pero ya NO existe en el servidor -> fue eliminada en la Web
+      if (isSynced && !existsOnServer) {
+        await db.runAsync('DELETE FROM entregas_agua WHERE id = ?', [item.id]);
+        if (item.foto_local_uri && Platform.OS !== 'web' && !String(item.foto_local_uri).startsWith('http')) {
+          await FileSystem.deleteAsync(item.foto_local_uri, { idempotent: true }).catch(() => {});
+        }
+        deletedCount++;
+      }
+    }
+
+    return {
+      deletedCount,
+      message: deletedCount > 0
+        ? `Se purgaron ${deletedCount} entregas eliminadas en la Web.`
+        : 'Datos sincronizados y conciliados con la Web.',
+    };
+  } catch (error: any) {
+    console.warn('Error en reconcileServerEntregas:', error?.message || error);
+    return { deletedCount: 0, message: error?.message || 'Error de reconciliación' };
+  }
+};
+
 export const syncData = async (manualRetry = false): Promise<{ success: boolean; syncedCount: number; message: string }> => {
   try {
     const netInfo = await NetInfo.fetch();
@@ -126,7 +197,22 @@ export const syncData = async (manualRetry = false): Promise<{ success: boolean;
     } catch (_) {}
 
     if (pendingEntregas.length === 0 && pendingCalidad.length === 0) {
-      return { success: true, syncedCount: 0, message: 'Todo está al día. No hay entregas pendientes por sincronizar.' };
+      // Reconciliar con la nube para verificar si se eliminó alguna entrega desde la Web
+      let recDeleted = 0;
+      try {
+        const rec = await reconcileServerEntregas();
+        recDeleted = rec.deletedCount;
+      } catch (_) {}
+
+      if (recDeleted > 0) {
+        return {
+          success: true,
+          syncedCount: 0,
+          message: `Sincronización completada: Se actualizaron y purgaron ${recDeleted} entrega(s) eliminadas desde la Web.`,
+        };
+      }
+
+      return { success: true, syncedCount: 0, message: 'Todo está al día. La información del celular coincide con la nube.' };
     }
 
     let successCount = 0;
@@ -306,11 +392,23 @@ export const syncData = async (manualRetry = false): Promise<{ success: boolean;
       } catch (_) {}
     }
 
+    // 4. Reconciliación con la nube: purgar de SQLite registros que fueron eliminados en la plataforma web
+    let purgedCount = 0;
+    try {
+      const rec = await reconcileServerEntregas();
+      purgedCount = rec.deletedCount;
+    } catch (_) {}
+
     const totalSynced = successCount + syncedCalidadCount;
+    const msg =
+      purgedCount > 0
+        ? `Sincronización completada: ${successCount} subidas y ${purgedCount} purgadas según cambios en la Web.`
+        : `Sincronización completada: ${successCount} entrega(s) y ${syncedCalidadCount} control(es) subidos a la nube.`;
+
     return {
-      success: totalSynced > 0,
+      success: totalSynced > 0 || purgedCount > 0,
       syncedCount: totalSynced,
-      message: `Sincronización completada: ${successCount} entrega(s) y ${syncedCalidadCount} control(es) subidos a la nube.`,
+      message: msg,
     };
   } catch (error: any) {
     console.error('Error general de sincronización:', error);

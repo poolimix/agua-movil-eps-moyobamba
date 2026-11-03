@@ -13,6 +13,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Keyboard,
+  RefreshControl,
 } from 'react-native';
 import SignatureScreen, { SignatureViewRef } from 'react-native-signature-canvas';
 import { WebView } from 'react-native-webview';
@@ -192,6 +193,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
   const [loadingEntregasDia, setLoadingEntregasDia] = useState(false);
   const [modalEntregasDiaVisible, setModalEntregasDiaVisible] = useState(false);
   const [filtroModalEntregas, setFiltroModalEntregas] = useState('');
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const formatDiasSemana = (dias?: string) => {
     if (!dias) return 'Lunes a Viernes';
@@ -486,18 +488,55 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
       let mergedList: any[] = [...localDelDia];
 
       try {
-        const res = await fetch(`${BACKEND_URL}/entregas?fecha=${fIso}&limit=300`);
+        const res = await fetch(`${BACKEND_URL}/entregas?fecha=${fIso}&limit=1000`);
         if (res.ok) {
           const json = await res.json();
           const serverRows: any[] = Array.isArray(json) ? json : (json.data || []);
-          if (Array.isArray(serverRows) && serverRows.length > 0) {
+          if (Array.isArray(serverRows)) {
+            const serverLocalIds = new Set(serverRows.map((s: any) => s.local_id).filter(Boolean));
+            const serverBenefDateKeys = new Set(
+              serverRows.map((s: any) => `b-${s.beneficiario_id}-${String(s.fecha_asignada || s.fecha_hora || '').slice(0, 10)}`)
+            );
+            const serverIds = new Set(serverRows.map((s: any) => Number(s.id)).filter(Boolean));
+
+            // 1. RECONCILIACIÓN DE ELIMINACIONES EN LA WEB:
+            // Si una entrega en SQLite estaba marcada como sincronizada (sincronizado = 1),
+            // pero el servidor ya NO la tiene en su lista, significa que fue eliminada desde la Web.
+            // Por lo tanto, debemos borrarla de SQLite y de la lista visible del celular.
+            const reconciledLocal: any[] = [];
+            for (const item of localDelDia) {
+              const isSynced = Number(item.sincronizado) === 1 || item.sync_status === 'SYNCED';
+              const sFecha = String(item.fecha_asignada || item.fecha_captura || item.fecha_hora || '').slice(0, 10);
+              const bKey = `b-${item.beneficiario_id}-${sFecha}`;
+
+              const existsOnServer =
+                (item.local_id && serverLocalIds.has(item.local_id)) ||
+                serverBenefDateKeys.has(bKey) ||
+                (item.id && serverIds.has(Number(item.id)));
+
+              if (isSynced && !existsOnServer) {
+                // Fue eliminada en la Web: purgar de SQLite local
+                console.log(`[Sync Reconcile] Purgando entrega local id=${item.id} (${item.nombres_apellidos}) porque fue eliminada en la Web`);
+                await db.runAsync('DELETE FROM entregas_agua WHERE id = ?', [item.id]).catch(() => {});
+                if (item.foto_local_uri && Platform.OS !== 'web' && !String(item.foto_local_uri).startsWith('http')) {
+                  await FileSystem.deleteAsync(item.foto_local_uri, { idempotent: true }).catch(() => {});
+                }
+              } else {
+                reconciledLocal.push(item);
+              }
+            }
+
+            mergedList = [...reconciledLocal];
+
+            // 2. INCORPORACIÓN DE ENTREGAS CREADAS EN LA WEB O DESDE OTRO DISPOSITIVO:
             const localKeys = new Set(
               mergedList.map((m: any) => m.local_id || `b-${m.beneficiario_id}-${String(m.fecha_asignada || m.fecha_hora || '').slice(0, 10)}`)
             );
+
             for (const s of serverRows) {
               const sFechaAsig = String(s.fecha_asignada || '').slice(0, 10);
               const sFechaHora = String(s.fecha_captura || s.fecha_hora || '').slice(0, 10);
-              // CRÍTICO: SOLO incluir entregas cuya fecha coincida estrictamente con fIso (día seleccionado)
+              // SOLO incluir entregas cuya fecha coincida estrictamente con fIso (día seleccionado)
               if (sFechaAsig !== fIso && sFechaHora !== fIso) {
                 continue;
               }
@@ -516,7 +555,9 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
             }
           }
         }
-      } catch (_) {}
+      } catch (err) {
+        console.warn('Error al reconciliar entregas del día con el servidor:', err);
+      }
 
       // Filtro de seguridad final: garantizar que el 100% de los registros sean exclusivamente de fIso
       const soloDelDia = mergedList.filter((m: any) => {
@@ -530,6 +571,23 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
       console.warn('Error al cargar entregas del día:', err);
     } finally {
       setLoadingEntregasDia(false);
+    }
+  };
+
+  const handlePullToRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await autoRecoverPendingSync();
+      await syncData(false);
+      await loadEntregasDelDia(diaSeleccionado?.fechaIso);
+      if (selectedProg?.id) {
+        await loadBeneficiariosSector(selectedProg.id);
+        await loadProgramaciones();
+      }
+    } catch (err) {
+      console.warn('Error en pull-to-refresh:', err);
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
@@ -1657,8 +1715,15 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
       // 1. Auto-recuperación previa al sincronizar: valida qué registros ya están en PostgreSQL
       const rec = await autoRecoverPendingSync();
 
-      // 2. Ejecutar proceso de sincronización
+      // 2. Ejecutar proceso de sincronización (sube locales + reconcilia eliminaciones de la Web)
       const res = await syncData(true);
+
+      // 3. Reconciliar inmediatamente entregas del día para actualizar la UI antes de la alerta
+      await loadEntregasDelDia(diaSeleccionado?.fechaIso);
+      if (selectedProg?.id) {
+        await loadBeneficiariosSector(selectedProg.id);
+        await loadProgramaciones();
+      }
 
       if (timedOut) return;
       clearTimeout(safetyTimer);
@@ -1678,10 +1743,6 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
     } finally {
       clearTimeout(safetyTimer);
       setIsSyncing(false);
-      if (selectedProg?.id) {
-        loadBeneficiariosSector(selectedProg.id).catch(() => {});
-        loadProgramaciones().catch(() => {});
-      }
       loadEntregasDelDia(diaSeleccionado?.fechaIso).catch(() => {});
     }
   };
@@ -1808,6 +1869,14 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
         keyboardShouldPersistTaps="handled"
         automaticallyAdjustKeyboardInsets={true}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handlePullToRefresh}
+            colors={['#0284c7']}
+            tintColor="#0284c7"
+          />
+        }
       >
       {/* HEADER CURVO MODERNO (ORGANIC CURVED HEADER) */}
       <View style={styles.headerModernCurve}>
