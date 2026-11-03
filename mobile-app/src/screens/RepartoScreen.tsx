@@ -476,7 +476,14 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
         [fIso, fIso]
       );
 
-      let mergedList: any[] = Array.isArray(localRows) ? [...localRows] : [];
+      // 1. Filtrar entregas locales asegurando que pertenezcan estrictamente a la fecha seleccionada
+      const localDelDia = (localRows || []).filter((item: any) => {
+        const fAsig = String(item.fecha_asignada || '').slice(0, 10);
+        const fHora = String(item.fecha_captura || item.fecha_hora || '').slice(0, 10);
+        return fAsig === fIso || fHora === fIso;
+      });
+
+      let mergedList: any[] = [...localDelDia];
 
       try {
         const res = await fetch(`${BACKEND_URL}/entregas?fecha=${fIso}&limit=300`);
@@ -488,7 +495,14 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
               mergedList.map((m: any) => m.local_id || `b-${m.beneficiario_id}-${String(m.fecha_asignada || m.fecha_hora || '').slice(0, 10)}`)
             );
             for (const s of serverRows) {
-              const sKey = s.local_id || `b-${s.beneficiario_id}-${String(s.fecha_asignada || s.fecha_hora || '').slice(0, 10)}`;
+              const sFechaAsig = String(s.fecha_asignada || '').slice(0, 10);
+              const sFechaHora = String(s.fecha_captura || s.fecha_hora || '').slice(0, 10);
+              // CRÍTICO: SOLO incluir entregas cuya fecha coincida estrictamente con fIso (día seleccionado)
+              if (sFechaAsig !== fIso && sFechaHora !== fIso) {
+                continue;
+              }
+
+              const sKey = s.local_id || `b-${s.beneficiario_id}-${sFechaAsig || sFechaHora}`;
               if (!localKeys.has(sKey)) {
                 mergedList.push({
                   ...s,
@@ -504,7 +518,14 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
         }
       } catch (_) {}
 
-      setEntregasDelDia(mergedList);
+      // Filtro de seguridad final: garantizar que el 100% de los registros sean exclusivamente de fIso
+      const soloDelDia = mergedList.filter((m: any) => {
+        const fAsig = String(m.fecha_asignada || '').slice(0, 10);
+        const fHora = String(m.fecha_captura || m.fecha_hora || '').slice(0, 10);
+        return fAsig === fIso || fHora === fIso;
+      });
+
+      setEntregasDelDia(soloDelDia);
     } catch (err) {
       console.warn('Error al cargar entregas del día:', err);
     } finally {
@@ -1739,13 +1760,13 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
   const porcentajeAvanceLitros = metaLitrosDia > 0 ? Math.min(100, Math.round((litrosEntregadosDia / metaLitrosDia) * 100)) : 0;
   const porcentajeAvanceFamilias = totalFamiliasPadrón > 0 ? Math.min(100, Math.round((familiasAtendidasDia / totalFamiliasPadrón) * 100)) : 0;
 
-  // Métricas consolidadas del día
+  // Métricas consolidadas ÚNICAMENTE de la jornada del día (NUNCA mostrar el global acumulado de la programación)
   const diaMetrics = {
-    volRepartido: litrosEntregadosDia > 0 ? litrosEntregadosDia : Number(selectedProg?.total_litros || 0),
-    volPromedio: volPromedioDia > 0 ? volPromedioDia : (Number(selectedProg?.volumen_promedio) || 0),
-    poblacion: poblacionAtendidaDia > 0 ? poblacionAtendidaDia : (Number(selectedProg?.poblacion_beneficiada) || 0),
-    monto: montoValorizadoDia > 0 ? montoValorizadoDia : (Number(selectedProg?.monto_valorizado) || 0),
-    familias: familiasAtendidasDia > 0 ? familiasAtendidasDia : Number(selectedProg?.total_entregas || 0),
+    volRepartido: litrosEntregadosDia,
+    volPromedio: volPromedioDia,
+    poblacion: poblacionAtendidaDia,
+    monto: montoValorizadoDia,
+    familias: familiasAtendidasDia,
   };
 
   return (

@@ -25,7 +25,7 @@ export const getAllEntregas = async (req: Request, res: Response) => {
 
     if (fecha) {
       params.push(String(fecha).trim());
-      whereClauses.push(`(e.fecha_asignada = $${params.length} OR TO_CHAR(e.fecha_hora, 'YYYY-MM-DD') = $${params.length})`);
+      whereClauses.push(`(e.fecha_asignada::text = $${params.length} OR TO_CHAR(e.fecha_hora, 'YYYY-MM-DD') = $${params.length})`);
     }
 
     const whereStr = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
