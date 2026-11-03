@@ -214,6 +214,11 @@ export const uploadDelivery = async (req: Request, res: Response) => {
       }
     }
 
+    // Garantizar que la URL almacenada en PostgreSQL siempre tenga extensión .webp
+    if (fotoUrl) {
+      fotoUrl = fotoUrl.replace(/\.(jpe?g|png)$/i, '.webp');
+    }
+
     // 3. Insert into PostgreSQL
     const fechaHoraEfectiva =
       finalFechaAsignada && !String(finalFechaCaptura).startsWith(String(finalFechaAsignada))

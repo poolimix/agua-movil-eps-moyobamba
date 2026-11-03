@@ -4,7 +4,7 @@ import PDFDocument from 'pdfkit';
 import * as xlsx from 'xlsx';
 import fs from 'fs';
 import path from 'path';
-import { stampWatermarkOnImage } from '../utils/watermark';
+import { stampWatermarkOnImage, convertToWebp } from '../utils/watermark';
 
 export const getAllEntregas = async (req: Request, res: Response) => {
   try {
@@ -936,31 +936,42 @@ export const actualizarFotoEntrega = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Debe seleccionar una imagen válida (JPG, PNG o WEBP).' });
     }
 
-    if (estamparMembrete && localSavedFilePath && fs.existsSync(localSavedFilePath)) {
-      try {
-        const fechaRef = entrega.fecha_captura || entrega.fecha_hora;
-        const dateStr = fechaRef
-          ? new Date(fechaRef).toLocaleString('es-PE')
-          : new Date().toLocaleString('es-PE');
+    if (localSavedFilePath && fs.existsSync(localSavedFilePath)) {
+      if (estamparMembrete) {
+        try {
+          const fechaRef = entrega.fecha_captura || entrega.fecha_hora;
+          const dateStr = fechaRef
+            ? new Date(fechaRef).toLocaleString('es-PE')
+            : new Date().toLocaleString('es-PE');
 
-        const stampedWebp = await stampWatermarkOnImage(localSavedFilePath, {
-          beneficiario: entrega.nombres_apellidos || 'Beneficiario Acreditado',
-          dni: entrega.dni || '-',
-          sector: entrega.sector || 'Moyobamba',
-          direccion: entrega.direccion || '-',
-          latitud: entrega.latitud ? Number(entrega.latitud).toFixed(6) : '-6.034172',
-          longitud: entrega.longitud ? Number(entrega.longitud).toFixed(6) : '-76.971391',
-          precision: entrega.precision_gps ? Math.round(Number(entrega.precision_gps)) : 10,
-          fechaHora: dateStr,
-          cisterna: entrega.cisterna_placa || 'CAT-849',
-        });
+          const stampedWebp = await stampWatermarkOnImage(localSavedFilePath, {
+            beneficiario: entrega.nombres_apellidos || 'Beneficiario Acreditado',
+            dni: entrega.dni || '-',
+            sector: entrega.sector || 'Moyobamba',
+            direccion: entrega.direccion || '-',
+            latitud: entrega.latitud ? Number(entrega.latitud).toFixed(6) : '-6.034172',
+            longitud: entrega.longitud ? Number(entrega.longitud).toFixed(6) : '-76.971391',
+            precision: entrega.precision_gps ? Math.round(Number(entrega.precision_gps)) : 10,
+            fechaHora: dateStr,
+            cisterna: entrega.cisterna_placa || 'CAT-849',
+          });
 
-        if (stampedWebp) {
-          fotoUrl = `/uploads/registros/${path.basename(stampedWebp)}`;
+          if (stampedWebp) {
+            fotoUrl = `/uploads/registros/${path.basename(stampedWebp)}`;
+          }
+        } catch (wmErr) {
+          console.warn('Error estampando membrete en foto actualizada:', wmErr);
         }
-      } catch (wmErr) {
-        console.warn('Error estampando membrete en foto actualizada:', wmErr);
+      } else {
+        try {
+          const webpPath = await convertToWebp(localSavedFilePath);
+          fotoUrl = `/uploads/registros/${path.basename(webpPath)}`;
+        } catch (_) {}
       }
+    }
+
+    if (fotoUrl) {
+      fotoUrl = fotoUrl.replace(/\.(jpe?g|png)$/i, '.webp');
     }
 
     const updRes = await query(
@@ -1155,6 +1166,10 @@ export const registrarEntregaGrupalSector = async (req: Request, res: Response) 
       } catch (wmErr) {
         console.warn('Error estampando membrete en depósito grupal:', wmErr);
       }
+    }
+
+    if (fotoUrl) {
+      fotoUrl = fotoUrl.replace(/\.(jpe?g|png)$/i, '.webp');
     }
 
     // División exacta entre la cantidad de agua entregada y el número de beneficiarios seleccionados
