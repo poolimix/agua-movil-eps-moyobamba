@@ -623,15 +623,17 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
       ? parseFloat(result.vale_litros)
       : (result.num_miembros || 1) * dotacionSemanalHab;
 
-    const saldoResta = Math.max(0, cuotaFamiliar - yaEntregado);
+    const yaEntregadoRounded = Math.round(yaEntregado * 100) / 100;
+    const cuotaFamiliarRounded = Math.round(cuotaFamiliar * 100) / 100;
+    const saldoResta = Math.max(0, Math.round((cuotaFamiliarRounded - yaEntregadoRounded) * 100) / 100);
 
-    setCuotaTotal(cuotaFamiliar);
-    setEntregadoPrevio(yaEntregado);
+    setCuotaTotal(cuotaFamiliarRounded);
+    setEntregadoPrevio(yaEntregadoRounded);
     setSaldoPendiente(saldoResta);
     setTieneEntregaPrevia(yaEntregado > 0);
 
     // Sugerir por defecto el saldo restante pendiente
-    setLitrosEntregar(String(saldoResta > 0 ? saldoResta : cuotaFamiliar));
+    setLitrosEntregar(String(saldoResta > 0 ? saldoResta : cuotaFamiliarRounded));
     setHasSignature(false);
     setPhotoUri(null);
     const hoyDia = getDiasCicloSemanal().find((d) => d.esHoy) || getDiasCicloSemanal()[0];
@@ -3642,7 +3644,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
               >
                 <Ionicons name="calendar-outline" size={12} color="#0369a1" />
                 <Text style={[styles.quickLitroBtnText, { color: '#0369a1' }]}>
-                  Saldo Semanal ({saldoPendiente > 0 ? saldoPendiente : cuotaTotal} L)
+                  Saldo Semanal ({Number(saldoPendiente > 0 ? saldoPendiente : cuotaTotal).toFixed(2)} L)
                 </Text>
               </TouchableOpacity>
             </View>
@@ -3650,9 +3652,9 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
 
           {/* CALCULATION & EDITABLE LITERS BOX CON SALDO PENDIENTE */}
           {(() => {
-            const ltsNum = parseFloat(litrosEntregar) || 0;
-            const saldoBase = tieneEntregaPrevia ? saldoPendiente : cuotaTotal;
-            const saldoQueQuedara = Math.max(0, saldoBase - ltsNum);
+            const ltsNum = Math.round((parseFloat(litrosEntregar) || 0) * 100) / 100;
+            const saldoBase = Math.round((tieneEntregaPrevia ? saldoPendiente : cuotaTotal) * 100) / 100;
+            const saldoQueQuedara = Math.max(0, Math.round((saldoBase - ltsNum) * 100) / 100);
             const esParcial = saldoQueQuedara > 0;
             const excedeCuota = ltsNum > saldoBase;
 
@@ -3681,10 +3683,10 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                 {tieneEntregaPrevia ? (
                   <View style={{ backgroundColor: '#fef3c7', paddingVertical: 5, paddingHorizontal: 8, borderRadius: 8, marginBottom: 6, borderWidth: 1, borderColor: '#fde68a', flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap' }}>
                     <Text style={{ fontSize: 11, color: '#92400e', fontWeight: '700' }}>
-                      ⚠️ Ya recibió: {entregadoPrevio} L
+                      ⚠️ Ya recibió: {Number(entregadoPrevio).toFixed(2)} L
                     </Text>
                     <Text style={{ fontSize: 11, color: '#b45309', fontWeight: '800' }}>
-                      Saldo previo: {saldoPendiente} L
+                      Saldo previo: {Number(saldoPendiente).toFixed(2)} L
                     </Text>
                   </View>
                 ) : null}
@@ -3710,7 +3712,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                 {excedeCuota ? (
                   <View style={{ backgroundColor: '#eff6ff', paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, marginTop: 6, borderWidth: 1, borderColor: '#bfdbfe' }}>
                     <Text style={{ fontSize: 11, color: '#1d4ed8', fontWeight: '700' }}>
-                      ℹ️ Dotación Especial: {ltsNum} L (+{ltsNum - saldoBase} L sobre cuota)
+                      ℹ️ Dotación Especial: {Number(ltsNum).toFixed(2)} L (+{Number(ltsNum - saldoBase).toFixed(2)} L sobre cuota)
                     </Text>
                   </View>
                 ) : esParcial ? (
@@ -3722,7 +3724,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                       </Text>
                     </View>
                     <Text style={{ fontSize: 11.5, color: '#92400e', fontWeight: '900' }}>
-                      Resta: {saldoQueQuedara} L
+                      Resta: {Number(Math.round(saldoQueQuedara * 100) / 100).toFixed(2)} L
                     </Text>
                   </View>
                 ) : (
