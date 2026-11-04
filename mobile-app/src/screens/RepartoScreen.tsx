@@ -922,7 +922,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                 formData.append('forzar_segundo_viaje', 'true');
                 formData.append(
                   'observaciones',
-                  `Entrega en Depósito Único Diario (${sectorDeposito}): ${litrosTot} L ÷ ${totalBenef} benef. = ${litrosPorBenef} L`
+                  `Entrega en Depósito Único Diario (${sectorDeposito}): ${litrosTot} L ÷ ${totalBenef} benef. = ${Number(litrosPorBenef).toFixed(2)} L`
                 );
 
                 if (fotoDepositoUri && Platform.OS !== 'web') {
@@ -951,13 +951,32 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
               const batchStamp = Date.now();
               let acum = 0;
 
+              // Pre-cargar datos semanales por beneficiario para calcular saldo real
+              const dotacionDia = Number(systemConfig?.dotacion_diaria_litros || 50);
+              const diasSem = Number(systemConfig?.dias_entrega_semanal || 7);
+              const semanaIso = fechaIso;
+
               for (let i = 0; i < totalBenef; i++) {
                 const benId = selectedBenefIdsDeposito[i];
                 const litrosInd =
                   i === totalBenef - 1 ? Number((litrosTot - acum).toFixed(2)) : litrosPorBenef;
                 acum += litrosInd;
                 const localId = `dep-movil-${benId}-${batchStamp}-${i}`;
-                const obs = `Entrega en Depósito Único Diario (${sectorDeposito}): ${litrosTot} L ÷ ${totalBenef} benef. = ${litrosInd} L`;
+
+                // Calcular cuota semanal real del beneficiario y saldo pendiente correcto
+                const benData = beneficiariosSector.find((b: any) => Number(b.id) === benId);
+                const miembrosBen = Number(benData?.num_miembros || 1);
+                const cuotaSemBen = Number(
+                  benData?.cuota_semanal || benData?.litros_sugeridos || miembrosBen * dotacionDia * diasSem
+                );
+                const yaEntregadoBen = Number(
+                  benData?.litros_esta_semana || benData?.litros_entregados_semana || 0
+                );
+                const nuevoAcumBen = Math.round((yaEntregadoBen + litrosInd) * 100) / 100;
+                const saldoPendienteBen = Math.max(0, Math.round((cuotaSemBen - nuevoAcumBen) * 100) / 100);
+                const estadoBen = saldoPendienteBen > 0 ? 'PARCIAL' : 'COMPLETA';
+
+                const obs = `Depósito Único (${sectorDeposito}): +${litrosInd} L hoy (${litrosTot} L ÷ ${totalBenef} benef.) • Meta Sem: ${cuotaSemBen} L • Restante Sem: ${saldoPendienteBen} L`;
 
                 await db.runAsync(
                   `INSERT INTO entregas_agua (
@@ -965,15 +984,17 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                     cuota_programada, litros_entregados, saldo_pendiente, estado_entrega,
                     observaciones_entrega, foto_local_uri, latitud, longitud, precision_gps,
                     fecha_captura, fecha_hora, dia_entrega, fecha_asignada, sincronizado, sync_status
-                  ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'COMPLETA', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                   [
                     localId,
                     benId,
                     progId,
                     selectedCisternaId || 1,
                     selectedConductorId || 1,
-                    litrosInd,
-                    litrosInd,
+                    cuotaSemBen,       // cuota_programada = cuota semanal real del beneficiario
+                    litrosInd,         // litros_entregados = lo que recibe hoy
+                    saldoPendienteBen, // saldo_pendiente = saldo real restante en la semana
+                    estadoBen,         // estado_entrega = PARCIAL o COMPLETA según el saldo
                     obs,
                     fotoDepositoUri || null,
                     lat,
@@ -4444,13 +4465,13 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                       <View style={{ flex: 1, backgroundColor: '#ffffff', borderRadius: 8, padding: 6, borderWidth: 1, borderColor: '#bfdbfe' }}>
                         <Text style={{ fontSize: 9, fontWeight: '700', color: '#64748b' }}>ESTIMADO SEM.</Text>
                         <Text style={{ fontSize: 12, fontWeight: '900', color: '#1e40af' }}>
-                          {cuotaSemanalSector.toLocaleString()} L
+                          {Number(cuotaSemanalSector).toFixed(2)} L
                         </Text>
                       </View>
                       <View style={{ flex: 1, backgroundColor: '#ffffff', borderRadius: 8, padding: 6, borderWidth: 1, borderColor: '#cbd5e1' }}>
                         <Text style={{ fontSize: 9, fontWeight: '700', color: '#64748b' }}>YA ENTREGADO</Text>
                         <Text style={{ fontSize: 12, fontWeight: '900', color: '#0f766e' }}>
-                          {entregadoSemanaSector.toLocaleString()} L
+                          {Number(entregadoSemanaSector).toFixed(2)} L
                         </Text>
                       </View>
                       <View
@@ -4479,7 +4500,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                             color: restanteDespuesDeHoySector > 0 ? '#d97706' : '#15803d',
                           }}
                         >
-                          {restanteDespuesDeHoySector.toLocaleString()} L
+                          {Number(restanteDespuesDeHoySector).toFixed(2)} L
                         </Text>
                       </View>
                     </View>
@@ -4714,7 +4735,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                               </Text>
                               <Text style={{ fontSize: 10, color: '#64748b' }}>
                                 DNI: {b.dni} • 👥 {miembrosFam} hab. (Sem: {cuotaSemFam}L)
-                                {!isChecked ? ' • Otro depósito' : ` • Resta: ${restanteSemFam}L`}
+                                {!isChecked ? ' • Otro depósito' : ` • Resta: ${Number(restanteSemFam).toFixed(2)}L`}
                               </Text>
                             </View>
                             <View
@@ -4732,7 +4753,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                                   color: isChecked ? '#15803d' : '#b91c1c',
                                 }}
                               >
-                                {isChecked ? `+${litrosPorBenef} L` : '0 L'}
+                                {isChecked ? `+${Number(litrosPorBenef).toFixed(2)} L` : '0 L'}
                               </Text>
                             </View>
                           </TouchableOpacity>
@@ -4796,7 +4817,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                         <>
                           <Ionicons name="checkmark-done-circle-outline" size={18} color="#ffffff" />
                           <Text style={styles.modalCalidadSaveText}>
-                            Entregar ({marcadosCount} fam • {litrosPorBenef}L)
+                            Entregar ({marcadosCount} fam • {Number(litrosPorBenef).toFixed(2)}L)
                           </Text>
                         </>
                       )}
