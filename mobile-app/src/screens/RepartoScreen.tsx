@@ -7913,6 +7913,9 @@ const styles = StyleSheet.create({
 
   // COINCIDENCIAS SEARCH MODAL
   coincidenciasModalContent: {
+    width: '92%',
+    maxWidth: 480,
+    borderRadius: 24,
     backgroundColor: '#ffffff',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
@@ -8264,6 +8267,9 @@ const styles = StyleSheet.create({
 
   // MODAL DÍA DE ENTREGA
   diaPickerModalContent: {
+    width: '92%',
+    maxWidth: 480,
+    borderRadius: 24,
     backgroundColor: '#ffffff',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
