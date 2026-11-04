@@ -1016,7 +1016,19 @@ export const registrarEntregaGrupalSector = async (req: Request, res: Response) 
       firma_base64,
       forzar_segundo_viaje,
       lote_deposito_id,
+      local_ids,
     } = req.body;
+
+    // IDs locales enviados por el celular (mismo orden que beneficiario_ids) para idempotencia
+    let localIdsArray: string[] = [];
+    try {
+      const parsedLocal = typeof local_ids === 'string' ? JSON.parse(local_ids) : local_ids;
+      if (Array.isArray(parsedLocal)) {
+        localIdsArray = parsedLocal.map((s: any) => String(s || '').trim());
+      }
+    } catch {
+      localIdsArray = [];
+    }
 
     await query(`
       ALTER TABLE entregas_agua ADD COLUMN IF NOT EXISTS lote_deposito_id VARCHAR(120);
@@ -1062,7 +1074,7 @@ export const registrarEntregaGrupalSector = async (req: Request, res: Response) 
            COALESCE(SUM(e.litros_entregados), 0)::numeric as total_litros
          FROM entregas_agua e
          LEFT JOIN beneficiarios b ON e.beneficiario_id = b.id
-         WHERE (e.fecha_asignada = $1 OR TO_CHAR(e.fecha_hora, 'YYYY-MM-DD') = $1)
+         WHERE (e.fecha_asignada::text = $1 OR TO_CHAR(e.fecha_hora, 'YYYY-MM-DD') = $1)
            AND UPPER(TRIM(COALESCE(b.sector_aahh, b.sector, ''))) = UPPER(TRIM($2))
            AND (e.lote_deposito_id IS NOT NULL OR e.local_id LIKE 'dep-%' OR e.observaciones_entrega ILIKE '%Depósito Único%')
          GROUP BY COALESCE(e.lote_deposito_id, 'LOTE-PREVIO')
@@ -1188,29 +1200,51 @@ export const registrarEntregaGrupalSector = async (req: Request, res: Response) 
     const lunesStr = mondayDate.toISOString().slice(0, 10);
     const domingoStr = sundayDate.toISOString().slice(0, 10);
 
-    // Consultar miembros de cada beneficiario y lo ya entregado en esa semana
+    // Consultar miembros, cuota del vale y lo ya entregado en esa semana (mismo criterio que celular y web)
     const benefInfoRes = await query(
       `SELECT 
          b.id,
          COALESCE(b.num_miembros, 1)::int as num_miembros,
+         (
+           SELECT v.litros_sugeridos FROM vales_consumo v
+           WHERE v.beneficiario_id = b.id AND v.litros_sugeridos IS NOT NULL
+           ORDER BY v.id DESC LIMIT 1
+         ) as cuota_vale,
          COALESCE((
            SELECT SUM(e.litros_entregados)
            FROM entregas_agua e
            WHERE e.beneficiario_id = b.id
-             AND (
-               (e.fecha_asignada >= $2 AND e.fecha_asignada <= $3)
-               OR (TO_CHAR(e.fecha_hora, 'YYYY-MM-DD') >= $2 AND TO_CHAR(e.fecha_hora, 'YYYY-MM-DD') <= $3)
-             )
+             AND COALESCE(e.fecha_asignada::text, TO_CHAR(e.fecha_hora, 'YYYY-MM-DD')) >= $2
+             AND COALESCE(e.fecha_asignada::text, TO_CHAR(e.fecha_hora, 'YYYY-MM-DD')) <= $3
          ), 0)::numeric as entregado_semana
        FROM beneficiarios b
        WHERE b.id = ANY($1::int[])`,
       [idsArray, lunesStr, domingoStr]
+    ).catch(async () =>
+      // Fallback si vales_consumo no tiene litros_sugeridos en este entorno
+      query(
+        `SELECT 
+           b.id,
+           COALESCE(b.num_miembros, 1)::int as num_miembros,
+           NULL as cuota_vale,
+           COALESCE((
+             SELECT SUM(e.litros_entregados)
+             FROM entregas_agua e
+             WHERE e.beneficiario_id = b.id
+               AND COALESCE(e.fecha_asignada::text, TO_CHAR(e.fecha_hora, 'YYYY-MM-DD')) >= $2
+               AND COALESCE(e.fecha_asignada::text, TO_CHAR(e.fecha_hora, 'YYYY-MM-DD')) <= $3
+           ), 0)::numeric as entregado_semana
+         FROM beneficiarios b
+         WHERE b.id = ANY($1::int[])`,
+        [idsArray, lunesStr, domingoStr]
+      )
     );
-    const benefWeeklyMap = new Map<number, { miembros: number; entregadoSemana: number }>();
+    const benefWeeklyMap = new Map<number, { miembros: number; entregadoSemana: number; cuotaVale: number }>();
     for (const row of benefInfoRes.rows) {
       benefWeeklyMap.set(Number(row.id), {
         miembros: Number(row.num_miembros) || 1,
         entregadoSemana: parseFloat(row.entregado_semana || '0') || 0,
+        cuotaVale: parseFloat(row.cuota_vale || '0') || 0,
       });
     }
 
@@ -1234,18 +1268,25 @@ export const registrarEntregaGrupalSector = async (req: Request, res: Response) 
       const litrosIndividual = i === totalBeneficiarios - 1
         ? Number((litrosTotales - acumulado).toFixed(2))
         : litrosBase;
-      acumulado += litrosIndividual;
+      acumulado = Math.round((acumulado + litrosIndividual) * 100) / 100;
 
-      const bInfo = benefWeeklyMap.get(benId) || { miembros: 1, entregadoSemana: 0 };
-      const cuotaSemanalBenef = bInfo.miembros * 350;
-      const nuevoAcumuladoSemanal = bInfo.entregadoSemana + litrosIndividual;
+      const bInfo = benefWeeklyMap.get(benId) || { miembros: 1, entregadoSemana: 0, cuotaVale: 0 };
+      const cuotaSemanalBenef = bInfo.cuotaVale > 0 ? bInfo.cuotaVale : bInfo.miembros * 350;
+      const nuevoAcumuladoSemanal = Math.round((bInfo.entregadoSemana + litrosIndividual) * 100) / 100;
       const saldoSemanalRestante = Number(Math.max(0, cuotaSemanalBenef - nuevoAcumuladoSemanal).toFixed(2));
       const estadoSemanal = saldoSemanalRestante > 0 ? 'PARCIAL' : 'COMPLETA';
 
       cuotaSemanalSectorTotal += cuotaSemanalBenef;
       saldoRestanteSectorTotal += saldoSemanalRestante;
 
-      const localId = `dep-sec-${benId}-${batchStamp}-${i}`;
+      const localId = localIdsArray[i] || `dep-sec-${benId}-${batchStamp}-${i}`;
+
+      // Idempotencia: si el celular reintenta (corte de red), no duplicar la entrega
+      const yaExiste = await query('SELECT * FROM entregas_agua WHERE local_id = $1 LIMIT 1', [localId]);
+      if (yaExiste.rows.length > 0) {
+        entregasCreadas.push(yaExiste.rows[0]);
+        continue;
+      }
       const obsTexto = observaciones
         ? String(observaciones).trim()
         : `Depósito Único (${sector || 'Sector'}): +${litrosIndividual} L hoy (${litrosTotales} L ÷ ${totalBeneficiarios} benef.) • Meta Sem: ${cuotaSemanalBenef} L • Restante Sem: ${saldoSemanalRestante} L`;

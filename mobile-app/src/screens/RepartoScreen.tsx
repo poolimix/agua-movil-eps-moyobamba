@@ -384,20 +384,53 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
         const json = await res.json();
         const lista = json.data || json.beneficiarios || (Array.isArray(json) ? json : []);
         if (Array.isArray(lista) && lista.length > 0) {
-          const normalizados = lista.map((b: any) => ({
-            ...b,
-            id: b.id,
-            dni: b.dni,
-            nombres: b.nombres || b.nombres_apellidos || 'Sin nombre',
-            nombres_apellidos: b.nombres_apellidos || b.nombres || 'Sin nombre',
-            sector: b.sector_aahh || b.sector || 'Sector Moyobamba',
-            sector_aahh: b.sector_aahh || b.sector || 'Sector Moyobamba',
-            direccion: b.calle_direccion || b.direccion || '-',
-            vale_codigo: b.vale_codigo || null,
-            cuota_semanal: Number(b.cuota_semanal || 700),
-            litros_esta_semana: Number(b.litros_entregados_semana || b.litros_esta_semana || 0),
-            atendido_esta_semana: !!b.ha_recibido_esta_semana || !!b.atendido_esta_semana || (Number(b.saldo_semanal) <= 0 && Number(b.litros_entregados_semana) > 0)
-          }));
+          // Sumar entregas locales de esta semana que aún NO se suben al servidor,
+          // para que sector e individual vean exactamente el mismo acumulado semanal.
+          const pendientesMap = new Map<number, number>();
+          try {
+            const dbP = await getDatabase();
+            const hoyRef = new Date();
+            const diffLunes = (hoyRef.getDay() + 6) % 7;
+            const lunes = new Date(hoyRef.getFullYear(), hoyRef.getMonth(), hoyRef.getDate() - diffLunes);
+            const domingo = new Date(lunes.getFullYear(), lunes.getMonth(), lunes.getDate() + 6);
+            const toIso = (d: Date) =>
+              `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            const fechaExpr = `COALESCE(fecha_asignada, substr(COALESCE(fecha_captura, fecha_hora, ''), 1, 10))`;
+            const pendRows: any[] = await dbP.getAllAsync(
+              `SELECT beneficiario_id, COALESCE(SUM(litros_entregados), 0) as total FROM entregas_agua
+               WHERE (sincronizado = 0 OR sync_status != 'SYNCED')
+                 AND ${fechaExpr} >= ? AND ${fechaExpr} <= ?
+               GROUP BY beneficiario_id`,
+              [toIso(lunes), toIso(domingo)]
+            );
+            for (const r of pendRows || []) {
+              pendientesMap.set(Number(r.beneficiario_id), parseFloat(r.total || '0') || 0);
+            }
+          } catch (_) {}
+
+          const normalizados = lista.map((b: any) => {
+            const miembros = Number(b.num_miembros || 1);
+            const servidorSem = Number(b.litros_entregados_semana || b.litros_esta_semana || 0);
+            const pendSem = pendientesMap.get(Number(b.id)) || 0;
+            const cuotaSem = Number(b.cuota_semanal || b.litros_sugeridos || miembros * DOTACION_SEMANAL_POR_HABITANTE);
+            const totalSem = Math.round((servidorSem + pendSem) * 100) / 100;
+            return {
+              ...b,
+              id: b.id,
+              dni: b.dni,
+              nombres: b.nombres || b.nombres_apellidos || 'Sin nombre',
+              nombres_apellidos: b.nombres_apellidos || b.nombres || 'Sin nombre',
+              sector: b.sector_aahh || b.sector || 'Sector Moyobamba',
+              sector_aahh: b.sector_aahh || b.sector || 'Sector Moyobamba',
+              direccion: b.calle_direccion || b.direccion || '-',
+              vale_codigo: b.vale_codigo || null,
+              cuota_semanal: cuotaSem,
+              litros_esta_semana: totalSem,
+              litros_entregados_semana: totalSem,
+              saldo_semanal: Math.max(0, Math.round((cuotaSem - totalSem) * 100) / 100),
+              atendido_esta_semana: totalSem > 0 && cuotaSem - totalSem <= 0.01,
+            };
+          });
           setBeneficiariosSector(normalizados);
           return normalizados;
         }
@@ -412,12 +445,12 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                COALESCE(b.calle_direccion, b.direccion, '-') as direccion,
                b.telefono,
                v.codigo_unico as vale_codigo,
-               COALESCE(v.litros_sugeridos, COALESCE(b.num_miembros, 1) * 350, 700) as cuota_semanal,
+               COALESCE(v.litros_sugeridos, COALESCE(b.num_miembros, 1) * 350) as cuota_semanal,
                COALESCE((
                  SELECT SUM(e.litros_entregados)
                  FROM entregas_agua e
                  WHERE e.beneficiario_id = b.id
-                   AND date(e.fecha_hora) >= date('now', 'weekday 0', '-6 days')
+                   AND COALESCE(e.fecha_asignada, substr(COALESCE(e.fecha_captura, e.fecha_hora, ''), 1, 10)) >= date('now', 'localtime', 'weekday 0', '-6 days')
                ), 0) as litros_esta_semana
         FROM beneficiarios b
         LEFT JOIN vales_consumo v ON v.beneficiario_id = b.id
@@ -600,19 +633,35 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
 
     const progId = selectedProg?.id || PROGRAMACION_ACTUAL_ID;
 
-    // Consultar entregas previas para este beneficiario en esta programación
+    // Consultar lo entregado en la SEMANA ACTUAL (Lun–Dom), mismo criterio que la entrega por sector.
+    // Antes se sumaba toda la programación (todas las semanas) y la cuota semanal salía inflada.
     let yaEntregado = 0;
     try {
+      const hoyRef = new Date();
+      const diffLunes = (hoyRef.getDay() + 6) % 7;
+      const lunes = new Date(hoyRef.getFullYear(), hoyRef.getMonth(), hoyRef.getDate() - diffLunes);
+      const domingo = new Date(lunes.getFullYear(), lunes.getMonth(), lunes.getDate() + 6);
+      const toIso = (d: Date) =>
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const lunesIso = toIso(lunes);
+      const domingoIso = toIso(domingo);
+
+      // a) Mismo dato que usa la entrega por sector (servidor + pendientes locales ya sumados)
+      const benSrv = beneficiariosSector.find((b: any) => Number(b.id) === Number(result.id));
+
+      // b) Entregas locales de esta semana (respaldo si el beneficiario no está en la lista del sector)
       const db = await getDatabase();
-      const prevRows: any = await db.getFirstAsync(
-        `SELECT COALESCE(SUM(litros_entregados), 0) as total_entregado FROM entregas_agua WHERE beneficiario_id = ? AND programacion_id = ?`,
-        [result.id, progId]
+      const fechaExpr = `COALESCE(fecha_asignada, substr(COALESCE(fecha_captura, fecha_hora, ''), 1, 10))`;
+      const localTodas: any = await db.getFirstAsync(
+        `SELECT COALESCE(SUM(litros_entregados), 0) as total FROM entregas_agua
+         WHERE beneficiario_id = ? AND ${fechaExpr} >= ? AND ${fechaExpr} <= ?`,
+        [result.id, lunesIso, domingoIso]
       );
-      if (prevRows?.total_entregado) {
-        yaEntregado = parseFloat(prevRows.total_entregado);
-      } else if (result.total_entregado_programacion) {
-        yaEntregado = parseFloat(result.total_entregado_programacion);
-      }
+      const localSemana = parseFloat(localTodas?.total || '0') || 0;
+
+      yaEntregado = benSrv
+        ? Number(benSrv.litros_esta_semana ?? benSrv.litros_entregados_semana ?? 0) || 0
+        : Math.max(localSemana, Number(result.litros_entregados_semana || 0) || 0);
     } catch (_) {}
 
     // Calcular cuota familiar semanal total (SUNASS: 50L/hab/día × integrantes × 7 días = 350L/hab)
@@ -904,6 +953,11 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
               const acc = location?.coords?.accuracy || 8;
 
               let syncedOnline = false;
+              // IDs únicos compartidos celular ↔ servidor (idempotencia: evita duplicados si se corta la red)
+              const batchStamp = Date.now();
+              const localIdsLote = selectedBenefIdsDeposito.map(
+                (benId, i) => `dep-movil-${benId}-${batchStamp}-${i}`
+              );
 
               // 1. Intentar registrar en el backend en bloque
               try {
@@ -914,16 +968,14 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                 if (selectedConductorId) formData.append('conductor_id', String(selectedConductorId));
                 formData.append('litros_totales_deposito', String(litrosTot));
                 formData.append('beneficiario_ids', JSON.stringify(selectedBenefIdsDeposito));
+                formData.append('local_ids', JSON.stringify(localIdsLote));
                 formData.append('fecha_entrega', fechaIso);
                 formData.append('dia_entrega', diaNombre);
                 formData.append('latitud', String(lat));
                 formData.append('longitud', String(lng));
                 formData.append('precision_gps', String(acc));
                 formData.append('forzar_segundo_viaje', 'true');
-                formData.append(
-                  'observaciones',
-                  `Entrega en Depósito Único Diario (${sectorDeposito}): ${litrosTot} L ÷ ${totalBenef} benef. = ${Number(litrosPorBenef).toFixed(2)} L`
-                );
+                // Sin 'observaciones' fijas: el servidor genera el detalle por beneficiario (Meta Sem / Restante Sem)
 
                 if (fotoDepositoUri && Platform.OS !== 'web') {
                   try {
@@ -948,20 +1000,18 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
 
               // 2. Guardar registros en SQLite local para trazabilidad offline/online
               const db = await getDatabase();
-              const batchStamp = Date.now();
               let acum = 0;
 
               // Pre-cargar datos semanales por beneficiario para calcular saldo real
               const dotacionDia = Number(systemConfig?.dotacion_diaria_litros || 50);
               const diasSem = Number(systemConfig?.dias_entrega_semanal || 7);
-              const semanaIso = fechaIso;
 
               for (let i = 0; i < totalBenef; i++) {
                 const benId = selectedBenefIdsDeposito[i];
                 const litrosInd =
                   i === totalBenef - 1 ? Number((litrosTot - acum).toFixed(2)) : litrosPorBenef;
-                acum += litrosInd;
-                const localId = `dep-movil-${benId}-${batchStamp}-${i}`;
+                acum = Math.round((acum + litrosInd) * 100) / 100;
+                const localId = localIdsLote[i];
 
                 // Calcular cuota semanal real del beneficiario y saldo pendiente correcto
                 const benData = beneficiariosSector.find((b: any) => Number(b.id) === benId);
