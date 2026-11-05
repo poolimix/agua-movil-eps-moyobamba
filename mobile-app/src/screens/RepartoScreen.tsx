@@ -584,6 +584,48 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                   sector: s.sector || s.sector_aahh || 'Sector',
                   num_miembros: s.num_miembros || 1,
                 });
+
+                // Persistir en SQLite local para disponibilidad offline y coherencia multi-dispositivo
+                try {
+                  const checkSql = `SELECT id FROM entregas_agua WHERE local_id = ? OR (beneficiario_id = ? AND fecha_asignada = ?)`;
+                  const existsLocal: any = await db.getFirstAsync(checkSql, [
+                    s.local_id || `srv-${s.id}`,
+                    s.beneficiario_id,
+                    sFechaAsig
+                  ]);
+                  if (!existsLocal) {
+                    await db.runAsync(
+                      `INSERT INTO entregas_agua (
+                        local_id, beneficiario_id, programacion_id, cisterna_id, conductor_id,
+                        cuota_programada, litros_entregados, saldo_pendiente, estado_entrega,
+                        observaciones_entrega, foto_local_uri, latitud, longitud, precision_gps,
+                        fecha_captura, fecha_hora, dia_entrega, fecha_asignada, sincronizado, sync_status
+                      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'SYNCED')`,
+                      [
+                        s.local_id || `srv-${s.id}`,
+                        s.beneficiario_id,
+                        s.programacion_id || 1,
+                        s.cisterna_id || 1,
+                        s.conductor_id || 1,
+                        s.cuota_programada || s.litros_entregados || 350,
+                        s.litros_entregados || 0,
+                        s.saldo_pendiente || 0,
+                        s.estado_entrega || 'COMPLETA',
+                        s.observaciones_entrega || null,
+                        s.foto_url || null,
+                        s.latitud || null,
+                        s.longitud || null,
+                        s.precision_gps || null,
+                        s.fecha_captura || s.fecha_hora || new Date().toISOString(),
+                        s.fecha_hora || new Date().toISOString(),
+                        s.dia_entrega || null,
+                        sFechaAsig || fIso,
+                      ]
+                    );
+                  }
+                } catch (eSql) {
+                  // Silently ignore insert collision
+                }
               }
             }
           }
