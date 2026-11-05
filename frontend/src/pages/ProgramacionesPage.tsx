@@ -27,6 +27,8 @@ interface Programacion {
   ayudante_nombre?: string;
   ayudante_telefono?: string;
   ayudante_dni?: string;
+  gestores_ids?: string;
+  gestores_adicionales?: Array<{ id: number; nombre: string; email?: string; dni?: string }>;
   litros_programados?: number;
   viajes_estimados?: number;
   dias_semana?: string;
@@ -194,6 +196,7 @@ export default function ProgramacionesPage() {
     cisterna_id: '' as string | number,
     conductor_id: '' as string | number,
     ayudante_id: '' as string | number,
+    gestores_ids: [] as (number | string)[],
     litros_programados: 15000,
     viajes_estimados: 1,
     dias_semana: 'Lunes, Miércoles, Viernes',
@@ -334,6 +337,7 @@ export default function ProgramacionesPage() {
       cisterna_id: defaultCis?.id || '',
       conductor_id: defaultDriverId,
       ayudante_id: ayudantes[0]?.id || '',
+      gestores_ids: [],
       litros_programados: demandLitros,
       viajes_estimados: trips,
       dias_semana: defaultSec?.dias_entrega || 'Lunes, Miércoles, Viernes',
@@ -405,6 +409,7 @@ export default function ProgramacionesPage() {
       cisterna_id: p.cisterna_id || (cisternas[0]?.id || ''),
       conductor_id: p.conductor_id || (conductores[0]?.id || ''),
       ayudante_id: p.ayudante_id || '',
+      gestores_ids: p.gestores_ids ? String(p.gestores_ids).split(',').map(s => s.trim()).filter(Boolean) : [],
       litros_programados: progLitros,
       viajes_estimados: trips,
       dias_semana: p.dias_semana || 'Lunes, Martes, Miércoles, Jueves, Viernes, Sábado',
@@ -573,6 +578,7 @@ export default function ProgramacionesPage() {
       cisterna_id: formData.cisterna_id,
       conductor_id: formData.conductor_id,
       ayudante_id: formData.ayudante_id ? formData.ayudante_id : null,
+      gestores_ids: Array.isArray(formData.gestores_ids) && formData.gestores_ids.length > 0 ? formData.gestores_ids.join(',') : null,
       litros_programados: formData.litros_programados,
       viajes_estimados: formData.viajes_estimados,
       dias_semana: formData.dias_semana,
@@ -2056,6 +2062,52 @@ export default function ProgramacionesPage() {
                       <span style={{ fontSize: 11, color: '#64748b', marginTop: 3, display: 'block' }}>
                         El Gestor de Entrega registrará firmas, fotos con marca de agua y canje de vales en campo.
                       </span>
+
+                      {/* GESTORES DE ENTREGA ADICIONALES (EQUIPO MULTI-GESTOR) */}
+                      <div style={{ marginTop: 10, padding: 8, backgroundColor: '#ffffff', borderRadius: 8, borderWidth: 1, borderStyle: 'dashed', borderColor: '#38bdf8' }}>
+                        <label style={{ fontWeight: 700, fontSize: 11.5, color: '#0369a1', display: 'flex', alignItems: 'center', gap: 4 }}>
+                          👥 Gestores de Entrega Adicionales (Acceso Simultáneo):
+                        </label>
+                        <p style={{ fontSize: 10.5, color: '#64748b', margin: '2px 0 6px 0' }}>
+                          Marque todos los gestores que también podrán ingresar con su propia cuenta y realizar entregas en esta programación:
+                        </p>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                          {ayudantes
+                            .filter((a) => String(a.id) !== String(formData.ayudante_id))
+                            .map((a) => {
+                              const isChecked = Array.isArray(formData.gestores_ids) && formData.gestores_ids.map(String).includes(String(a.id));
+                              return (
+                                <button
+                                  type="button"
+                                  key={a.id}
+                                  onClick={() => {
+                                    const current = Array.isArray(formData.gestores_ids) ? [...formData.gestores_ids] : [];
+                                    const strId = String(a.id);
+                                    const next = current.map(String).includes(strId)
+                                      ? current.filter((item) => String(item) !== strId)
+                                      : [...current, a.id];
+                                    setFormData({ ...formData, gestores_ids: next });
+                                  }}
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 4,
+                                    fontSize: 11,
+                                    fontWeight: isChecked ? 700 : 500,
+                                    padding: '4px 8px',
+                                    borderRadius: 6,
+                                    border: isChecked ? '1.5px solid #0284c7' : '1px solid #cbd5e1',
+                                    backgroundColor: isChecked ? '#e0f2fe' : '#f8fafc',
+                                    color: isChecked ? '#0369a1' : '#475569',
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  {isChecked ? '☑' : '☐'} {a.nombres} {a.apellidos}
+                                </button>
+                              );
+                            })}
+                        </div>
+                      </div>
                     </div>
 
                     <div className="form-row" style={{ marginTop: 6 }}>

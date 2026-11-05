@@ -344,11 +344,29 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
               (user?.nombres && p.conductor_nombre && p.conductor_nombre.toLowerCase().includes(user.nombres.toLowerCase().split(' ')[0]))
             );
           } else if (userRol === 'GESTOR_ENTREGA' || userRol === 'AYUDANTE') {
-            filteredProgs = data.filter((p: any) => 
-              (p.ayudante_email && p.ayudante_email.toLowerCase() === userEmail) ||
-              (user?.personal_id && p.ayudante_id === user.personal_id) ||
-              (user?.nombres && p.ayudante_nombre && p.ayudante_nombre.toLowerCase().includes(user.nombres.toLowerCase().split(' ')[0]))
-            );
+            filteredProgs = data.filter((p: any) => {
+              // 1. Gestor principal
+              const matchEmailPrincipal = p.ayudante_email && p.ayudante_email.toLowerCase() === userEmail;
+              const matchIdPrincipal = user?.personal_id && p.ayudante_id === user.personal_id;
+              const matchNombrePrincipal = user?.nombres && p.ayudante_nombre && p.ayudante_nombre.toLowerCase().includes(user.nombres.toLowerCase().split(' ')[0]);
+
+              // 2. Gestores de entrega adicionales (soporte para múltiples gestores por programación)
+              let matchGestorAdicional = false;
+              if (user?.personal_id && p.gestores_ids) {
+                const idsArray = String(p.gestores_ids).split(',').map((id: string) => parseInt(id.trim(), 10));
+                if (idsArray.includes(Number(user.personal_id))) {
+                  matchGestorAdicional = true;
+                }
+              }
+              if (!matchGestorAdicional && Array.isArray(p.gestores_adicionales)) {
+                matchGestorAdicional = p.gestores_adicionales.some((g: any) =>
+                  (userEmail && g.email && g.email.toLowerCase() === userEmail) ||
+                  (user?.personal_id && Number(g.id) === Number(user.personal_id))
+                );
+              }
+
+              return matchEmailPrincipal || matchIdPrincipal || matchNombrePrincipal || matchGestorAdicional;
+            });
           }
 
           // Si el filtro por rol de usuario no encuentra una asignación específica, usar las programaciones activas del día

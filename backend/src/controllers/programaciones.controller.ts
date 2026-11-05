@@ -26,6 +26,7 @@ const ensureProgramacionesSchema = async () => {
       ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS dias_semana TEXT DEFAULT 'Lunes, Miércoles, Viernes';
       ALTER TABLE programaciones ALTER COLUMN dias_semana TYPE TEXT;
       ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS sectores_seleccionados TEXT;
+      ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS gestores_ids TEXT;
       ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS fecha_inicio DATE DEFAULT CURRENT_DATE;
       ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS fecha_fin DATE DEFAULT CURRENT_DATE;
       ALTER TABLE programaciones ADD COLUMN IF NOT EXISTS es_anual BOOLEAN DEFAULT TRUE;
@@ -62,6 +63,18 @@ export const getAllProgramaciones = async (req: Request, res: Response) => {
         ayud.dni as ayudante_dni,
         ayud.telefono as ayudante_telefono,
         ayud.email as ayudante_email,
+        p.gestores_ids,
+        (
+          SELECT json_agg(json_build_object('id', po.id, 'nombre', CONCAT(po.nombres, ' ', po.apellidos), 'email', po.email, 'dni', po.dni))
+          FROM personal_operativo po
+          WHERE po.id = ANY(
+            CASE 
+              WHEN p.gestores_ids IS NOT NULL AND TRIM(p.gestores_ids) != '' 
+              THEN string_to_array(p.gestores_ids, ',')::int[] 
+              ELSE ARRAY[]::int[] 
+            END
+          )
+        ) as gestores_adicionales,
         (SELECT COUNT(*) FROM entregas_agua e WHERE e.programacion_id = p.id) as total_entregas,
         (SELECT COALESCE(SUM(litros_entregados), 0) FROM entregas_agua e WHERE e.programacion_id = p.id) as total_litros,
         (SELECT CASE WHEN COUNT(*) > 0 THEN ROUND(COALESCE(SUM(litros_entregados), 0) / COUNT(*), 0) ELSE 0 END FROM entregas_agua e WHERE e.programacion_id = p.id) as volumen_promedio,
@@ -107,6 +120,7 @@ export const createProgramacion = async (req: Request, res: Response) => {
       cisterna_id,
       conductor_id,
       ayudante_id,
+      gestores_ids,
       litros_programados,
       viajes_estimados,
       dias_semana = 'Lunes, Miércoles, Viernes',
@@ -149,9 +163,9 @@ export const createProgramacion = async (req: Request, res: Response) => {
 
     const insertQuery = `
       INSERT INTO programaciones (
-        fecha, fecha_inicio, fecha_fin, es_anual, zona, sectores_seleccionados, estado, cisterna_id, conductor_id, ayudante_id, litros_programados, viajes_estimados, dias_semana
+        fecha, fecha_inicio, fecha_fin, es_anual, zona, sectores_seleccionados, estado, cisterna_id, conductor_id, ayudante_id, gestores_ids, litros_programados, viajes_estimados, dias_semana
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       RETURNING *;
     `;
 
@@ -166,6 +180,7 @@ export const createProgramacion = async (req: Request, res: Response) => {
       parsedCisternaId,
       parsedConductorId,
       parsedAyudanteId,
+      gestores_ids ? String(gestores_ids).trim() : null,
       parseInt(String(litros_programados), 10) || 0,
       viajes,
       dias_semana || 'Lunes, Miércoles, Viernes',
@@ -193,6 +208,7 @@ export const updateProgramacion = async (req: Request, res: Response) => {
       cisterna_id,
       conductor_id,
       ayudante_id,
+      gestores_ids,
       litros_programados,
       viajes_estimados,
       dias_semana,
@@ -245,10 +261,11 @@ export const updateProgramacion = async (req: Request, res: Response) => {
           cisterna_id = $8,
           conductor_id = $9,
           ayudante_id = $10,
-          litros_programados = $11,
-          viajes_estimados = $12,
-          dias_semana = $13
-      WHERE id = $14
+          gestores_ids = $11,
+          litros_programados = $12,
+          viajes_estimados = $13,
+          dias_semana = $14
+      WHERE id = $15
       RETURNING *;
     `;
 
@@ -263,6 +280,7 @@ export const updateProgramacion = async (req: Request, res: Response) => {
       parsedCisternaId,
       parsedConductorId,
       parsedAyudanteId,
+      gestores_ids !== undefined ? (gestores_ids ? String(gestores_ids).trim() : null) : null,
       parseInt(String(litros_programados), 10) || 0,
       viajes,
       dias_semana || 'Lunes, Miércoles, Viernes',
