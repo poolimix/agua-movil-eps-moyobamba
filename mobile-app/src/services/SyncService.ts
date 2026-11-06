@@ -100,40 +100,56 @@ export const reconcileServerEntregas = async (
       return { deletedCount: 0, message: 'Sin conexión para reconciliar' };
     }
 
-    const fIso = targetFecha || new Date().toISOString().slice(0, 10);
     const db = await getDatabase();
 
-    const res = await fetchWithTimeout(`${BACKEND_URL}/entregas?fecha=${fIso}&limit=1000`, {}, 12000);
+    // Consultamos las últimas 1000 entregas del servidor sin el parámetro ?fecha=
+    // para evitar el error 500 de casteo de timestamp en PostgreSQL y conciliar toda la semana/mes
+    const res = await fetchWithTimeout(`${BACKEND_URL}/entregas?limit=1000`, {}, 12000);
     if (!res.ok) return { deletedCount: 0, message: 'Error de respuesta del servidor' };
 
     const json = await res.json();
     const serverRows: any[] = Array.isArray(json) ? json : (json.data || []);
     if (!Array.isArray(serverRows)) return { deletedCount: 0, message: 'Formato inválido de servidor' };
 
-    const serverLocalIds = new Set(serverRows.map((s: any) => s.local_id).filter(Boolean));
+    const serverLocalIds = new Set(
+      serverRows.map((s: any) => String(s.local_id || '').trim()).filter(Boolean)
+    );
     const serverBenefDateKeys = new Set(
-      serverRows.map((s: any) => `b-${s.beneficiario_id}-${String(s.fecha_asignada || s.fecha_hora || '').slice(0, 10)}`)
+      serverRows.map((s: any) => `b-${s.beneficiario_id}-${String(s.fecha_asignada || s.fecha_captura || s.fecha_hora || '').slice(0, 10)}`)
     );
     const serverIds = new Set(serverRows.map((s: any) => Number(s.id)).filter(Boolean));
 
-    const localRows: any[] = await db.getAllAsync(
-      `SELECT id, local_id, beneficiario_id, fecha_asignada, fecha_captura, fecha_hora, foto_local_uri, sincronizado, sync_status
-       FROM entregas_agua
-       WHERE (fecha_asignada = ? OR substr(COALESCE(fecha_captura, fecha_hora), 1, 10) = ?)`,
-      [fIso, fIso]
-    );
+    const localRows: any[] = targetFecha
+      ? await db.getAllAsync(
+          `SELECT id, local_id, beneficiario_id, fecha_asignada, fecha_captura, fecha_hora, foto_local_uri, sincronizado, sync_status
+           FROM entregas_agua
+           WHERE (fecha_asignada = ? OR substr(COALESCE(fecha_captura, fecha_hora, ''), 1, 10) = ?)`,
+          [targetFecha, targetFecha]
+        )
+      : await db.getAllAsync(
+          `SELECT id, local_id, beneficiario_id, fecha_asignada, fecha_captura, fecha_hora, foto_local_uri, sincronizado, sync_status
+           FROM entregas_agua
+           WHERE sincronizado = 1 OR sync_status = 'SYNCED'
+           ORDER BY id DESC
+           LIMIT 500`
+        );
 
     let deletedCount = 0;
     for (const item of localRows) {
       const isSynced = Number(item.sincronizado) === 1 || item.sync_status === 'SYNCED';
-      const localKey = item.local_id;
+      const localKey = String(item.local_id || '').trim();
       const sFecha = String(item.fecha_asignada || item.fecha_captura || item.fecha_hora || '').slice(0, 10);
       const benefDateKey = `b-${item.beneficiario_id}-${sFecha}`;
 
-      const existsOnServer =
-        (localKey && serverLocalIds.has(localKey)) ||
-        serverBenefDateKeys.has(benefDateKey) ||
-        (item.id && serverIds.has(Number(item.id)));
+      let existsOnServer = false;
+      if (localKey.startsWith('srv-')) {
+        const srvId = Number(localKey.replace('srv-', ''));
+        existsOnServer = (srvId > 0 && serverIds.has(srvId)) || serverLocalIds.has(localKey);
+      } else if (localKey.length > 0) {
+        existsOnServer = serverLocalIds.has(localKey);
+      } else {
+        existsOnServer = serverBenefDateKeys.has(benefDateKey);
+      }
 
       // Si estaba sincronizada pero ya NO existe en el servidor -> fue eliminada en la Web
       if (isSynced && !existsOnServer) {

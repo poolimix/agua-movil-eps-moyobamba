@@ -296,14 +296,14 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
         await loadProgramaciones();
         await loadSystemConfig();
         await loadEntregasDelDia();
-        // Auto-recuperación y sincronización automática al iniciar la App
+        // Auto-recuperación y sincronización automática al iniciar la App (incluye purgado de eliminaciones Web)
         const rec = await autoRecoverPendingSync();
         const syncInit = await syncData(false);
-        if (rec.recoveredCount > 0 || syncInit.syncedCount > 0) {
+        await loadEntregasDelDia();
+        if (rec.recoveredCount > 0 || syncInit.syncedCount > 0 || syncInit.success) {
           if (selectedProg?.id) {
             loadBeneficiariosSector(selectedProg.id).catch(() => {});
           }
-          await loadEntregasDelDia();
         }
       } catch (initErr) {
         console.warn('Error inicializando pantalla de reparto:', initErr);
@@ -507,6 +507,32 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
             };
           });
           setBeneficiariosSector(normalizados);
+
+          // Persistir padrón en SQLite local en segundo plano para que las entregas siempre muestren Nombre y DNI reales
+          (async () => {
+            try {
+              const dbLocal = await getDatabase();
+              for (const b of normalizados) {
+                if (!b.id) continue;
+                await dbLocal.runAsync(
+                  `INSERT OR REPLACE INTO beneficiarios (id, dni, nombres_apellidos, calle_direccion, sector_aahh, mz, lt, num_miembros, telefono)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                  [
+                    b.id,
+                    b.dni || null,
+                    b.nombres_apellidos || b.nombres || `Beneficiario #${b.id}`,
+                    b.direccion || b.calle_direccion || '-',
+                    b.sector_aahh || b.sector || 'Sector Moyobamba',
+                    b.mz || null,
+                    b.lt || null,
+                    Number(b.num_miembros || 1),
+                    b.telefono || null,
+                  ]
+                ).catch(() => {});
+              }
+            } catch (_) {}
+          })();
+
           return normalizados;
         }
       }
@@ -596,14 +622,18 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
       let mergedList: any[] = [...localDelDia];
 
       try {
-        const res = await fetch(`${BACKEND_URL}/entregas?fecha=${fIso}&limit=1000`);
+        // Consultar últimas 1000 entregas sin ?fecha= para evitar el error 500 de casteo de timestamp en PostgreSQL
+        // y permitir reconciliación inmediata en producción
+        const res = await fetch(`${BACKEND_URL}/entregas?limit=1000`);
         if (res.ok) {
           const json = await res.json();
           const serverRows: any[] = Array.isArray(json) ? json : (json.data || []);
           if (Array.isArray(serverRows)) {
-            const serverLocalIds = new Set(serverRows.map((s: any) => s.local_id).filter(Boolean));
+            const serverLocalIds = new Set(
+              serverRows.map((s: any) => String(s.local_id || '').trim()).filter(Boolean)
+            );
             const serverBenefDateKeys = new Set(
-              serverRows.map((s: any) => `b-${s.beneficiario_id}-${String(s.fecha_asignada || s.fecha_hora || '').slice(0, 10)}`)
+              serverRows.map((s: any) => `b-${s.beneficiario_id}-${String(s.fecha_asignada || s.fecha_captura || s.fecha_hora || '').slice(0, 10)}`)
             );
             const serverIds = new Set(serverRows.map((s: any) => Number(s.id)).filter(Boolean));
 
@@ -614,13 +644,19 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
             const reconciledLocal: any[] = [];
             for (const item of localDelDia) {
               const isSynced = Number(item.sincronizado) === 1 || item.sync_status === 'SYNCED';
+              const localKey = String(item.local_id || '').trim();
               const sFecha = String(item.fecha_asignada || item.fecha_captura || item.fecha_hora || '').slice(0, 10);
               const bKey = `b-${item.beneficiario_id}-${sFecha}`;
 
-              const existsOnServer =
-                (item.local_id && serverLocalIds.has(item.local_id)) ||
-                serverBenefDateKeys.has(bKey) ||
-                (item.id && serverIds.has(Number(item.id)));
+              let existsOnServer = false;
+              if (localKey.startsWith('srv-')) {
+                const srvId = Number(localKey.replace('srv-', ''));
+                existsOnServer = (srvId > 0 && serverIds.has(srvId)) || serverLocalIds.has(localKey);
+              } else if (localKey.length > 0) {
+                existsOnServer = serverLocalIds.has(localKey);
+              } else {
+                existsOnServer = serverBenefDateKeys.has(bKey);
+              }
 
               if (isSynced && !existsOnServer) {
                 // Fue eliminada en la Web: purgar de SQLite local
@@ -710,11 +746,24 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
       }
 
       // Filtro de seguridad final: garantizar que el 100% de los registros sean exclusivamente de fIso
-      const soloDelDia = mergedList.filter((m: any) => {
-        const fAsig = String(m.fecha_asignada || '').slice(0, 10);
-        const fHora = String(m.fecha_captura || m.fecha_hora || '').slice(0, 10);
-        return fAsig === fIso || fHora === fIso;
-      });
+      // y enriquecer Nombre / DNI / Sector desde el padrón en memoria si faltaba en SQLite
+      const soloDelDia = mergedList
+        .filter((m: any) => {
+          const fAsig = String(m.fecha_asignada || '').slice(0, 10);
+          const fHora = String(m.fecha_captura || m.fecha_hora || '').slice(0, 10);
+          return fAsig === fIso || fHora === fIso;
+        })
+        .map((m: any) => {
+          const benMem = beneficiariosSector.find((b: any) => Number(b.id) === Number(m.beneficiario_id));
+          if (!benMem) return m;
+          const needsName = !m.nombres_apellidos || String(m.nombres_apellidos).startsWith('Beneficiario #');
+          return {
+            ...m,
+            nombres_apellidos: needsName ? (benMem.nombres_apellidos || benMem.nombres || m.nombres_apellidos) : m.nombres_apellidos,
+            dni: m.dni || benMem.dni || null,
+            sector: (!m.sector || m.sector === 'Sector') ? (benMem.sector_aahh || benMem.sector || 'Sector') : m.sector,
+          };
+        });
 
       setEntregasDelDia(soloDelDia);
     } catch (err) {
@@ -1834,6 +1883,25 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
       const localId = `movil-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
       const nowIso = new Date().toISOString();
 
+      // Garantizar que el beneficiario exista en la tabla local de SQLite con su nombre y DNI reales
+      if (beneficiario?.id) {
+        await db.runAsync(
+          `INSERT OR REPLACE INTO beneficiarios (id, dni, nombres_apellidos, calle_direccion, sector_aahh, mz, lt, num_miembros, telefono)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            beneficiario.id,
+            beneficiario.dni || null,
+            beneficiario.nombres_apellidos || beneficiario.nombres || `Beneficiario #${beneficiario.id}`,
+            beneficiario.calle_direccion || beneficiario.direccion || '-',
+            beneficiario.sector_aahh || beneficiario.sector || 'Sector Moyobamba',
+            beneficiario.mz || null,
+            beneficiario.lt || null,
+            Number(beneficiario.num_miembros || 1),
+            beneficiario.telefono || null,
+          ]
+        ).catch(() => {});
+      }
+
       await db.runAsync(
         `INSERT INTO entregas_agua (
           local_id,
@@ -1908,10 +1976,17 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
       const limiteViajeActual = viajeActual * capUnViaje;
 
       // Attempt background sync and refresh local metrics
-      syncData().catch(() => {});
+      const fechaRefresh = diaSeleccionado?.fechaIso;
+      syncData()
+        .then(() => {
+          loadEntregasDelDia(fechaRefresh).catch(() => {});
+          loadBeneficiariosSector(progId).catch(() => {});
+          loadProgramaciones().catch(() => {});
+        })
+        .catch(() => {});
       loadBeneficiariosSector(progId).catch(() => {});
       loadProgramaciones().catch(() => {});
-      loadEntregasDelDia(diaSeleccionado?.fechaIso).catch(() => {});
+      loadEntregasDelDia(fechaRefresh).catch(() => {});
 
       // Reset Form
       handleCancelBeneficiary();
