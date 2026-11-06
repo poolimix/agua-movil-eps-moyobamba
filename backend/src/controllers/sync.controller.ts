@@ -25,19 +25,41 @@ const storage = multer.diskStorage({
 });
 
 const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-  const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg'];
-  if (allowedMimeTypes.includes(file.mimetype)) {
+  // Aceptar cualquier imagen (algunos Android envían image/heic, image/jpg o application/octet-stream).
+  // Una foto con formato raro NUNCA debe impedir que se guarde la entrega.
+  const mime = String(file.mimetype || '').toLowerCase();
+  if (mime.startsWith('image/') || mime === 'application/octet-stream') {
     cb(null, true);
   } else {
-    cb(new Error('Tipo de archivo inválido. Solo se admiten imágenes JPG, PNG o WEBP.'));
+    cb(null, false); // se ignora el archivo, pero la entrega se guarda igual
   }
 };
 
-export const upload = multer({
+const multerUpload = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
+  limits: { fileSize: 15 * 1024 * 1024 }, // 15 MB
   fileFilter,
 });
+
+/**
+ * Wrapper tolerante: si la foto falla (muy pesada, corrupta, corte de red a mitad),
+ * se continúa SIN foto para no perder nunca los datos de la entrega.
+ */
+export const upload = {
+  single: (fieldName: string) => (req: Request, res: Response, next: (err?: any) => void) => {
+    multerUpload.single(fieldName)(req, res, (err: any) => {
+      if (err) {
+        console.warn(`[upload] Foto descartada (${err.code || err.message}); se guarda la entrega sin foto.`);
+        (req as any).fotoError = err.code || err.message;
+        if ((req as any).file?.path) {
+          try { fs.unlinkSync((req as any).file.path); } catch (_) {}
+        }
+        (req as any).file = undefined;
+      }
+      next();
+    });
+  },
+};
 
 export const uploadDelivery = async (req: Request, res: Response) => {
   try {
@@ -81,11 +103,11 @@ export const uploadDelivery = async (req: Request, res: Response) => {
 
     const finalLocalId = localId || local_id || `gen-${Date.now()}`;
     const finalDiaEntrega = diaEntrega || dia_entrega || null;
-    const finalFechaAsignada = fechaAsignada || fecha_asignada || null;
+    let finalFechaAsignada: string | null = fechaAsignada || fecha_asignada || null;
     const finalBeneficiarioId = beneficiarioId || beneficiario_id;
     const finalProgramacionId = programacionId || programacion_id || 1;
     let finalCisternaId = cisternaId || cisterna_id || null;
-    const finalConductorId = conductorId || conductor_id || null;
+    let finalConductorId = conductorId || conductor_id || null;
     const finalLitros = parseFloat(litrosEntregados || litros_entregados || '50');
     const finalCuota = parseFloat(cuotaProgramada || cuota_programada || finalLitros);
     const finalSaldo = parseFloat(saldoPendiente !== undefined && saldoPendiente !== null ? saldoPendiente : (saldo_pendiente !== undefined && saldo_pendiente !== null ? saldo_pendiente : Math.max(0, finalCuota - finalLitros)));
@@ -129,6 +151,41 @@ export const uploadDelivery = async (req: Request, res: Response) => {
       if (cDef.rows.length > 0) {
         finalCisternaId = cDef.rows[0].id;
       }
+    }
+
+    // Validar llaves foráneas de cisterna y conductor: el celular puede enviar IDs de contingencia
+    // (ej. 1) que no existen en PostgreSQL. Antes esto provocaba error 500 y la entrega NUNCA subía.
+    if (finalCisternaId) {
+      const cChk = await query('SELECT id FROM cisternas WHERE id = $1', [finalCisternaId]).catch(() => ({ rows: [] as any[] }));
+      if (cChk.rows.length === 0) {
+        finalCisternaId = null;
+        if (validProgramacionId) {
+          const pRes = await query('SELECT cisterna_id FROM programaciones WHERE id = $1', [validProgramacionId]).catch(() => ({ rows: [] as any[] }));
+          finalCisternaId = pRes.rows[0]?.cisterna_id || null;
+        }
+      }
+    }
+    if (finalConductorId) {
+      const pChk = await query('SELECT id FROM personal_operativo WHERE id = $1', [finalConductorId]).catch(() => ({ rows: [] as any[] }));
+      if (pChk.rows.length === 0) {
+        finalConductorId = null;
+        if (validProgramacionId) {
+          const pRes = await query('SELECT conductor_id FROM programaciones WHERE id = $1', [validProgramacionId]).catch(() => ({ rows: [] as any[] }));
+          finalConductorId = pRes.rows[0]?.conductor_id || null;
+        }
+      }
+    }
+
+    // Validar fecha asignada (YYYY-MM-DD); un formato inválido rompía el INSERT
+    if (finalFechaAsignada && !/^\d{4}-\d{2}-\d{2}/.test(String(finalFechaAsignada))) {
+      finalFechaAsignada = null;
+    } else if (finalFechaAsignada) {
+      finalFechaAsignada = String(finalFechaAsignada).slice(0, 10);
+    }
+
+    // Litros válidos
+    if (!isFinite(finalLitros) || finalLitros < 0) {
+      return res.status(422).json({ message: 'Litros entregados inválidos.', status: 'INVALID' });
     }
 
     // 1. Idempotency validation
@@ -254,7 +311,7 @@ export const uploadDelivery = async (req: Request, res: Response) => {
       RETURNING *;
     `;
 
-    const result = await query(insertQuery, [
+    const insertParams = [
       finalLocalId,
       validBeneficiarioId,
       validProgramacionId,
@@ -276,7 +333,32 @@ export const uploadDelivery = async (req: Request, res: Response) => {
       fechaHoraEfectiva,
       finalDiaEntrega,
       finalFechaAsignada,
-    ]);
+    ];
+
+    let result: any;
+    try {
+      result = await query(insertQuery, insertParams);
+    } catch (insErr: any) {
+      // 23505 = local_id duplicado: el celular reintentó mientras la primera petición seguía en curso.
+      // La entrega YA está guardada → responder OK para que el celular la marque como sincronizada.
+      if (insErr?.code === '23505') {
+        const ex = await query('SELECT * FROM entregas_agua WHERE local_id = $1', [finalLocalId]);
+        return res.status(200).json({
+          message: 'Entrega ya registrada previamente (idempotencia confirmada).',
+          entrega: ex.rows[0],
+          status: 'EXISTING',
+        });
+      }
+      // 23503 = llave foránea inválida: reintentar sin cisterna/conductor para no perder la entrega
+      if (insErr?.code === '23503') {
+        console.warn(`[sync] FK inválida en ${finalLocalId}, se reintenta sin cisterna/conductor:`, insErr.detail);
+        insertParams[3] = null;
+        insertParams[4] = null;
+        result = await query(insertQuery, insertParams);
+      } else {
+        throw insErr;
+      }
+    }
 
     // 4. Si viene con GPS y cisterna_id, actualizar la última ubicación de la cisterna en tiempo real
     if (finalCisternaId && finalLat && finalLng) {

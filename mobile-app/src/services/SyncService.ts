@@ -28,7 +28,7 @@ const fetchWithTimeout = async (url: string, options: RequestInit, timeoutMs = 1
 export const autoRecoverPendingSync = async (): Promise<{ recoveredCount: number; message: string }> => {
   try {
     const netInfo = await NetInfo.fetch();
-    if (!netInfo.isConnected) {
+    if (netInfo.isConnected === false) {
       return { recoveredCount: 0, message: 'Sin conexión a internet' };
     }
 
@@ -49,12 +49,15 @@ export const autoRecoverPendingSync = async (): Promise<{ recoveredCount: number
       return { recoveredCount: 0, message: 'Sin localIds válidos' };
     }
 
-    // Consulta GET /api/v1/sync/verificar-pendientes?localIds=...
-    const url = `${BACKEND_URL}/sync/verificar-pendientes?localIds=${encodeURIComponent(localIds.join(','))}`;
-    const response = await fetchWithTimeout(url, {
-      method: 'GET',
-      headers: { 'Accept': 'application/json' },
-    }, 10000);
+    // Consulta POST /api/v1/sync/verificar-pendientes (evita error 414 URI Too Long cuando hay muchos IDs)
+    const response = await fetchWithTimeout(`${BACKEND_URL}/sync/verificar-pendientes`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ localIds }),
+    }, 12000);
 
     if (!response.ok) {
       return { recoveredCount: 0, message: 'Error en respuesta de verificación' };
@@ -93,7 +96,7 @@ export const reconcileServerEntregas = async (
 ): Promise<{ deletedCount: number; message: string }> => {
   try {
     const netInfo = await NetInfo.fetch();
-    if (!netInfo.isConnected) {
+    if (netInfo.isConnected === false) {
       return { deletedCount: 0, message: 'Sin conexión para reconciliar' };
     }
 
@@ -154,11 +157,20 @@ export const reconcileServerEntregas = async (
   }
 };
 
+let isSyncInProgress = false;
+
 export const syncData = async (manualRetry = false): Promise<{ success: boolean; syncedCount: number; message: string }> => {
+  if (isSyncInProgress && !manualRetry) {
+    return { success: true, syncedCount: 0, message: 'Sincronización en curso en segundo plano.' };
+  }
+  isSyncInProgress = true;
   try {
     const netInfo = await NetInfo.fetch();
     
-    if (!netInfo.isConnected) {
+    // En ciertos celulares Android, netInfo.isConnected puede dar falso negativo con datos móviles 4G.
+    // Solo abortar si explícitamente netInfo.isConnected === false y NO es un reintento manual.
+    if (netInfo.isConnected === false && !manualRetry) {
+      isSyncInProgress = false;
       return { success: false, syncedCount: 0, message: 'Sin conexión a internet. Los datos se guardan de forma segura en tu celular.' };
     }
 
@@ -170,22 +182,19 @@ export const syncData = async (manualRetry = false): Promise<{ success: boolean;
 
     const db = await getDatabase();
 
-    // Si es sincronización manual solicitada por el operador, reintentar también registros en estado FAILED o atascados en SYNCING
-    if (manualRetry) {
-      try {
-        await db.runAsync(
-          `UPDATE entregas_agua SET sync_status = 'PENDING', retry_count = 0 WHERE (sync_status = 'FAILED' OR sync_status = 'SYNCING') AND sincronizado = 0`
-        );
-      } catch (_) {}
-    }
+    // Recuperar registros que quedaron en FAILED o atascados en SYNCING para que NUNCA se pierda una entrega
+    try {
+      await db.runAsync(
+        `UPDATE entregas_agua SET sync_status = 'PENDING', retry_count = 0 WHERE (sync_status = 'FAILED' OR sync_status = 'SYNCING') AND sincronizado = 0`
+      );
+    } catch (_) {}
     
-    // Consultar entregas pendientes de sincronización (límite de 50 por bloque para no saturar memoria)
+    // Consultar TODAS las entregas pendientes de sincronización (sin bloquear por retry_count)
     const pendingEntregas = await db.getAllAsync(
       `SELECT * FROM entregas_agua 
-       WHERE (sincronizado = 0 OR sync_status = 'PENDING' OR sync_status = 'SYNCING') 
-         AND COALESCE(retry_count, 0) < 5
+       WHERE (sincronizado = 0 OR sync_status != 'SYNCED') 
        ORDER BY id ASC
-       LIMIT 50`
+       LIMIT 60`
     ) as any[];
 
     // Consultar controles de calidad pendientes
@@ -291,7 +300,8 @@ export const syncData = async (manualRetry = false): Promise<{ success: boolean;
         }
         formData.append('fechaCaptura', String(entrega.fecha_captura || entrega.fecha_hora || new Date().toISOString()));
 
-        // Empaquetado seguro de fotografía sin bloquear memoria
+        // Empaquetado ultra-seguro de fotografía (Multipart + Fallback Base64 / Sin foto si falla red)
+        let hasPhotoAttached = false;
         if (entrega.foto_local_uri) {
           let fileExists = true;
           if (Platform.OS !== 'web') {
@@ -315,6 +325,7 @@ export const syncData = async (manualRetry = false): Promise<{ success: boolean;
                 const res = await fetch(entrega.foto_local_uri);
                 const blob = await res.blob();
                 (formData as any).append('foto', blob, filename);
+                hasPhotoAttached = true;
               } catch (_) {}
             } else {
               // En React Native nativo, pasar el objeto con uri para que OkHttp lo transmita directamente por stream
@@ -323,29 +334,75 @@ export const syncData = async (manualRetry = false): Promise<{ success: boolean;
                 name: filename,
                 type: mimeType,
               } as any);
+              hasPhotoAttached = true;
             }
           }
         }
 
-        const response = await fetchWithTimeout(`${BACKEND_URL}/sync/upload-delivery`, {
+        let response = await fetchWithTimeout(`${BACKEND_URL}/sync/upload-delivery`, {
           method: 'POST',
           body: formData,
           headers: {
             'Accept': 'application/json',
           },
-        }, 15000);
+        }, 28000).catch(() => null);
 
-        if (response.ok) {
+        // FALLBACK DE SEGURIDAD: Si falló con foto adjunta (ej. URI caché borrada por Android o red 3G muy lenta),
+        // reintentar enviando la foto en Base64 o garantizando que los datos de la entrega suban sí o sí.
+        if ((!response || !response.ok) && hasPhotoAttached) {
+          const fallbackForm = new FormData();
+          fallbackForm.append('localId', entrega.local_id || `loc-${entrega.id}-${Date.now()}`);
+          fallbackForm.append('beneficiarioId', String(entrega.beneficiario_id));
+          fallbackForm.append('programacionId', String(entrega.programacion_id || 1));
+          if (entrega.cisterna_id) fallbackForm.append('cisternaId', String(entrega.cisterna_id));
+          if (entrega.conductor_id) fallbackForm.append('conductorId', String(entrega.conductor_id));
+          fallbackForm.append('litrosEntregados', String(entrega.litros_entregados));
+          if (entrega.cuota_programada !== undefined && entrega.cuota_programada !== null) {
+            fallbackForm.append('cuotaProgramada', String(entrega.cuota_programada));
+          }
+          if (entrega.saldo_pendiente !== undefined && entrega.saldo_pendiente !== null) {
+            fallbackForm.append('saldoPendiente', String(entrega.saldo_pendiente));
+          }
+          if (entrega.estado_entrega) fallbackForm.append('estadoEntrega', String(entrega.estado_entrega));
+          if (entrega.observaciones_entrega) fallbackForm.append('observacionesEntrega', String(entrega.observaciones_entrega));
+          fallbackForm.append('firmaBase64', entrega.firma_base64 || '');
+          if (entrega.latitud) fallbackForm.append('latitud', String(entrega.latitud));
+          if (entrega.longitud) fallbackForm.append('longitud', String(entrega.longitud));
+          if (entrega.precision_gps) fallbackForm.append('precisionGps', String(entrega.precision_gps));
+          if (entrega.altitud) fallbackForm.append('altitud', String(entrega.altitud));
+          if (entrega.dia_entrega) fallbackForm.append('diaEntrega', String(entrega.dia_entrega));
+          if (entrega.fecha_asignada) fallbackForm.append('fechaAsignada', String(entrega.fecha_asignada));
+          fallbackForm.append('fechaCaptura', String(entrega.fecha_captura || entrega.fecha_hora || new Date().toISOString()));
+
+          if (Platform.OS !== 'web' && entrega.foto_local_uri) {
+            try {
+              const b64 = await FileSystem.readAsStringAsync(entrega.foto_local_uri, {
+                encoding: FileSystem.EncodingType.Base64,
+              });
+              if (b64) fallbackForm.append('fotoBase64', b64);
+            } catch (_) {
+              // El archivo temporal ya no existe en el teléfono; se sube el registro de agua sin foto para no perder la entrega
+            }
+          }
+
+          response = await fetchWithTimeout(`${BACKEND_URL}/sync/upload-delivery`, {
+            method: 'POST',
+            body: fallbackForm,
+            headers: { 'Accept': 'application/json' },
+          }, 25000).catch(() => null);
+        }
+
+        if (response && response.ok) {
           await db.runAsync(
-            `UPDATE entregas_agua SET sincronizado = 1, sync_status = 'SYNCED' WHERE id = ?`,
+            `UPDATE entregas_agua SET sincronizado = 1, sync_status = 'SYNCED', retry_count = 0 WHERE id = ?`,
             [entrega.id]
           );
           return true;
         } else {
           const currentRetries = (entrega.retry_count || 0) + 1;
           await db.runAsync(
-            `UPDATE entregas_agua SET sync_status = ?, retry_count = ? WHERE id = ?`,
-            [currentRetries >= 4 ? 'FAILED' : 'PENDING', currentRetries, entrega.id]
+            `UPDATE entregas_agua SET sync_status = 'PENDING', retry_count = ? WHERE id = ?`,
+            [currentRetries, entrega.id]
           );
           return false;
         }
@@ -353,8 +410,8 @@ export const syncData = async (manualRetry = false): Promise<{ success: boolean;
         console.warn(`Error uploading entrega #${entrega.id}:`, itemErr?.message || itemErr);
         const currentRetries = (entrega.retry_count || 0) + 1;
         await db.runAsync(
-          `UPDATE entregas_agua SET sync_status = ?, retry_count = ? WHERE id = ?`,
-          [currentRetries >= 4 ? 'FAILED' : 'PENDING', currentRetries, entrega.id]
+          `UPDATE entregas_agua SET sync_status = 'PENDING', retry_count = ? WHERE id = ?`,
+          [currentRetries, entrega.id]
         );
         return false;
       }
@@ -413,5 +470,7 @@ export const syncData = async (manualRetry = false): Promise<{ success: boolean;
   } catch (error: any) {
     console.error('Error general de sincronización:', error);
     return { success: false, syncedCount: 0, message: `Aviso de sincronización: ${error.message || 'Error de conexión'}` };
+  } finally {
+    isSyncInProgress = false;
   }
 };

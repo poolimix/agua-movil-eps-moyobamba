@@ -1120,6 +1120,20 @@ export const registrarEntregaGrupalSector = async (req: Request, res: Response) 
       }
     }
 
+    // Validar que cisterna y conductor existan (evita error de llave foránea a mitad del lote)
+    if (finalCisternaId) {
+      const cChk = await query('SELECT id FROM cisternas WHERE id = $1', [finalCisternaId]).catch(() => ({ rows: [] as any[] }));
+      if (cChk.rows.length === 0) finalCisternaId = null;
+    }
+    if (finalConductorId) {
+      const pChk = await query('SELECT id FROM personal_operativo WHERE id = $1', [finalConductorId]).catch(() => ({ rows: [] as any[] }));
+      if (pChk.rows.length === 0) finalConductorId = null;
+    }
+    if (finalProgId) {
+      const prChk = await query('SELECT id FROM programaciones WHERE id = $1', [finalProgId]).catch(() => ({ rows: [] as any[] }));
+      if (prChk.rows.length === 0) finalProgId = null;
+    }
+
     let cisternaPlaca = 'CAT-849';
     if (finalCisternaId) {
       const cRes = await query(`SELECT placa FROM cisternas WHERE id = $1`, [finalCisternaId]);

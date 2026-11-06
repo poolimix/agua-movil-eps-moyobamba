@@ -14,7 +14,9 @@ import {
   Platform,
   Keyboard,
   RefreshControl,
+  AppState,
 } from 'react-native';
+import NetInfo from '@react-native-community/netinfo';
 import SignatureScreen, { SignatureViewRef } from 'react-native-signature-canvas';
 import { WebView } from 'react-native-webview';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -284,9 +286,10 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
         await loadProgramaciones();
         await loadSystemConfig();
         await loadEntregasDelDia();
-        // Auto-recuperación al iniciar la App: verifica si hay entregas pendientes que ya existen en PostgreSQL
+        // Auto-recuperación y sincronización automática al iniciar la App
         const rec = await autoRecoverPendingSync();
-        if (rec.recoveredCount > 0) {
+        const syncInit = await syncData(false);
+        if (rec.recoveredCount > 0 || syncInit.syncedCount > 0) {
           if (selectedProg?.id) {
             loadBeneficiariosSector(selectedProg.id).catch(() => {});
           }
@@ -298,6 +301,50 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
         setIsSyncing(false);
       }
     })();
+
+    // Auto-Sincronización Inteligente en Segundo Plano:
+    // 1. Cuando el celular recupera señal de internet (4G/WiFi)
+    const netUnsub = NetInfo.addEventListener((state) => {
+      if (state.isConnected) {
+        syncData(false)
+          .then((res) => {
+            if (res.syncedCount > 0) {
+              loadEntregasDelDia().catch(() => {});
+            }
+          })
+          .catch(() => {});
+      }
+    });
+
+    // 2. Cuando el operador vuelve a abrir la app desde segundo plano
+    const appStateSub = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        syncData(false)
+          .then((res) => {
+            if (res.syncedCount > 0) {
+              loadEntregasDelDia().catch(() => {});
+            }
+          })
+          .catch(() => {});
+      }
+    });
+
+    // 3. Intervalo periódico cada 45 segundos para garantizar que ninguna entrega quede sin subir
+    const autoSyncTimer = setInterval(() => {
+      syncData(false)
+        .then((res) => {
+          if (res.syncedCount > 0) {
+            loadEntregasDelDia().catch(() => {});
+          }
+        })
+        .catch(() => {});
+    }, 45000);
+
+    return () => {
+      netUnsub();
+      appStateSub.remove();
+      clearInterval(autoSyncTimer);
+    };
   }, []);
 
   // Recargar entregas cada vez que se cambie la jornada o día seleccionado
@@ -939,6 +986,18 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
           );
           photoUri = manipulated.uri;
         } catch (_) {}
+
+        // Persistir en directorio permanente de documentos para evitar que Android limpie el caché antes de sincronizar
+        if (Platform.OS !== 'web' && FileSystem.documentDirectory) {
+          try {
+            const dirPath = `${FileSystem.documentDirectory}evidencias/`;
+            await FileSystem.makeDirectoryAsync(dirPath, { intermediates: true }).catch(() => {});
+            const permPath = `${dirPath}deposito_${Date.now()}.webp`;
+            await FileSystem.copyAsync({ from: photoUri, to: permPath });
+            photoUri = permPath;
+          } catch (_) {}
+        }
+
         setFotoDepositoUri(photoUri);
       }
     } catch (err: any) {
@@ -1121,6 +1180,9 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
               }
 
               setDepositoModalVisible(false);
+              if (!syncedOnline) {
+                syncData(false).catch(() => {});
+              }
               await loadBeneficiariosSector(progId);
               await loadProgramaciones();
               await loadEntregasDelDia(fechaIso);
