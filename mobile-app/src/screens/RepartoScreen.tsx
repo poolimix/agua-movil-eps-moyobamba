@@ -2222,31 +2222,10 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
           </View>
         ) : (
         <View style={styles.progViewContainer}>
-          {/* STATUS JORNADA */}
-          <View style={styles.progHeaderCard}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <View style={styles.progActiveBadge}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                  <Ionicons name="radio-button-on" size={10} color="#047857" />
-                  <Text style={{ color: '#047857', fontWeight: '900', fontSize: 10.5 }}>JORNADA ACTIVA DE REPARTO</Text>
-                </View>
-              </View>
-              <Text style={{ fontSize: 11, color: '#0284c7', fontWeight: '800' }}>
-                Prog #{selectedProg?.id || 1}
-              </Text>
-            </View>
-            <Text style={styles.progTitle}>
-              Hoja de Ruta y Cisterna Asignada
-            </Text>
-          </View>
-
           {/* SELECTOR DE PROGRAMACIONES SI EXISTEN MÁS DE UNA */}
           {programaciones.length > 1 && (
-            <View style={{ marginBottom: 4 }}>
-              <Text style={{ fontSize: 11.5, fontWeight: '800', color: '#334155', marginBottom: 6 }}>
-                Mis Rutas / Programaciones:
-              </Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row', marginBottom: 6 }}>
+            <View style={{ marginBottom: 2 }}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row' }}>
                 {programaciones.map((p) => (
                   <TouchableOpacity
                     key={p.id}
@@ -2270,38 +2249,30 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
             </View>
           )}
 
-          {/* CARD 1: CAMIÓN CISTERNA ASIGNADO */}
+          {/* CARD 1: CAMIÓN CISTERNA ASIGNADO (MATERIAL DESIGN COMPACTO) */}
           <View style={styles.cisternaDetailCard}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, marginRight: 8 }}>
                 <View style={styles.cisternaIconCircle}>
                   <MaterialCommunityIcons name="truck-fast-outline" size={24} color="#0284c7" />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.cisternaPlacaTitle} numberOfLines={1}>
-                    {selectedProg?.cisterna_placa || activeCisterna?.placa || 'Sin cisterna'}
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={styles.cisternaPlacaTitle} numberOfLines={1}>
+                      {selectedProg?.cisterna_placa || activeCisterna?.placa || 'Sin cisterna'}
+                    </Text>
+                    <Text style={{ fontSize: 10.5, fontWeight: '800', color: '#0284c7', backgroundColor: '#e0f2fe', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 8 }}>
+                      Ruta #{selectedProg?.id || 1}
+                    </Text>
+                  </View>
                   <Text style={styles.cisternaMarcaText} numberOfLines={1}>
-                    {selectedProg?.cisterna_marca || activeCisterna?.marca_modelo || 'Flota EPS Moyobamba'}
+                    {selectedProg?.cisterna_marca || activeCisterna?.marca_modelo || 'Flota EPS'} • {selectedProg?.cisterna_capacidad_m3 || activeCisterna?.capacidad_m3 || 19} m³ ({Number(selectedProg?.cisterna_capacidad_litros || activeCisterna?.capacidad_litros || 19000).toLocaleString('es-PE')} L)
                   </Text>
                 </View>
               </View>
 
               <View style={styles.operativoPill}>
-                <Text style={styles.operativoText}>OPERATIVO</Text>
-              </View>
-            </View>
-
-            {/* VOLUMEN Y CAPACIDAD DEL CAMIÓN CISTERNA */}
-            <View style={styles.volumenBox}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
-                <Text style={styles.volumenLabel}>CAPACIDAD TOTAL</Text>
-                <Text style={styles.volumenValue}>
-                  {selectedProg?.cisterna_capacidad_m3 || activeCisterna?.capacidad_m3 || 0} m³ • {Number(selectedProg?.cisterna_capacidad_litros || activeCisterna?.capacidad_litros || 0).toLocaleString('es-PE')} Lts
-                </Text>
-              </View>
-              <View style={styles.volumenProgressBarBg}>
-                <View style={[styles.volumenProgressBarFill, { width: '100%' }]} />
+                <Text style={styles.operativoText}>ACTIVO</Text>
               </View>
             </View>
           </View>
@@ -2729,17 +2700,25 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
             </View>
           </View>
 
-          {/* CARD 5: AVANCE DE JORNADA & COMPARATIVA DIARIA */}
+          {/* CARD 5: AVANCE DE JORNADA & COMPARATIVA DIARIA (MATERIAL DESIGN 3) */}
           <View style={styles.avanceCard}>
-            {/* ENCABEZADO CON FECHA DEL DÍA DESTACADA */}
-            <View style={styles.avanceHeaderContainer}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, marginRight: 8 }}>
-                  <Ionicons name="calendar" size={17} color="#0284c7" />
-                  <Text style={styles.avanceFechaTitle} numberOfLines={1}>
-                    {getFechaLarga(diaSeleccionado)}
-                  </Text>
-                </View>
+            {/* ENCABEZADO EN UNA SOLA FILA LIMPIA */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, marginRight: 8 }}>
+                <Ionicons name="calendar" size={16} color="#0284c7" />
+                <Text style={styles.avanceFechaTitle} numberOfLines={1}>
+                  {getFechaLarga(diaSeleccionado)}
+                </Text>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <TouchableOpacity 
+                  style={styles.btnCambiarDiaInline}
+                  onPress={() => setDiaPickerModalVisible(true)}
+                  activeOpacity={0.75}
+                >
+                  <Ionicons name="swap-horizontal" size={12} color="#0284c7" />
+                  <Text style={styles.btnCambiarDiaInlineText}>Día</Text>
+                </TouchableOpacity>
                 <View style={[
                   styles.avanceBadgeJornada,
                   esFechaHoy ? styles.avanceBadgeJornadaHoy : styles.avanceBadgeJornadaDiferido
@@ -2752,110 +2731,72 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                   </Text>
                 </View>
               </View>
-
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text style={styles.avanceSubHeader}>
-                  {esFechaHoy ? 'Jornada activa de reparto de agua' : `Regularización asignada al día ${diaSeleccionado?.nombre}`}
-                </Text>
-                <TouchableOpacity 
-                  style={styles.btnCambiarDiaInline}
-                  onPress={() => setDiaPickerModalVisible(true)}
-                  activeOpacity={0.75}
-                >
-                  <Ionicons name="swap-horizontal" size={12} color="#0284c7" />
-                  <Text style={styles.btnCambiarDiaInlineText}>Cambiar Día</Text>
-                </TouchableOpacity>
-              </View>
             </View>
 
             {/* COMPARATIVA DE JORNADA: META PROGRAMADA VS DESPACHADO REAL */}
             <View style={styles.comparativaContainer}>
               <View style={styles.comparativaCol}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 2 }}>
-                  <Ionicons name="flag-outline" size={12} color="#64748b" />
-                  <Text style={styles.comparativaColLabel}>META A ENTREGAR</Text>
-                </View>
+                <Text style={styles.comparativaColLabel}>META CISTERNA</Text>
                 <Text style={styles.comparativaColValue}>
-                  {metaLitrosDia.toLocaleString('es-PE')} Lts
+                  {metaLitrosDia.toLocaleString('es-PE')} L
                 </Text>
                 <Text style={styles.comparativaColSub}>
-                  🚛 Cisterna: {activeCisterna?.placa || selectedProg?.cisterna_placa || 'CAT-849'}
-                </Text>
-                <Text style={styles.comparativaColSub}>
-                  👥 {totalFamiliasPadrón} Familias en Padrón
+                  👥 {totalFamiliasPadrón} fam. en padrón
                 </Text>
               </View>
 
               <View style={styles.comparativaDivider} />
 
               <View style={[styles.comparativaCol, { alignItems: 'flex-end' }]}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 2 }}>
-                  <Ionicons name="water" size={12} color="#0284c7" />
-                  <Text style={[styles.comparativaColLabel, { color: '#0284c7' }]}>LO QUE VOY ENTREGANDO</Text>
-                </View>
+                <Text style={[styles.comparativaColLabel, { color: '#0284c7' }]}>ENTREGADO HOY</Text>
                 <Text style={[styles.comparativaColValue, { color: '#0284c7' }]}>
-                  {diaMetrics.volRepartido.toLocaleString('es-PE')} Lts
+                  {diaMetrics.volRepartido.toLocaleString('es-PE')} L
                 </Text>
                 <Text style={[styles.comparativaColSub, { color: '#0369a1', fontWeight: '800' }]}>
-                  ✅ {diaMetrics.familias} Familias Atendidas
-                </Text>
-                <Text style={styles.comparativaColSub}>
-                  ⏳ Resta: {litrosRestantesDia.toLocaleString('es-PE')} Lts ({Math.max(0, 100 - porcentajeAvanceLitros)}%)
+                  ✅ {diaMetrics.familias} fam. • Resta {litrosRestantesDia.toLocaleString('es-PE')} L
                 </Text>
               </View>
             </View>
 
             {/* BARRA VISUAL DE PROGRESO DE CISTERNA */}
-            <View style={styles.progressBarWrapper}>
+            <View style={[styles.progressBarWrapper, { paddingVertical: 8 }]}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                <Text style={styles.progressBarLabel}>Avance del Día en Cisterna</Text>
-                <Text style={styles.progressBarPercent}>{porcentajeAvanceLitros}% Despachado</Text>
+                <Text style={styles.progressBarLabel}>Avance de Cisterna</Text>
+                <Text style={styles.progressBarPercent}>{porcentajeAvanceLitros}%</Text>
               </View>
               <View style={styles.progressBarTrack}>
                 <View style={[styles.progressBarFill, { width: `${Math.min(100, Math.max(0, porcentajeAvanceLitros))}%` }]} />
               </View>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
-                <Text style={styles.progressBarSub}>
-                  {diaMetrics.familias} de {totalFamiliasPadrón} Familias ({porcentajeAvanceFamilias}%)
-                </Text>
-                <Text style={styles.progressBarSub}>
-                  {litrosRestantesDia > 0 ? `${litrosRestantesDia.toLocaleString('es-PE')} L disponibles` : '¡Cisterna completada!'}
-                </Text>
-              </View>
             </View>
 
-            {/* 4 MÉTRICAS OPERATIVAS CLAVE (VOL. REPARTIDO, PROMEDIO, POBLACIÓN Y MONTO) */}
+            {/* 4 MÉTRICAS COMPACTAS SIN SUBTEXTOS REDUNDANTES */}
             <View style={styles.metricsQuadGrid}>
-              <View style={[styles.metricQuadCard, { backgroundColor: '#f0f9ff', borderColor: '#bae6fd' }]}>
-                <Text style={[styles.metricQuadTag, { color: '#0369a1' }]}>🚰 VOL. REPARTIDO</Text>
+              <View style={[styles.metricQuadCard, { backgroundColor: '#f0f9ff', borderColor: '#bae6fd', paddingVertical: 8 }]}>
+                <Text style={[styles.metricQuadTag, { color: '#0369a1' }]}>🚰 VOLUMEN</Text>
                 <Text style={[styles.metricQuadValue, { color: '#0369a1' }]}>
-                  {diaMetrics.volRepartido.toLocaleString()} L
+                  {(diaMetrics.volRepartido / 1000).toFixed(2)} m³
                 </Text>
-                <Text style={styles.metricQuadSub}>{(diaMetrics.volRepartido / 1000).toFixed(1)} m³ fiscalizados</Text>
               </View>
 
-              <View style={[styles.metricQuadCard, { backgroundColor: '#eef2ff', borderColor: '#c7d2fe' }]}>
-                <Text style={[styles.metricQuadTag, { color: '#3730a3' }]}>📊 VOL. PROMEDIO</Text>
+              <View style={[styles.metricQuadCard, { backgroundColor: '#eef2ff', borderColor: '#c7d2fe', paddingVertical: 8 }]}>
+                <Text style={[styles.metricQuadTag, { color: '#3730a3' }]}>📊 PROMEDIO</Text>
                 <Text style={[styles.metricQuadValue, { color: '#3730a3' }]}>
-                  {diaMetrics.volPromedio.toLocaleString()} L
+                  {diaMetrics.volPromedio.toLocaleString()} L/fam
                 </Text>
-                <Text style={styles.metricQuadSub}>Por familia entregada</Text>
               </View>
 
-              <View style={[styles.metricQuadCard, { backgroundColor: '#faf5ff', borderColor: '#e9d5ff' }]}>
+              <View style={[styles.metricQuadCard, { backgroundColor: '#faf5ff', borderColor: '#e9d5ff', paddingVertical: 8 }]}>
                 <Text style={[styles.metricQuadTag, { color: '#6b21a8' }]}>👥 POBLACIÓN</Text>
                 <Text style={[styles.metricQuadValue, { color: '#6b21a8' }]}>
                   {diaMetrics.poblacion.toLocaleString()} hab.
                 </Text>
-                <Text style={styles.metricQuadSub}>Beneficiarios en ruta</Text>
               </View>
 
-              <View style={[styles.metricQuadCard, { backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' }]}>
-                <Text style={[styles.metricQuadTag, { color: '#166534' }]}>💰 MONTO VALORIZADO</Text>
+              <View style={[styles.metricQuadCard, { backgroundColor: '#f0fdf4', borderColor: '#bbf7d0', paddingVertical: 8 }]}>
+                <Text style={[styles.metricQuadTag, { color: '#166534' }]}>💰 SUBSIDIO</Text>
                 <Text style={[styles.metricQuadValue, { color: '#166534' }]}>
                   S/. {diaMetrics.monto.toFixed(2)}
                 </Text>
-                <Text style={styles.metricQuadSub}>Subsidio EPS / PNSU</Text>
               </View>
             </View>
 
@@ -2871,12 +2812,12 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.btnVerDetalleEntregasText}>
-                    Ver Entregas Realizadas Hoy ({entregasDelDia.length})
+                    Entregas de Hoy ({entregasDelDia.length})
                   </Text>
                   <Text style={styles.btnVerDetalleEntregasSub}>
                     {entregasDelDia.length > 0
-                      ? `${diaMetrics.volRepartido.toLocaleString('es-PE')} L • ${diaMetrics.familias} familias atendidas`
-                      : 'Toca para auditar beneficiarios, firmas y fotos'}
+                      ? `${diaMetrics.volRepartido.toLocaleString('es-PE')} L • ${diaMetrics.familias} familias`
+                      : 'Sin entregas registradas hoy'}
                   </Text>
                 </View>
               </View>
@@ -3340,347 +3281,217 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
             </TouchableOpacity>
           </View>
 
-          {/* BARRA DE INDICADORES CLAVE (VOL. REPARTIDO, PROMEDIO, POBLACIÓN, MONTO) */}
-          <View style={styles.metricsSummaryContainer}>
-            <View style={styles.metricsSummaryHeader}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Ionicons name="stats-chart" size={14} color="#0369a1" />
-                <Text style={styles.metricsSummaryTitle}>INDICADORES OPERATIVOS EN RUTA</Text>
-              </View>
-              <Text style={styles.metricsSummaryBadge}>Prog #{selectedProg?.id || 1}</Text>
-            </View>
-
-            <View style={styles.metricsQuadGrid}>
-              <View style={[styles.metricQuadCard, { backgroundColor: '#f0f9ff', borderColor: '#bae6fd' }]}>
-                <Text style={[styles.metricQuadTag, { color: '#0369a1' }]}>🚰 VOL. REPARTIDO</Text>
-                <Text style={[styles.metricQuadValue, { color: '#0369a1' }]}>
-                  {progMetrics.volRepartido.toLocaleString()} L
-                </Text>
-                <Text style={styles.metricQuadSub}>{(progMetrics.volRepartido / 1000).toFixed(1)} m³</Text>
-              </View>
-
-              <View style={[styles.metricQuadCard, { backgroundColor: '#eef2ff', borderColor: '#c7d2fe' }]}>
-                <Text style={[styles.metricQuadTag, { color: '#3730a3' }]}>📊 VOL. PROMEDIO</Text>
-                <Text style={[styles.metricQuadValue, { color: '#3730a3' }]}>
-                  {progMetrics.volPromedio.toLocaleString()} L
-                </Text>
-                <Text style={styles.metricQuadSub}>Por familia</Text>
-              </View>
-
-              <View style={[styles.metricQuadCard, { backgroundColor: '#faf5ff', borderColor: '#e9d5ff' }]}>
-                <Text style={[styles.metricQuadTag, { color: '#6b21a8' }]}>👥 POBLACIÓN</Text>
-                <Text style={[styles.metricQuadValue, { color: '#6b21a8' }]}>
-                  {progMetrics.poblacion.toLocaleString()} hab.
-                </Text>
-                <Text style={styles.metricQuadSub}>Beneficiarios</Text>
-              </View>
-
-              <View style={[styles.metricQuadCard, { backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' }]}>
-                <Text style={[styles.metricQuadTag, { color: '#166534' }]}>💰 MONTO VALORIZADO</Text>
-                <Text style={[styles.metricQuadValue, { color: '#166534' }]}>
-                  S/. {progMetrics.monto.toFixed(2)}
-                </Text>
-                <Text style={styles.metricQuadSub}>Subsidio EPS</Text>
-              </View>
-            </View>
-          </View>
-
-      {/* CISTERNA & CONDUCTOR SELECTOR CARD */}
-      <View style={styles.flotaCard}>
-        <View style={styles.flotaCardHeader}>
-          <MaterialCommunityIcons name="truck-fast-outline" size={16} color="#0369a1" />
-          <Text style={styles.flotaCardTitle}>Asignación de Jornada en Campo</Text>
-        </View>
-
-        <View style={styles.flotaRow}>
-          {/* CISTERNA SELECTOR */}
-          <View style={{ flex: 1, marginRight: 8 }}>
-            <Text style={styles.flotaLabel}>Cisterna:</Text>
-            <View style={styles.selectorContainer}>
-              {cisternas && cisternas.length > 0 ? (
-                cisternas.map((c) => (
-                  <TouchableOpacity
-                    key={c.id}
-                    style={[styles.chipBtn, (selectedCisternaId === c.id || cisternas.length === 1) && styles.chipBtnActive]}
-                    onPress={() => setSelectedCisternaId(c.id)}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={[styles.chipText, (selectedCisternaId === c.id || cisternas.length === 1) && styles.chipTextActive]}>
-                      {c.placa} ({c.capacidad_m3 || 19}m³)
-                    </Text>
-                  </TouchableOpacity>
-                ))
-              ) : (
-                <View style={[styles.chipBtn, styles.chipBtnActive]}>
-                  <Text style={[styles.chipText, styles.chipTextActive]}>
-                    {selectedProg?.cisterna_placa || 'CAT-849 (19m³)'}
-                  </Text>
-                </View>
-              )}
-            </View>
-          </View>
-
-          {/* CONDUCTOR SELECTOR */}
-          <View style={{ flex: 1 }}>
-            <Text style={styles.flotaLabel}>Conductor:</Text>
-            <View style={styles.selectorContainer}>
-              {conductores && conductores.length > 0 ? (
-                conductores.map((p) => (
-                  <TouchableOpacity
-                    key={p.id}
-                    style={[styles.chipBtn, (selectedConductorId === p.id || conductores.length === 1) && styles.chipBtnActive]}
-                    onPress={() => setSelectedConductorId(p.id)}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={[styles.chipText, (selectedConductorId === p.id || conductores.length === 1) && styles.chipTextActive]}>
-                      {p.nombres ? `${p.nombres.split(' ')[0]} ${p.apellidos ? p.apellidos.split(' ')[0] : ''}` : 'Conductor'}
-                    </Text>
-                  </TouchableOpacity>
-                ))
-              ) : (
-                <View style={[styles.chipBtn, styles.chipBtnActive]}>
-                  <Text style={[styles.chipText, styles.chipTextActive]}>
-                    {selectedProg?.conductor_nombre || user?.nombres || 'Carlos Mendoza'}
-                  </Text>
-                </View>
-              )}
-            </View>
-          </View>
-        </View>
-
-        {/* LOGISTICS TRIP INFO BAR */}
-        <View style={styles.logisticsStrip}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, flexWrap: 'wrap' }}>
-            <Ionicons name="water-outline" size={14} color="#0369a1" />
-            <Text style={{ fontSize: 11.5, color: '#0369a1', fontWeight: '800' }}>
-              Capacidad: {activeCisterna?.capacidad_m3 || selectedProg?.capacidad_m3 || 19} m³ • {Number(activeCisterna?.capacidad_litros || selectedProg?.capacidad_litros || 19000).toLocaleString()} Lts
-            </Text>
-          </View>
-          <View style={styles.tripBadge}>
-            <Ionicons name="flag-outline" size={11} color="#059669" style={{ marginRight: 3 }} />
-            <Text style={styles.tripBadgeText}>2 Viajes</Text>
-          </View>
-        </View>
-      </View>
-
-      {/* DEDICATED WATER QUALITY CONTROL CARD */}
-      <View style={styles.calidadCard}>
-        {(() => {
-          const cMin = Number(systemConfig?.cloro_min_ppm) || 0.5;
-          const cMax = Number(systemConfig?.cloro_max_ppm) || 2.0;
-          const tMax = Number(systemConfig?.turbiedad_max_ntu) || 5.0;
-          const isApto = parseFloat(cloroPpm) >= cMin && parseFloat(cloroPpm) <= cMax && parseFloat(turbiedadNtu) <= tMax;
-          return (
-            <View style={styles.calidadCardTopRow}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, marginRight: 6 }}>
-                <Ionicons name="flask-outline" size={15} color="#0369a1" />
-                <Text style={styles.calidadCardTitle} numberOfLines={1}>Control Sanitario</Text>
-              </View>
-              <View style={isApto ? styles.calidadStatusPillOk : styles.calidadStatusPillWarn}>
-                <Ionicons name={isApto ? "checkmark-circle" : "alert-circle"} size={11} color={isApto ? "#15803d" : "#b91c1c"} />
-                <Text style={isApto ? styles.calidadStatusTextOk : styles.calidadStatusTextWarn}>
-                  {isApto ? 'Apto' : 'No Apto'}
-                </Text>
-              </View>
-            </View>
-          );
-        })()}
-
-        <View style={styles.calidadParamsRow}>
-          <View style={styles.calidadMetricBox}>
-            <Text style={styles.calidadMetricLabel}>CLORO</Text>
-            <Text style={styles.calidadMetricValue}>{cloroPpm} ppm</Text>
-          </View>
-
-          <View style={styles.calidadMetricBox}>
-            <Text style={styles.calidadMetricLabel}>TURBIEDAD</Text>
-            <Text style={styles.calidadMetricValue}>{turbiedadNtu} NTU</Text>
-          </View>
-
-          <TouchableOpacity
-            style={styles.calidadActionBtn}
-            onPress={handleOpenCalidadModal}
-            activeOpacity={0.85}
-          >
-            <Ionicons name="flask-outline" size={12} color="#ffffff" />
-            <Text style={styles.calidadActionBtnText}>Medir</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* BOTÓN ACCESO RÁPIDO A ENTREGA EN DEPÓSITO ÚNICO POR SECTOR */}
-      <TouchableOpacity
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          backgroundColor: '#0284c7',
-          borderRadius: 16,
-          paddingVertical: 11,
-          paddingHorizontal: 14,
-          marginBottom: 12,
-          shadowColor: '#0284c7',
-          shadowOffset: { width: 0, height: 3 },
-          shadowOpacity: 0.25,
-          shadowRadius: 6,
-          elevation: 3,
-        }}
-        onPress={() => handleOpenDepositoModal(sectorSeleccionado)}
-        activeOpacity={0.85}
-      >
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+      {/* SI NO HAY BENEFICIARIO SELECCIONADO, MOSTRAR CONTROLES DE BÚSQUEDA Y FLOTA */}
+      {!beneficiario ? (
+        <>
+          {/* ACCIONES PRINCIPALES DE ENTREGA: QR Y DEPÓSITO SECTOR */}
           <View
-            style={{
-              width: 34,
-              height: 34,
-              borderRadius: 10,
-              backgroundColor: 'rgba(255,255,255,0.2)',
-              alignItems: 'center',
-              justifyContent: 'center',
+            style={styles.identificacionCard}
+            onLayout={(e) => {
+              const y = e.nativeEvent.layout.y;
+              if (y > 0) setSearchCardY(y);
             }}
           >
-            <Ionicons name="water" size={18} color="#ffffff" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={{ color: '#ffffff', fontSize: 13, fontWeight: '900' }} numberOfLines={1}>
-              🚰 DEPÓSITO ÚNICO POR SECTOR
-            </Text>
-            <Text style={{ color: '#e0f2fe', fontSize: 10.5, fontWeight: '600' }} numberOfLines={1}>
-              Entrega grupal a todos los beneficiarios del sector
-            </Text>
-          </View>
-        </View>
-        <Ionicons name="chevron-forward" size={18} color="#ffffff" />
-      </TouchableOpacity>
-
-      {/* SECCIÓN INTUITIVA DE IDENTIFICACIÓN: ESCÁNER QR Y BÚSQUEDA MANUAL DNI */}
-      <View
-        style={styles.identificacionCard}
-        onLayout={(e) => {
-          const y = e.nativeEvent.layout.y;
-          if (y > 0) setSearchCardY(y);
-        }}
-      >
-        {/* BOTÓN PROMINENTE DE ESCANEO QR */}
-        <TouchableOpacity
-          style={styles.scanPrimaryBtn}
-          onPress={openQrScanner}
-          activeOpacity={0.88}
-        >
-          <View style={styles.scanIconBox}>
-            <Ionicons name="qr-code-outline" size={24} color="#ffffff" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.scanPrimaryTitle}>ESCANEAR CÓDIGO QR</Text>
-            <Text style={styles.scanPrimarySubtitle}>Lectura instantánea de vales EPS</Text>
-          </View>
-          <Ionicons name="arrow-forward" size={18} color="#ffffff" />
-        </TouchableOpacity>
-
-        {/* SEPARADOR ELEGANTE */}
-        <View style={styles.orDivider}>
-          <View style={styles.orLine} />
-          <Text style={styles.orText}>O BÚSQUEDA POR DNI, CÓDIGO O NOMBRE</Text>
-          <View style={styles.orLine} />
-        </View>
-
-        {/* BARRA DE BÚSQUEDA MANUAL (DNI, CÓDIGO O NOMBRE) */}
-        <View style={styles.searchManualRow}>
-          <View style={styles.searchInputWrapper}>
-            <Ionicons name="search-outline" size={16} color="#0284c7" style={{ marginRight: 6 }} />
-            <TextInput
-              style={styles.input}
-              placeholder="DNI, Código de vale o Nombre..."
-              placeholderTextColor="#94a3b8"
-              value={dni}
-              onChangeText={setDni}
-              keyboardType="default"
-              autoCapitalize="words"
-              maxLength={60}
-              onFocus={() => {
-                // Posicionar el campo arriba del teclado dinámicamente en cualquier teléfono
-                const targetY = searchCardY > 0 ? Math.max(0, searchCardY + 60) : 780;
-                focusScrollTo('MAIN', targetY);
-              }}
-              onSubmitEditing={() => {
-                Keyboard.dismiss();
-                handleSearchDNI();
-              }}
-            />
-            {dni ? (
+            {/* FILA DE 2 BOTONES MATERIAL DESIGN: QR INDIVIDUAL Y DEPÓSITO SECTOR */}
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
               <TouchableOpacity
-                onPress={() => {
-                  setDni('');
-                }}
-                style={{ padding: 4 }}
+                style={[styles.scanPrimaryBtn, { flex: 1, paddingVertical: 12, paddingHorizontal: 12 }]}
+                onPress={openQrScanner}
+                activeOpacity={0.88}
               >
-                <Ionicons name="close-circle" size={16} color="#94a3b8" />
+                <Ionicons name="qr-code-outline" size={20} color="#ffffff" />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.scanPrimaryTitle, { fontSize: 12.5 }]}>ESCANEAR QR</Text>
+                  <Text style={[styles.scanPrimarySubtitle, { fontSize: 10 }]}>Vale individual</Text>
+                </View>
               </TouchableOpacity>
-            ) : null}
+
+              <TouchableOpacity
+                style={[
+                  styles.scanPrimaryBtn,
+                  {
+                    flex: 1,
+                    paddingVertical: 12,
+                    paddingHorizontal: 12,
+                    backgroundColor: '#0d9488',
+                  },
+                ]}
+                onPress={() => handleOpenDepositoModal(sectorSeleccionado)}
+                activeOpacity={0.88}
+              >
+                <Ionicons name="water-outline" size={20} color="#ffffff" />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.scanPrimaryTitle, { fontSize: 12.5 }]}>DEPÓSITO SECTOR</Text>
+                  <Text style={[styles.scanPrimarySubtitle, { fontSize: 10, color: '#ccfbf1' }]}>Entrega grupal</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+
+            {/* BARRA DE BÚSQUEDA MANUAL (DNI, CÓDIGO O NOMBRE) */}
+            <View style={styles.searchManualRow}>
+              <View style={styles.searchInputWrapper}>
+                <Ionicons name="search-outline" size={16} color="#0284c7" style={{ marginRight: 6 }} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Buscar por DNI, Vale o Nombre..."
+                  placeholderTextColor="#94a3b8"
+                  value={dni}
+                  onChangeText={setDni}
+                  keyboardType="default"
+                  autoCapitalize="words"
+                  maxLength={60}
+                  onFocus={() => {
+                    const targetY = searchCardY > 0 ? Math.max(0, searchCardY + 40) : 220;
+                    focusScrollTo('MAIN', targetY);
+                  }}
+                  onSubmitEditing={() => {
+                    Keyboard.dismiss();
+                    handleSearchDNI();
+                  }}
+                />
+                {dni ? (
+                  <TouchableOpacity onPress={() => setDni('')} style={{ padding: 4 }}>
+                    <Ionicons name="close-circle" size={16} color="#94a3b8" />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+
+              <TouchableOpacity
+                style={styles.searchBtn}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  handleSearchDNI();
+                }}
+                disabled={searching}
+                activeOpacity={0.85}
+              >
+                {searching ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={styles.btnText}>Buscar</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+
+            {/* BOTÓN DIRECTO PARA VER BENEFICIARIOS PROGRAMADOS */}
+            <TouchableOpacity
+              style={styles.verBeneficiariosBtn}
+              onPress={() => {
+                setActiveTab('BENEFICIARIOS');
+                if (selectedProg?.id && beneficiariosSector.length === 0) {
+                  loadBeneficiariosSector(selectedProg.id);
+                }
+              }}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="people-outline" size={15} color="#0284c7" />
+              <Text style={styles.verBeneficiariosBtnText}>
+                Padrón del sector ({beneficiariosSector.length} familias)
+              </Text>
+              <Ionicons name="chevron-forward" size={15} color="#0284c7" />
+            </TouchableOpacity>
           </View>
 
-          <TouchableOpacity
-            style={styles.searchBtn}
-            onPress={() => {
-              Keyboard.dismiss();
-              handleSearchDNI();
-            }}
-            disabled={searching}
-            activeOpacity={0.85}
-          >
-            {searching ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <Text style={styles.btnText}>Buscar</Text>
-            )}
-          </TouchableOpacity>
-        </View>
+          {/* TARJETA COMPACTA DE CISTERNA Y CONTROL SANITARIO */}
+          <View style={styles.flotaCard}>
+            <View style={styles.flotaRow}>
+              <View style={{ flex: 1, marginRight: 8 }}>
+                <Text style={styles.flotaLabel}>Cisterna:</Text>
+                <View style={styles.selectorContainer}>
+                  {cisternas && cisternas.length > 0 ? (
+                    cisternas.map((c) => (
+                      <TouchableOpacity
+                        key={c.id}
+                        style={[styles.chipBtn, (selectedCisternaId === c.id || cisternas.length === 1) && styles.chipBtnActive]}
+                        onPress={() => setSelectedCisternaId(c.id)}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={[styles.chipText, (selectedCisternaId === c.id || cisternas.length === 1) && styles.chipTextActive]}>
+                          {c.placa} ({c.capacidad_m3 || 19}m³)
+                        </Text>
+                      </TouchableOpacity>
+                    ))
+                  ) : (
+                    <View style={[styles.chipBtn, styles.chipBtnActive]}>
+                      <Text style={[styles.chipText, styles.chipTextActive]}>
+                        {selectedProg?.cisterna_placa || 'CAT-849 (19m³)'}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </View>
 
-        {/* BOTÓN DIRECTO PARA VER BENEFICIARIOS PROGRAMADOS */}
-        <TouchableOpacity
-          style={styles.verBeneficiariosBtn}
-          onPress={() => {
-            setActiveTab('BENEFICIARIOS');
-            if (selectedProg?.id && beneficiariosSector.length === 0) {
-              loadBeneficiariosSector(selectedProg.id);
-            }
-          }}
-          activeOpacity={0.85}
-        >
-          <Ionicons name="people-outline" size={16} color="#0284c7" />
-          <Text style={styles.verBeneficiariosBtnText}>
-            Ver lista de beneficiarios del sector ({beneficiariosSector.length} empadronados)
-          </Text>
-          <Ionicons name="chevron-forward" size={16} color="#0284c7" />
-        </TouchableOpacity>
-      </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.flotaLabel}>Conductor:</Text>
+                <View style={styles.selectorContainer}>
+                  {conductores && conductores.length > 0 ? (
+                    conductores.map((p) => (
+                      <TouchableOpacity
+                        key={p.id}
+                        style={[styles.chipBtn, (selectedConductorId === p.id || conductores.length === 1) && styles.chipBtnActive]}
+                        onPress={() => setSelectedConductorId(p.id)}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={[styles.chipText, (selectedConductorId === p.id || conductores.length === 1) && styles.chipTextActive]}>
+                          {p.nombres ? `${p.nombres.split(' ')[0]} ${p.apellidos ? p.apellidos.split(' ')[0] : ''}` : 'Conductor'}
+                        </Text>
+                      </TouchableOpacity>
+                    ))
+                  ) : (
+                    <View style={[styles.chipBtn, styles.chipBtnActive]}>
+                      <Text style={[styles.chipText, styles.chipTextActive]}>
+                        {selectedProg?.conductor_nombre || user?.nombres || 'Conductor'}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+            </View>
 
-      {/* BENEFICIARY CARD */}
+            {/* CONTROL SANITARIO INTEGRADO EN UNA FILA */}
+            <View style={[styles.logisticsStrip, { marginTop: 10 }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                <Ionicons name="flask-outline" size={14} color="#0369a1" />
+                <Text style={{ fontSize: 11.5, color: '#0f172a', fontWeight: '700' }}>
+                  Cloro: <Text style={{ color: '#0284c7', fontWeight: '800' }}>{cloroPpm} ppm</Text> • Turb: <Text style={{ color: '#0284c7', fontWeight: '800' }}>{turbiedadNtu} NTU</Text>
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.calidadActionBtn, { paddingVertical: 5, paddingHorizontal: 10 }]}
+                onPress={handleOpenCalidadModal}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="flask-outline" size={11} color="#ffffff" />
+                <Text style={[styles.calidadActionBtnText, { fontSize: 11 }]}>Medir</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </>
+      ) : null}
+
+      {/* TARJETA DE ENTREGA AL BENEFICIARIO (MATERIAL DESIGN 3 LIMPIO Y ENFOCADO) */}
       {beneficiario && (
         <View
           style={styles.card}
           onLayout={(e) => setBeneficiaryCardY(e.nativeEvent.layout.y)}
         >
-          {/* TOP CARD HEADER WITH BADGES & BOTÓN SELECTOR DE DÍA (UBICACIÓN CÍRCULO VERDE) */}
+          {/* TOP CARD HEADER: SECTOR + DÍA + CERRAR */}
           <View style={styles.cardHeaderRow}>
             <View style={styles.cardBadges}>
               <View style={styles.badgeSector}>
                 <Ionicons name="location-outline" size={11} color="#0284c7" style={{ marginRight: 3 }} />
                 <Text style={styles.badgeSectorText}>
-                  {beneficiario.sector_aahh || beneficiario.sector || 'Sector General'}
+                  {beneficiario.sector_aahh || beneficiario.sector || 'Sector'}
                 </Text>
               </View>
               {valeCodigo && (
                 <View style={styles.badgeVale}>
                   <Ionicons name="ticket-outline" size={11} color="#059669" style={{ marginRight: 3 }} />
-                  <Text style={styles.badgeValeText}>
-                    {valeCodigo}
-                  </Text>
+                  <Text style={styles.badgeValeText}>{valeCodigo}</Text>
                 </View>
               )}
             </View>
 
-            {/* ZONA DERECHA: BOTÓN DÍA DE ENTREGA (CÍRCULO VERDE) + BOTÓN CERRAR */}
             <View style={styles.cardHeaderRightActions}>
               <TouchableOpacity
                 style={[
@@ -3719,50 +3530,31 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
             </View>
           </View>
 
-          <Text style={styles.cardTitle}>{beneficiario.nombres_apellidos}</Text>
-          
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>DNI:</Text>
-            <Text style={styles.infoValue}>{beneficiario.dni}</Text>
-          </View>
+          {/* NOMBRE Y DATOS COMPACTOS EN CHIPS (SIN FILAS LARGAS DE TEXTO) */}
+          <Text style={[styles.cardTitle, { marginBottom: 6 }]}>{beneficiario.nombres_apellidos}</Text>
 
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Dirección:</Text>
-            <Text style={styles.infoValue}>{direccionCompleta || 'Sin dirección'}</Text>
-          </View>
-
-          {beneficiario.num_vivienda ? (
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>N° Vivienda:</Text>
-              <Text style={styles.infoValue}>{beneficiario.num_vivienda}</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+            <View style={{ backgroundColor: '#f1f5f9', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 }}>
+              <Text style={{ fontSize: 11.5, color: '#334155', fontWeight: '700' }}>
+                🪪 DNI: <Text style={{ color: '#0f172a', fontWeight: '800' }}>{beneficiario.dni}</Text>
+              </Text>
             </View>
-          ) : null}
-
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Miembros:</Text>
-            <Text style={styles.infoValue}>{beneficiario.num_miembros} personas</Text>
-          </View>
-
-          {/* SELECTOR INTERACTIVO DE LOS 7 DÍAS DEL CICLO SEMANAL */}
-          <View style={styles.diaSelectorBox}>
-            <View style={styles.diaSelectorHeader}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                <Ionicons name="calendar-outline" size={14} color="#0284c7" />
-                <Text style={styles.diaSelectorTitle}>Día de Entrega / Jornada Asignada</Text>
-              </View>
-              <View style={[styles.diaStatusPill, !diaSeleccionado?.esHoy && styles.diaStatusPillDiferido]}>
-                <Ionicons
-                  name={diaSeleccionado?.esHoy ? "checkmark-circle" : "time-outline"}
-                  size={11}
-                  color={diaSeleccionado?.esHoy ? "#15803d" : "#b45309"}
-                />
-                <Text style={[styles.diaStatusText, !diaSeleccionado?.esHoy && styles.diaStatusTextDiferido]}>
-                  {diaSeleccionado?.esHoy ? 'Hoy (Día Actual)' : 'Día Reprogramado'}
+            <View style={{ backgroundColor: '#f0f9ff', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 }}>
+              <Text style={{ fontSize: 11.5, color: '#0369a1', fontWeight: '800' }}>
+                👥 {beneficiario.num_miembros || 1} hab.
+              </Text>
+            </View>
+            {direccionCompleta ? (
+              <View style={{ backgroundColor: '#f8fafc', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: '#e2e8f0', flexShrink: 1 }}>
+                <Text style={{ fontSize: 11.5, color: '#475569', fontWeight: '600' }} numberOfLines={1}>
+                  🏠 {direccionCompleta}
                 </Text>
               </View>
-            </View>
+            ) : null}
+          </View>
 
-            {/* CARRUSEL DE LOS 7 DÍAS DE LA SEMANA */}
+          {/* CARRUSEL COMPACTO DE DÍAS Y BOTONES RÁPIDOS DE RACIÓN */}
+          <View style={[styles.diaSelectorBox, { paddingVertical: 8, paddingHorizontal: 10, marginBottom: 10 }]}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.diasScrollRow}>
               {diasSemana.map((d: any) => {
                 const isSelected = diaSeleccionado?.id === d.id;
@@ -3797,23 +3589,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
               })}
             </ScrollView>
 
-            {/* AVISO DE REGULARIZACIÓN SI SE ELIGE OTRO DÍA (EJ. DOMINGO ENTREGANDO LO DEL MIÉRCOLES) */}
-            {!diaSeleccionado?.esHoy ? (
-              <View style={styles.diaDiferidoAlert}>
-                <Ionicons name="information-circle" size={17} color="#b45309" style={{ marginTop: 1 }} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.diaDiferidoAlertTitle}>
-                    Asignando entrega al día {diaSeleccionado?.nombre} ({diaSeleccionado?.fechaCorta})
-                  </Text>
-                  <Text style={styles.diaDiferidoAlertSub}>
-                    Se guardará como regularización de ración pendiente de esa jornada.
-                  </Text>
-                </View>
-              </View>
-            ) : null}
-
-            {/* ACCESOS RÁPIDOS DE SUGERENCIA DE VOLUMEN SEGÚN DÍA */}
-            <View style={styles.quickLitrosRow}>
+            <View style={[styles.quickLitrosRow, { marginTop: 8 }]}>
               <TouchableOpacity
                 style={styles.quickLitroBtn}
                 onPress={() => {
@@ -3822,9 +3598,9 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                 }}
                 activeOpacity={0.8}
               >
-                <Ionicons name="water" size={12} color="#0284c7" />
+                <Ionicons name="sunny-outline" size={12} color="#0284c7" />
                 <Text style={styles.quickLitroBtnText}>
-                  Ración 1 Día ({(beneficiario.num_miembros || 1) * DOTACION_POR_HABITANTE} L)
+                  Día ({(beneficiario.num_miembros || 1) * DOTACION_POR_HABITANTE} L)
                 </Text>
               </TouchableOpacity>
 
@@ -3837,13 +3613,13 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
               >
                 <Ionicons name="calendar-outline" size={12} color="#0369a1" />
                 <Text style={[styles.quickLitroBtnText, { color: '#0369a1' }]}>
-                  Saldo Semanal ({Number(saldoPendiente > 0 ? saldoPendiente : cuotaTotal).toFixed(2)} L)
+                  Restante ({Number(saldoPendiente > 0 ? saldoPendiente : cuotaTotal).toFixed(2)} L)
                 </Text>
               </TouchableOpacity>
             </View>
           </View>
 
-          {/* CALCULATION & EDITABLE LITERS BOX CON SALDO PENDIENTE */}
+          {/* DOTACIÓN Y LITROS A ENTREGAR */}
           {(() => {
             const ltsNum = Math.round((parseFloat(litrosEntregar) || 0) * 100) / 100;
             const saldoBase = Math.round((tieneEntregaPrevia ? saldoPendiente : cuotaTotal) * 100) / 100;
@@ -3853,36 +3629,14 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
 
             return (
               <View style={styles.waterCalcBox}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, flexWrap: 'wrap', gap: 4 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, flex: 1 }}>
-                    <Ionicons name="water-outline" size={15} color="#0369a1" />
-                    <Text style={[styles.waterCalcTitle, { flexShrink: 1 }]} numberOfLines={1}>
-                      Dotación Semanal
-                    </Text>
-                  </View>
-                  <View style={{ flexDirection: 'row', gap: 5, flexWrap: 'wrap' }}>
-                    <Text style={styles.dotacionPill}>
-                      👥 {beneficiario.num_miembros || 1} hab.
-                    </Text>
-                    <Text style={styles.dotacionPill}>
-                      ☀️ {(beneficiario.num_miembros || 1) * DOTACION_POR_HABITANTE} L/día
-                    </Text>
-                    <Text style={[styles.dotacionPill, { backgroundColor: '#bae6fd', color: '#0c4a6e' }]}>
-                      📅 Sem: {cuotaTotal} L
-                    </Text>
-                  </View>
-                </View>
-
-                {tieneEntregaPrevia ? (
-                  <View style={{ backgroundColor: '#fef3c7', paddingVertical: 5, paddingHorizontal: 8, borderRadius: 8, marginBottom: 6, borderWidth: 1, borderColor: '#fde68a', flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap' }}>
-                    <Text style={{ fontSize: 11, color: '#92400e', fontWeight: '700' }}>
-                      ⚠️ Ya recibió: {Number(entregadoPrevio).toFixed(2)} L
-                    </Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <Text style={styles.waterCalcTitle}>Meta Semanal: {cuotaTotal} L</Text>
+                  {tieneEntregaPrevia ? (
                     <Text style={{ fontSize: 11, color: '#b45309', fontWeight: '800' }}>
-                      Saldo previo: {Number(saldoPendiente).toFixed(2)} L
+                      Previo: {Number(entregadoPrevio).toFixed(2)} L
                     </Text>
-                  </View>
-                ) : null}
+                  ) : null}
+                </View>
 
                 <View style={styles.litersInputRow}>
                   <Text style={styles.litersInputLabel}>Litros a Entregar:</Text>
@@ -3893,7 +3647,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                       onChangeText={setLitrosEntregar}
                       keyboardType="numeric"
                       onFocus={() => {
-                        const targetY = beneficiaryCardY > 0 ? beneficiaryCardY + 280 : 940;
+                        const targetY = beneficiaryCardY > 0 ? beneficiaryCardY + 140 : 320;
                         focusScrollTo('MAIN', targetY);
                       }}
                     />
@@ -3901,30 +3655,26 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                   </View>
                 </View>
 
-                {/* VISOR COMPACTO EN TIEMPO REAL DE SALDO PENDIENTE */}
                 {excedeCuota ? (
-                  <View style={{ backgroundColor: '#eff6ff', paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, marginTop: 6, borderWidth: 1, borderColor: '#bfdbfe' }}>
+                  <View style={{ backgroundColor: '#eff6ff', paddingVertical: 5, paddingHorizontal: 10, borderRadius: 8, marginTop: 6, borderWidth: 1, borderColor: '#bfdbfe' }}>
                     <Text style={{ fontSize: 11, color: '#1d4ed8', fontWeight: '700' }}>
-                      ℹ️ Dotación Especial: {Number(ltsNum).toFixed(2)} L (+{Number(ltsNum - saldoBase).toFixed(2)} L sobre cuota)
+                      ℹ️ Dotación Especial (+{Number(ltsNum - saldoBase).toFixed(2)} L sobre cuota)
                     </Text>
                   </View>
                 ) : esParcial ? (
-                  <View style={{ backgroundColor: '#fffbeb', paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, marginTop: 6, borderWidth: 1, borderColor: '#f59e0b', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                      <Ionicons name="alert-circle" size={14} color="#d97706" />
-                      <Text style={{ fontSize: 11.5, color: '#b45309', fontWeight: '800' }}>
-                        Entrega Parcial ({ltsNum} L)
-                      </Text>
-                    </View>
-                    <Text style={{ fontSize: 11.5, color: '#92400e', fontWeight: '900' }}>
+                  <View style={{ backgroundColor: '#fffbeb', paddingVertical: 5, paddingHorizontal: 10, borderRadius: 8, marginTop: 6, borderWidth: 1, borderColor: '#f59e0b', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={{ fontSize: 11, color: '#b45309', fontWeight: '800' }}>
+                      🟡 Entrega Parcial
+                    </Text>
+                    <Text style={{ fontSize: 11, color: '#92400e', fontWeight: '900' }}>
                       Resta: {Number(Math.round(saldoQueQuedara * 100) / 100).toFixed(2)} L
                     </Text>
                   </View>
                 ) : (
-                  <View style={{ backgroundColor: '#f0fdf4', paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, marginTop: 6, borderWidth: 1, borderColor: '#22c55e', flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <View style={{ backgroundColor: '#f0fdf4', paddingVertical: 5, paddingHorizontal: 10, borderRadius: 8, marginTop: 6, borderWidth: 1, borderColor: '#22c55e', flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                     <Ionicons name="checkmark-circle" size={14} color="#16a34a" />
-                    <Text style={{ fontSize: 11.5, color: '#15803d', fontWeight: '800' }}>
-                      Cuota Semanal 100% Cubierta ({ltsNum} L)
+                    <Text style={{ fontSize: 11, color: '#15803d', fontWeight: '800' }}>
+                      Cuota Semanal 100% Cubierta
                     </Text>
                   </View>
                 )}
@@ -3932,28 +3682,65 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
             );
           })()}
 
-          {/* PHOTO EVIDENCE SECTION (100% OPCIONAL) */}
-          <View style={styles.photoSection}>
-            <View style={styles.sectionHeader}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                <Ionicons name="camera-outline" size={16} color="#0f172a" />
-                <Text style={styles.label}>Fotografía de Evidencia (Opcional)</Text>
-              </View>
-              {photoUri ? (
-                <View style={styles.statusPillOk}>
-                  <Ionicons name="checkmark-circle" size={11} color="#059669" style={{ marginRight: 3 }} />
-                  <Text style={styles.statusPillOkText}>Capturada</Text>
-                </View>
-              ) : (
-                <View style={[styles.statusPillPending, { backgroundColor: '#f1f5f9', borderColor: '#cbd5e1' }]}>
-                  <Ionicons name="camera-outline" size={11} color="#64748b" style={{ marginRight: 3 }} />
-                  <Text style={[styles.statusPillPendingText, { color: '#64748b' }]}>Opcional</Text>
-                </View>
-              )}
+          {/* EVIDENCIA OPCIONAL (FOTO Y FIRMA EN DISEÑO MATERIAL COMPACTO) */}
+          <View style={{ marginTop: 10, marginBottom: 4 }}>
+            <Text style={{ fontSize: 11.5, fontWeight: '800', color: '#475569', marginBottom: 6 }}>
+              Evidencia en Campo (Opcional)
+            </Text>
+
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {/* BOTÓN / ESTADO FOTO */}
+              <TouchableOpacity
+                style={{
+                  flex: 1,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  paddingVertical: 10,
+                  paddingHorizontal: 10,
+                  borderRadius: 12,
+                  borderWidth: 1.5,
+                  borderColor: photoUri ? '#16a34a' : '#bae6fd',
+                  backgroundColor: photoUri ? '#f0fdf4' : '#f8fafc',
+                }}
+                onPress={handleTakePhoto}
+                activeOpacity={0.8}
+              >
+                <Ionicons name={photoUri ? 'checkmark-circle' : 'camera-outline'} size={17} color={photoUri ? '#16a34a' : '#0284c7'} />
+                <Text style={{ fontSize: 12, fontWeight: '800', color: photoUri ? '#15803d' : '#0284c7' }}>
+                  {photoUri ? 'Foto Lista' : 'Tomar Foto'}
+                </Text>
+              </TouchableOpacity>
+
+              {/* BOTÓN / ESTADO FIRMA */}
+              <TouchableOpacity
+                style={{
+                  flex: 1,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  paddingVertical: 10,
+                  paddingHorizontal: 10,
+                  borderRadius: 12,
+                  borderWidth: 1.5,
+                  borderColor: hasSignature ? '#16a34a' : (showSignaturePad ? '#0284c7' : '#bae6fd'),
+                  backgroundColor: hasSignature ? '#f0fdf4' : (showSignaturePad ? '#e0f2fe' : '#f8fafc'),
+                }}
+                onPress={() => setShowSignaturePad(!showSignaturePad)}
+                activeOpacity={0.8}
+              >
+                <Ionicons name={hasSignature ? 'checkmark-circle' : 'create-outline'} size={17} color={hasSignature ? '#16a34a' : '#0284c7'} />
+                <Text style={{ fontSize: 12, fontWeight: '800', color: hasSignature ? '#15803d' : '#0284c7' }}>
+                  {hasSignature ? 'Firmado' : (showSignaturePad ? 'Ocultar Firma' : 'Firmar')}
+                </Text>
+              </TouchableOpacity>
             </View>
 
-            {photoUri ? (
-              <View style={styles.photoPreviewRow}>
+            {/* PREVIEW COMPACTO DE FOTO SI EXISTE */}
+            {photoUri && (
+              <View style={[styles.photoPreviewRow, { marginTop: 8 }]}>
                 <TouchableOpacity
                   activeOpacity={0.9}
                   onPress={() => {
@@ -3963,38 +3750,18 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                   style={styles.photoThumbContainer}
                 >
                   <Image source={{ uri: photoUri }} style={styles.photoThumbnail} />
-                  <View style={styles.thumbGpsBadge}>
-                    <Ionicons name="location" size={10} color="#ffffff" />
-                  </View>
                 </TouchableOpacity>
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 2 }}>
-                    <Ionicons name="checkmark-circle" size={15} color="#059669" />
-                    <Text style={styles.photoSavedText}>Evidencia GPS Vinculada</Text>
-                  </View>
-                  <Text style={{ fontSize: 11, color: '#475569', fontWeight: '600' }} numberOfLines={1}>
-                    🌐 {photoGpsCoords?.lat || '-6.034172'}, {photoGpsCoords?.lng || '-76.971391'}
-                  </Text>
-                  <Text style={{ fontSize: 10.5, color: '#64748b', marginBottom: 6 }} numberOfLines={1}>
-                    🕒 {photoTimestamp || 'Capturada'}
-                  </Text>
-                  <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+                <View style={{ flex: 1, marginLeft: 10 }}>
+                  <Text style={styles.photoSavedText}>Foto con GPS adjunta</Text>
+                  <View style={{ flexDirection: 'row', gap: 6, marginTop: 4 }}>
                     <TouchableOpacity
                       style={styles.viewPhotoBtn}
                       onPress={() => {
                         setTempPhotoUri(photoUri);
                         setPhotoPreviewVisible(true);
                       }}
-                      activeOpacity={0.8}
                     >
-                      <Ionicons name="eye-outline" size={12} color="#0284c7" />
-                      <Text style={styles.viewPhotoBtnText}>Ver con datos</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.retakeBtn} onPress={handleTakePhoto} activeOpacity={0.8}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-                        <Ionicons name="camera-reverse-outline" size={12} color="#334155" />
-                        <Text style={styles.retakeBtnText}>Cambiar</Text>
-                      </View>
+                      <Text style={styles.viewPhotoBtnText}>Ver</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[styles.retakeBtn, { borderColor: '#fca5a5', backgroundColor: '#fef2f2' }]}
@@ -4004,50 +3771,17 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                         setPhotoGpsCoords(null);
                         setTempPhotoUri(null);
                       }}
-                      activeOpacity={0.8}
                     >
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-                        <Ionicons name="trash-outline" size={12} color="#dc2626" />
-                        <Text style={[styles.retakeBtnText, { color: '#dc2626' }]}>Quitar</Text>
-                      </View>
+                      <Text style={[styles.retakeBtnText, { color: '#dc2626' }]}>Quitar</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
               </View>
-            ) : (
-              <TouchableOpacity style={styles.addSignatureBtn} onPress={handleTakePhoto} activeOpacity={0.85}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 }}>
-                  <Ionicons name="camera-outline" size={18} color="#0284c7" />
-                  <Text style={styles.addSignatureBtnText}>📸 Tomar Fotografía (Opcional)</Text>
-                </View>
-                <Text style={styles.addSignatureBtnSubtext}>
-                  Opcional: Si desea adjuntar evidencia visual del punto de entrega
-                </Text>
-              </TouchableOpacity>
             )}
-          </View>
 
-          {/* DIGITAL SIGNATURE CANVAS (OPCIONAL - BLOQUEADO POR DEFECTO) */}
-          <View style={styles.sigSection}>
-            <View style={styles.sectionHeader}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                <Ionicons name="pencil-outline" size={15} color="#0f172a" />
-                <Text style={styles.label}>Firma del Beneficiario (Opcional)</Text>
-              </View>
-              {hasSignature ? (
-                <View style={styles.statusPillOk}>
-                  <Ionicons name="checkmark-circle" size={11} color="#059669" style={{ marginRight: 3 }} />
-                  <Text style={styles.statusPillOkText}>Firmado</Text>
-                </View>
-              ) : (
-                <View style={[styles.statusPillPending, { backgroundColor: '#f1f5f9', borderColor: '#cbd5e1' }]}>
-                  <Text style={[styles.statusPillPendingText, { color: '#64748b' }]}>Opcional</Text>
-                </View>
-              )}
-            </View>
-
-            {showSignaturePad ? (
-              <>
+            {/* LIENZO DE FIRMA DESPLEGABLE */}
+            {showSignaturePad && (
+              <View style={{ marginTop: 8 }}>
                 <View
                   style={styles.signatureContainer}
                   onTouchStart={() => setScrollEnabled(false)}
@@ -4066,7 +3800,7 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                     nestedScrollEnabled={false}
                     webStyle={`.m-signature-pad {box-shadow: none; border: none; touch-action: none;} .m-signature-pad--body {border: none;} body,html {width: 100%; height: 100%; touch-action: none; overflow: hidden;}`}
                     autoClear={false}
-                    descriptionText="Firme aquí sobre la línea"
+                    descriptionText="Firme aquí"
                   />
                 </View>
 
@@ -4078,12 +3812,8 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                       setHasSignature(false);
                       setShowSignaturePad(false);
                     }}
-                    activeOpacity={0.7}
                   >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                      <Ionicons name="close-circle-outline" size={13} color="#dc2626" />
-                      <Text style={styles.removeSigBtnText}>✕ Omitir Firma</Text>
-                    </View>
+                    <Text style={styles.removeSigBtnText}>✕ Cerrar</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
@@ -4092,29 +3822,11 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                       signatureRef.current?.clearSignature();
                       setHasSignature(false);
                     }}
-                    activeOpacity={0.7}
                   >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                      <Ionicons name="trash-outline" size={12} color="#475569" />
-                      <Text style={styles.clearSigBtnText}>Limpiar trazo</Text>
-                    </View>
+                    <Text style={styles.clearSigBtnText}>Limpiar</Text>
                   </TouchableOpacity>
                 </View>
-              </>
-            ) : (
-              <TouchableOpacity
-                style={styles.addSignatureBtn}
-                onPress={() => setShowSignaturePad(true)}
-                activeOpacity={0.85}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 }}>
-                  <Ionicons name="create-outline" size={18} color="#0284c7" />
-                  <Text style={styles.addSignatureBtnText}>✍️ Agregar Firma</Text>
-                </View>
-                <Text style={styles.addSignatureBtnSubtext}>
-                  Toque aquí si el beneficiario va a firmar en pantalla
-                </Text>
-              </TouchableOpacity>
+              </View>
             )}
           </View>
 
@@ -5138,10 +4850,6 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
               </TouchableOpacity>
             </View>
 
-            <Text style={{ fontSize: 12, color: '#475569', marginBottom: 12 }}>
-              Seleccione el día al que corresponde esta entrega. Por defecto es hoy, pero puede elegir cualquiera de los 7 días para entregar dotaciones pendientes o regularizar faltantes:
-            </Text>
-
             {/* LISTA DE LOS 7 DÍAS DE LA SEMANA */}
             <ScrollView style={{ maxHeight: 360 }}>
               <View style={{ gap: 8 }}>
@@ -5392,11 +5100,13 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                             </View>
                           </View>
 
-                          {item.observaciones_entrega && (
-                            <Text style={styles.entregaDiaObs} numberOfLines={2}>
-                              📝 {item.observaciones_entrega}
-                            </Text>
-                          )}
+                          {item.observaciones_entrega &&
+                            !String(item.observaciones_entrega).startsWith('Entrega en Depósito Único') &&
+                            !String(item.observaciones_entrega).startsWith('Entrega domiciliaria') && (
+                              <Text style={styles.entregaDiaObs} numberOfLines={1}>
+                                📝 {item.observaciones_entrega}
+                              </Text>
+                            )}
                         </View>
                       );
                     })}

@@ -690,6 +690,17 @@ export default function EntregasPage() {
 
   const paginatedData = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
+  const hoyIso = new Date().toISOString().slice(0, 10);
+  const totalLitrosFiltrados = Math.round(
+    filtered.reduce((acc, e) => acc + Number(e.litros_entregados || 0), 0) * 100
+  ) / 100;
+  const entregasCompletasCount = filtered.filter(
+    (e) => e.estado_entrega !== 'PARCIAL' && Number(e.saldo_pendiente || 0) <= 0
+  ).length;
+  const sectoresUnicosCount = new Set(
+    filtered.map((e) => (e.sector || e.zona || '').trim()).filter(Boolean)
+  ).size;
+
   const queryParams = new URLSearchParams();
   if (searchTerm) queryParams.append('search', searchTerm);
   if (selectedFecha) queryParams.append('fecha', selectedFecha);
@@ -697,17 +708,15 @@ export default function EntregasPage() {
 
   return (
     <Layout>
-      <div className="module-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 14 }}>
-        <div>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#eff6ff', color: '#1d4ed8', border: '1px solid #dbeafe', padding: '3px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700, marginBottom: 6 }}>
-            <span>📋 FORMATO OFICIAL DE ENTREGA DE AGUA</span>
-            <span>•</span>
-            <span>EPS MOYOBAMBA S.A.</span>
-          </div>
-          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800 }}>Planilla de Entregas y Evidencia en Campo</h1>
-          <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: 13 }}>
-            Trazabilidad con firma digital, geolocalización satelital y formato oficial normativo de reparto en cisternas
-          </p>
+      {/* HEADER MATERIAL DESIGN 3 LIMPIO Y CONCISO */}
+      <div className="module-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#0f172a', letterSpacing: '-0.02em' }}>
+            Entregas de Agua
+          </h1>
+          <span style={{ background: '#e0f2fe', color: '#0369a1', padding: '4px 10px', borderRadius: 999, fontSize: 11.5, fontWeight: 700 }}>
+            EPS Moyobamba
+          </span>
         </div>
         <div className="module-actions" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <button
@@ -718,34 +727,88 @@ export default function EntregasPage() {
               display: 'inline-flex',
               alignItems: 'center',
               gap: 6,
-              background: '#0d9488',
-              borderColor: '#0d9488',
+              background: '#0284c7',
+              borderColor: '#0284c7',
+              borderRadius: 10,
+              padding: '8px 14px',
               fontWeight: 700,
+              boxShadow: '0 2px 6px rgba(2,132,199,0.2)',
             }}
           >
             🚰 Depósito por Sector
           </button>
-          <button className="btn-secondary" onClick={fetchEntregas} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <button
+            className="btn-secondary"
+            onClick={fetchEntregas}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 10, padding: '8px 12px' }}
+          >
             🔄 Actualizar
           </button>
         </div>
       </div>
 
-      <div className="filters-card" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10, background: '#ffffff', padding: '14px 18px', borderRadius: 12, border: '1px solid #e2e8f0', marginBottom: 18 }}>
+      {/* TARJETAS KPI RESUMEN (MATERIAL ELEVATION SURFACE) */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 16 }}>
+        <div style={{ background: '#ffffff', borderRadius: 14, padding: '12px 16px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Entregas Listadas</div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: '#0f172a', marginTop: 2 }}>{filtered.length}</div>
+        </div>
+        <div style={{ background: '#f0f9ff', borderRadius: 14, padding: '12px 16px', border: '1px solid #bae6fd', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#0369a1', textTransform: 'uppercase' }}>Volumen Total</div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: '#0284c7', marginTop: 2 }}>
+            {totalLitrosFiltrados.toLocaleString('es-PE', { maximumFractionDigits: 2 })} L
+            <span style={{ fontSize: 12, fontWeight: 600, color: '#0369a1', marginLeft: 6 }}>
+              ({(totalLitrosFiltrados / 1000).toFixed(2)} m³)
+            </span>
+          </div>
+        </div>
+        <div style={{ background: '#f0fdf4', borderRadius: 14, padding: '12px 16px', border: '1px solid #bbf7d0', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#15803d', textTransform: 'uppercase' }}>Cuota Cubierta</div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: '#166534', marginTop: 2 }}>
+            {entregasCompletasCount} <span style={{ fontSize: 12, fontWeight: 600 }}>de {filtered.length}</span>
+          </div>
+        </div>
+        <div style={{ background: '#ffffff', borderRadius: 14, padding: '12px 16px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Sectores Atendidos</div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: '#334155', marginTop: 2 }}>{sectoresUnicosCount}</div>
+        </div>
+      </div>
+
+      {/* BARRA DE FILTROS Y EXPORTACIÓN CON CHIPS RÁPIDOS */}
+      <div className="filters-card" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10, background: '#ffffff', padding: '12px 16px', borderRadius: 14, border: '1px solid #e2e8f0', marginBottom: 16, boxShadow: '0 1px 2px rgba(0,0,0,0.03)' }}>
         <input
           type="text"
-          placeholder="🔍 Buscar por Beneficiario, DNI, Sector o Local ID..."
+          placeholder="🔍 Buscar beneficiario, DNI o sector..."
           value={searchTerm}
           onChange={(e) => {
             setSearchTerm(e.target.value);
             setCurrentPage(1);
           }}
           className="search-input"
-          style={{ minWidth: 260, flex: '1 1 260px' }}
+          style={{ minWidth: 220, flex: '1 1 220px', borderRadius: 10 }}
         />
 
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: '#475569' }}>Fecha:</span>
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedFecha(selectedFecha === hoyIso ? '' : hoyIso);
+              setCurrentPage(1);
+            }}
+            style={{
+              background: selectedFecha === hoyIso ? '#0284c7' : '#f1f5f9',
+              color: selectedFecha === hoyIso ? '#ffffff' : '#334155',
+              border: selectedFecha === hoyIso ? '1px solid #0284c7' : '1px solid #cbd5e1',
+              borderRadius: 999,
+              padding: '6px 12px',
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            📅 Hoy
+          </button>
+
           <input
             type="date"
             value={selectedFecha}
@@ -755,7 +818,7 @@ export default function EntregasPage() {
             }}
             style={{
               padding: '6px 10px',
-              borderRadius: 8,
+              borderRadius: 10,
               border: '1px solid #cbd5e1',
               fontSize: 12,
               color: '#1e293b',
@@ -771,24 +834,19 @@ export default function EntregasPage() {
                 background: '#fee2e2',
                 border: '1px solid #fca5a5',
                 color: '#b91c1c',
-                borderRadius: 6,
-                padding: '4px 8px',
+                borderRadius: 8,
+                padding: '5px 8px',
                 fontSize: 11,
                 fontWeight: 700,
                 cursor: 'pointer'
               }}
-              title="Limpiar fecha"
+              title="Ver todas las fechas"
             >
               ✕
             </button>
           ) : null}
         </div>
 
-        <span className="badge-count" style={{ background: '#f1f5f9', color: '#334155', fontWeight: 700, padding: '6px 12px', borderRadius: 8, fontSize: 12 }}>
-          Total: {filtered.length} entregas
-        </span>
-
-        {/* Botones Oficiales Formato PDF y Formato Excel */}
         <div style={{ display: 'flex', gap: 8, marginLeft: 'auto', flexWrap: 'wrap' }}>
           <a
             href={`${API_BASE_URL}/api/v1/entregas/export-pdf${queryString}`}
@@ -796,9 +854,9 @@ export default function EntregasPage() {
             rel="noopener noreferrer"
             className="btn-action-compact"
             style={{
-              padding: '8px 14px',
-              fontSize: 12.5,
-              borderRadius: 8,
+              padding: '7px 12px',
+              fontSize: 12,
+              borderRadius: 10,
               fontWeight: 700,
               textDecoration: 'none',
               color: '#0369a1',
@@ -806,12 +864,10 @@ export default function EntregasPage() {
               border: '1px solid #bae6fd',
               display: 'inline-flex',
               alignItems: 'center',
-              gap: 6,
-              boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+              gap: 5,
             }}
-            title="Descargar FORMATO DE ENTREGA DE AGUA Oficial en PDF (Hoja membretada con firmas y cuadrícula reglamentaria)"
           >
-            <span>📄</span> Formato Oficial PDF
+            <span>📄</span> PDF Oficial
           </a>
 
           <a
@@ -820,9 +876,9 @@ export default function EntregasPage() {
             rel="noopener noreferrer"
             className="btn-action-compact"
             style={{
-              padding: '8px 14px',
-              fontSize: 12.5,
-              borderRadius: 8,
+              padding: '7px 12px',
+              fontSize: 12,
+              borderRadius: 10,
               fontWeight: 700,
               textDecoration: 'none',
               color: '#15803d',
@@ -830,12 +886,10 @@ export default function EntregasPage() {
               border: '1px solid #bbf7d0',
               display: 'inline-flex',
               alignItems: 'center',
-              gap: 6,
-              boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+              gap: 5,
             }}
-            title="Descargar FORMATO DE ENTREGA DE AGUA Oficial en Excel (Estructura idéntica al documento físico)"
           >
-            <span>📊</span> Formato Oficial Excel
+            <span>📊</span> Excel Oficial
           </a>
         </div>
       </div>
@@ -1280,7 +1334,6 @@ export default function EntregasPage() {
 
         const totalSemanaConHoy = Math.round((entregadoSemanaActual + litrosNum) * 100) / 100;
         const restanteDespuesDeHoy = Math.max(0, Math.round((cuotaSemanalTotal - totalSemanaConHoy) * 100) / 100);
-        const excedenteSemanal = Math.max(0, Math.round((totalSemanaConHoy - cuotaSemanalTotal) * 100) / 100);
         const porcentajeAvanceSemanal =
           cuotaSemanalTotal > 0 ? Math.min(100, Math.round((totalSemanaConHoy / cuotaSemanalTotal) * 1000) / 10) : 0;
 
@@ -1385,120 +1438,77 @@ export default function EntregasPage() {
                 {/* PANEL DE CONTROL SEMANAL DEL SECTOR (META SEMANAL VS. ENTREGAS DIARIAS Y RESTANTE) */}
                 <div
                   style={{
-                    background: 'linear-gradient(135deg, #f8fafc 0%, #eff6ff 100%)',
-                    border: '1.5px solid #93c5fd',
+                    background: '#f8fafc',
+                    border: '1px solid #cbd5e1',
                     borderRadius: 12,
                     padding: '12px 14px',
                     marginBottom: 14,
                   }}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', gap: 6 }}>
-                    <div style={{ fontSize: 11.5, fontWeight: 800, color: '#1e3a8a', textTransform: 'uppercase' }}>
-                      📅 Control Semanal del Sector ({etiquetaSemana})
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 6 }}>
+                    <div style={{ fontSize: 11.5, fontWeight: 800, color: '#0f172a' }}>
+                      📅 Semana {etiquetaSemana}
                     </div>
                     <span
                       style={{
                         fontSize: 11,
                         fontWeight: 700,
-                        background: '#dbeafe',
-                        color: '#1d4ed8',
+                        background: '#e0f2fe',
+                        color: '#0369a1',
                         padding: '2px 9px',
                         borderRadius: 999,
                       }}
                     >
-                      {totalMarcados} familias ({habitantesTotal} hab. × 350 L/sem)
+                      {totalMarcados} familias ({habitantesTotal} hab.)
                     </span>
                   </div>
 
                   <div className="responsive-grid-4col">
-                    <div style={{ background: '#ffffff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '8px 10px' }}>
-                      <div style={{ fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
-                        Estimado de la Semana
-                      </div>
-                      <div style={{ fontSize: 15, fontWeight: 900, color: '#1e40af', marginTop: 2 }}>
-                        {cuotaSemanalTotal.toLocaleString('es-PE')} Lts
-                      </div>
-                      <div style={{ fontSize: 10, color: '#64748b' }}>
-                        ({(cuotaSemanalTotal / 1000).toFixed(2)} m³ • ~{cuotaDiariaTotal.toLocaleString('es-PE')} L/día)
+                    <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '8px 10px' }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: '#64748b' }}>META SEMANAL</div>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', marginTop: 2 }}>
+                        {cuotaSemanalTotal.toLocaleString('es-PE', { maximumFractionDigits: 2 })} L
                       </div>
                     </div>
 
-                    <div style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: 8, padding: '8px 10px' }}>
-                      <div style={{ fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
-                        Entregado Previo (Sem.)
-                      </div>
-                      <div style={{ fontSize: 15, fontWeight: 900, color: '#0f766e', marginTop: 2 }}>
-                        {entregadoSemanaActual.toLocaleString('es-PE')} Lts
-                      </div>
-                      <div style={{ fontSize: 10, color: '#64748b' }}>
-                        Faltaban: {restanteAntesDeHoy.toLocaleString('es-PE')} Lts
+                    <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '8px 10px' }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: '#64748b' }}>YA ENTREGADO</div>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: '#0284c7', marginTop: 2 }}>
+                        {entregadoSemanaActual.toLocaleString('es-PE', { maximumFractionDigits: 2 })} L
                       </div>
                     </div>
 
-                    <div style={{ background: '#f0fdfa', border: '1px solid #5eead4', borderRadius: 8, padding: '8px 10px' }}>
-                      <div style={{ fontSize: 10, fontWeight: 700, color: '#0f766e', textTransform: 'uppercase' }}>
-                        Entrega Hoy (Depósito)
-                      </div>
-                      <div style={{ fontSize: 15, fontWeight: 900, color: '#0d9488', marginTop: 2 }}>
-                        +{litrosNum.toLocaleString('es-PE')} Lts
-                      </div>
-                      <div style={{ fontSize: 10, color: '#0f766e' }}>
-                        Acumulado: {totalSemanaConHoy.toLocaleString('es-PE')} Lts
+                    <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 10, padding: '8px 10px' }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: '#0369a1' }}>POR FAMILIA HOY</div>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: '#0284c7', marginTop: 2 }}>
+                        +{litrosPorBenef.toLocaleString('es-PE', { maximumFractionDigits: 2 })} L
                       </div>
                     </div>
 
                     <div
                       style={{
-                        background: restanteDespuesDeHoy > 0 ? '#fffbeb' : '#dcfce7',
-                        border: restanteDespuesDeHoy > 0 ? '1.5px solid #fcd34d' : '1.5px solid #86efac',
-                        borderRadius: 8,
+                        background: restanteDespuesDeHoy > 0 ? '#fffbeb' : '#f0fdf4',
+                        border: restanteDespuesDeHoy > 0 ? '1px solid #fde68a' : '1px solid #bbf7d0',
+                        borderRadius: 10,
                         padding: '8px 10px',
                       }}
                     >
-                      <div
-                        style={{
-                          fontSize: 10,
-                          fontWeight: 800,
-                          color: restanteDespuesDeHoy > 0 ? '#b45309' : '#166534',
-                          textTransform: 'uppercase',
-                        }}
-                      >
-                        Restante Semana (Tras Hoy)
+                      <div style={{ fontSize: 10, fontWeight: 700, color: restanteDespuesDeHoy > 0 ? '#b45309' : '#15803d' }}>
+                        RESTANTE SEMANA
                       </div>
-                      <div
-                        style={{
-                          fontSize: 15,
-                          fontWeight: 900,
-                          color: restanteDespuesDeHoy > 0 ? '#d97706' : '#15803d',
-                          marginTop: 2,
-                        }}
-                      >
-                        {restanteDespuesDeHoy.toLocaleString('es-PE')} Lts
-                      </div>
-                      <div style={{ fontSize: 10, color: restanteDespuesDeHoy > 0 ? '#92400e' : '#166534', fontWeight: 600 }}>
-                        {restanteDespuesDeHoy > 0
-                          ? `Queda ${(restanteDespuesDeHoy / 1000).toFixed(2)} m³ por entregar`
-                          : excedenteSemanal > 0
-                          ? `Meta cubierta (+${excedenteSemanal.toLocaleString('es-PE')} L extra)`
-                          : '✅ Meta semanal completada'}
+                      <div style={{ fontSize: 15, fontWeight: 800, color: restanteDespuesDeHoy > 0 ? '#d97706' : '#15803d', marginTop: 2 }}>
+                        {restanteDespuesDeHoy.toLocaleString('es-PE', { maximumFractionDigits: 2 })} L
                       </div>
                     </div>
                   </div>
 
-                  {/* Barra de progreso semanal */}
-                  <div style={{ marginTop: 9 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, fontWeight: 700, color: '#334155', marginBottom: 4 }}>
-                      <span>Avance de la programación semanal del sector (incluyendo entrega de hoy)</span>
-                      <span style={{ color: porcentajeAvanceSemanal >= 100 ? '#15803d' : '#1d4ed8' }}>
-                        {porcentajeAvanceSemanal}% ({totalSemanaConHoy.toLocaleString('es-PE')} / {cuotaSemanalTotal.toLocaleString('es-PE')} Lts)
-                      </span>
-                    </div>
-                    <div style={{ width: '100%', height: 8, background: '#e2e8f0', borderRadius: 999, overflow: 'hidden' }}>
+                  <div style={{ marginTop: 8 }}>
+                    <div style={{ width: '100%', height: 6, background: '#e2e8f0', borderRadius: 999, overflow: 'hidden' }}>
                       <div
                         style={{
                           width: `${porcentajeAvanceSemanal}%`,
                           height: '100%',
-                          background: porcentajeAvanceSemanal >= 100 ? '#16a34a' : 'linear-gradient(90deg, #2563eb, #0d9488)',
+                          background: porcentajeAvanceSemanal >= 100 ? '#16a34a' : '#0284c7',
                           transition: 'width 0.25s ease',
                         }}
                       />
@@ -1509,7 +1519,7 @@ export default function EntregasPage() {
                 <div className="responsive-grid-2col" style={{ marginBottom: 14 }}>
                   <div className="form-group" style={{ marginBottom: 0 }}>
                     <label style={{ fontWeight: 700, fontSize: 12 }}>
-                      2. Agua Entregada en Depósito (Litros) *
+                      2. Litros Totales del Depósito *
                     </label>
                     <input
                       type="number"
@@ -1519,7 +1529,7 @@ export default function EntregasPage() {
                       onChange={(e) => setLitrosTotalesDeposito(e.target.value)}
                       required
                       placeholder={`Ej. ${restanteAntesDeHoy || cuotaSemanalTotal}`}
-                      style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1.5px solid #0d9488', fontWeight: 800, fontSize: 15, color: '#0f766e' }}
+                      style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1.5px solid #0284c7', fontWeight: 800, fontSize: 15, color: '#0369a1' }}
                     />
                     <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
                       {cuotaDiariaTotal > 0 && (
@@ -1527,18 +1537,17 @@ export default function EntregasPage() {
                           type="button"
                           onClick={() => setLitrosTotalesDeposito(String(cuotaDiariaTotal))}
                           style={{
-                            padding: '4px 10px',
-                            borderRadius: 6,
-                            fontSize: 11.5,
-                            fontWeight: 800,
+                            padding: '4px 9px',
+                            borderRadius: 999,
+                            fontSize: 11,
+                            fontWeight: 700,
                             cursor: 'pointer',
-                            border: Number(litrosTotalesDeposito) === cuotaDiariaTotal ? '2px solid #0d9488' : '1px solid #99f6e4',
-                            background: Number(litrosTotalesDeposito) === cuotaDiariaTotal ? '#ccfbf1' : '#f0fdfa',
-                            color: '#0f766e',
-                            boxShadow: Number(litrosTotalesDeposito) === cuotaDiariaTotal ? '0 1px 3px rgba(13,148,136,0.2)' : 'none',
+                            border: Number(litrosTotalesDeposito) === cuotaDiariaTotal ? '1.5px solid #0284c7' : '1px solid #bae6fd',
+                            background: Number(litrosTotalesDeposito) === cuotaDiariaTotal ? '#e0f2fe' : '#f0f9ff',
+                            color: '#0369a1',
                           }}
                         >
-                          ☀️ Cuota Diaria ({cuotaDiariaTotal.toLocaleString('es-PE')} L/día) • 50 L/hab
+                          ☀️ Día ({cuotaDiariaTotal.toLocaleString('es-PE')} L)
                         </button>
                       )}
                       {restanteAntesDeHoy > 0 && restanteAntesDeHoy !== cuotaSemanalTotal && (
@@ -1546,8 +1555,8 @@ export default function EntregasPage() {
                           type="button"
                           onClick={() => setLitrosTotalesDeposito(String(restanteAntesDeHoy))}
                           style={{
-                            padding: '3px 8px',
-                            borderRadius: 6,
+                            padding: '4px 9px',
+                            borderRadius: 999,
                             fontSize: 11,
                             fontWeight: 700,
                             cursor: 'pointer',
@@ -1556,51 +1565,33 @@ export default function EntregasPage() {
                             color: '#b45309',
                           }}
                         >
-                          ⏳ Restante Semana ({restanteAntesDeHoy.toLocaleString('es-PE')} L)
+                          ⏳ Restante ({restanteAntesDeHoy.toLocaleString('es-PE')} L)
                         </button>
                       )}
-                      {cuotaSemanalTotal > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => setLitrosTotalesDeposito(String(cuotaSemanalTotal))}
-                          style={{
-                            padding: '3px 8px',
-                            borderRadius: 6,
-                            fontSize: 11,
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                            border: Number(litrosTotalesDeposito) === cuotaSemanalTotal ? '1.5px solid #1d4ed8' : '1px solid #93c5fd',
-                            background: Number(litrosTotalesDeposito) === cuotaSemanalTotal ? '#dbeafe' : '#eff6ff',
-                            color: '#1e40af',
-                          }}
-                        >
-                          📅 Meta Semanal ({cuotaSemanalTotal.toLocaleString('es-PE')} L)
-                        </button>
-                      )}
-                      {['10000', '15000', '19000'].map((preset) => (
+                      {['15000', '19000'].map((preset) => (
                         <button
                           key={preset}
                           type="button"
                           onClick={() => setLitrosTotalesDeposito(preset)}
                           style={{
-                            padding: '3px 8px',
-                            borderRadius: 6,
+                            padding: '4px 9px',
+                            borderRadius: 999,
                             fontSize: 11,
                             fontWeight: 600,
                             cursor: 'pointer',
-                            border: litrosTotalesDeposito === preset ? '1px solid #0d9488' : '1px solid #cbd5e1',
-                            background: litrosTotalesDeposito === preset ? '#ccfbf1' : '#f8fafc',
-                            color: litrosTotalesDeposito === preset ? '#0f766e' : '#475569',
+                            border: litrosTotalesDeposito === preset ? '1.5px solid #0284c7' : '1px solid #cbd5e1',
+                            background: litrosTotalesDeposito === preset ? '#e0f2fe' : '#f8fafc',
+                            color: litrosTotalesDeposito === preset ? '#0369a1' : '#475569',
                           }}
                         >
-                          {Number(preset) / 1000} m³ ({Number(preset).toLocaleString('es-PE')} L)
+                          {Number(preset) / 1000} m³
                         </button>
                       ))}
                     </div>
                   </div>
 
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label style={{ fontWeight: 700, fontSize: 12 }}>Fecha de Entrega del Día *</label>
+                    <label style={{ fontWeight: 700, fontSize: 12 }}>Fecha de Entrega *</label>
                     <input
                       type="date"
                       value={fechaDeposito}
@@ -1614,51 +1605,6 @@ export default function EntregasPage() {
                       required
                       style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontWeight: 600 }}
                     />
-                    <div style={{ fontSize: 11, color: '#64748b', marginTop: 6 }}>
-                      Descuenta automáticamente del saldo semanal ({etiquetaSemana}).
-                    </div>
-                  </div>
-                </div>
-
-                {/* RESUMEN DE DIVISIÓN AUTOMÁTICA */}
-                <div
-                  style={{
-                    background: '#f0fdfa',
-                    border: '1.5px solid #5eead4',
-                    borderRadius: 12,
-                    padding: '12px 16px',
-                    marginBottom: 14,
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    flexWrap: 'wrap',
-                    gap: 12,
-                  }}
-                >
-                  <div>
-                    <div style={{ fontSize: 11, fontWeight: 800, color: '#0f766e', textTransform: 'uppercase' }}>
-                      📊 División Automática por Beneficiario (Entrega del Día)
-                    </div>
-                    <div style={{ fontSize: 13, color: '#134e4a', marginTop: 2 }}>
-                      <strong>{litrosNum.toLocaleString('es-PE')} Lts</strong> ÷ <strong>{totalMarcados} beneficiarios marcados</strong>
-                      {benefsDelSector.length - totalMarcados > 0 && (
-                        <span style={{ color: '#b45309', fontWeight: 700, marginLeft: 8 }}>
-                          ({benefsDelSector.length - totalMarcados} desmarcado(s) para otro depósito)
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div
-                    style={{
-                      background: '#0d9488',
-                      color: '#ffffff',
-                      padding: '8px 14px',
-                      borderRadius: 10,
-                      fontWeight: 900,
-                      fontSize: 16,
-                    }}
-                  >
-                    {litrosPorBenef.toLocaleString('es-PE')} Lts / benef.
                   </div>
                 </div>
 
