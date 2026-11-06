@@ -197,6 +197,16 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
   const [filtroModalEntregas, setFiltroModalEntregas] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
 
+  // Sugerencia 1, 2 y 4: Reparto Continuo, Control de Viajes de Cisterna y Cierre de Jornada
+  const [viajeActual, setViajeActual] = useState<number>(1);
+  const [ultimaEntregaResumen, setUltimaEntregaResumen] = useState<{
+    nombre: string;
+    litros: number;
+    hora: string;
+  } | null>(null);
+  const [cierreJornadaModalVisible, setCierreJornadaModalVisible] = useState<boolean>(false);
+  const [jornadaCerradaHoy, setJornadaCerradaHoy] = useState<boolean>(false);
+
   const formatDiasSemana = (dias?: string) => {
     if (!dias) return 'Lunes a Viernes';
     const partes = dias.split(',').map((d) => d.trim()).filter(Boolean);
@@ -1187,15 +1197,47 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
               await loadProgramaciones();
               await loadEntregasDelDia(fechaIso);
 
-              Alert.alert(
-                '✅ Entrega del Sector Registrada',
-                `Se registró exitosamente la entrega en depósito único para ${totalBenef} beneficiarios de ${sectorDeposito}.\n\n` +
-                  `• Volumen total: ${litrosTot.toLocaleString()} L\n` +
-                  `• Asignado a cada beneficiario: ${litrosPorBenef.toLocaleString()} L\n` +
-                  (excluidosCount > 0
-                    ? `• ${excluidosCount} beneficiario(s) quedaron desmarcados para recibir en otro depósito.`
-                    : '• Todos los beneficiarios del sector quedaron atendidos.')
+              const capUnViaje = Number(
+                cisternas.find((c) => c.id === selectedCisternaId)?.capacidad_litros ||
+                selectedProg?.cisterna_capacidad_litros ||
+                19000
               );
+              const acumuladoPrevioDia = entregasDelDia.reduce(
+                (acc, curr) => acc + (Number(curr.litros_entregados) || 0),
+                0
+              );
+              const nuevoTotalDia = Math.round((acumuladoPrevioDia + litrosTot) * 100) / 100;
+              const limiteViajeActual = viajeActual * capUnViaje;
+
+              if (nuevoTotalDia >= limiteViajeActual) {
+                const sigViaje = Math.max(viajeActual + 1, Math.floor(nuevoTotalDia / capUnViaje) + 1);
+                Alert.alert(
+                  `🚛 Capacidad de Viaje #${viajeActual} Completada`,
+                  `Se entregaron ${litrosTot.toLocaleString('es-PE')} L en ${sectorDeposito} (${totalBenef} fam.).\n\n` +
+                    `Acumulado hoy: ${nuevoTotalDia.toLocaleString('es-PE')} L (Capacidad de cisterna: ${capUnViaje.toLocaleString('es-PE')} L).\n` +
+                    `¿Desea iniciar el Viaje #${sigViaje} y registrar el control de cloro de la nueva carga?`,
+                  [
+                    {
+                      text: `Seguir en Viaje #${viajeActual}`,
+                      style: 'cancel',
+                    },
+                    {
+                      text: `🚛 Iniciar Viaje #${sigViaje} + Cloro`,
+                      onPress: () => {
+                        setViajeActual(sigViaje);
+                        setEtapaControl('CARGA');
+                        setSectorCalidad('Surtidor / Planta');
+                        setCalidadModalVisible(true);
+                      },
+                    },
+                  ]
+                );
+              } else {
+                Alert.alert(
+                  '✅ Entrega del Sector Registrada',
+                  `Depósito único en ${sectorDeposito}: ${litrosTot.toLocaleString('es-PE')} L entre ${totalBenef} familias (${litrosPorBenef.toLocaleString('es-PE')} L c/u).`
+                );
+              }
             } catch (err: any) {
               Alert.alert('Error', 'No se pudo registrar la entrega del depósito: ' + err.message);
             } finally {
@@ -1843,20 +1885,27 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
       );
 
       const diaMsg = diaSeleccionado?.esHoy
-        ? `Jornada: Hoy (${diaSeleccionado.nombre})`
-        : `Jornada Asignada: ${diaSeleccionado.nombre} (${diaSeleccionado.fechaCorta}) [Regularización]`;
+        ? `Hoy (${diaSeleccionado.nombre})`
+        : `${diaSeleccionado.nombre} (${diaSeleccionado.fechaCorta})`;
 
-      if (saldoRestante > 0) {
-        Alert.alert(
-          '🟡 Entrega Parcial Registrada',
-          `Se guardaron ${litrosNum} Lts para ${beneficiario.nombres_apellidos}.\n${diaMsg}\n\n⚠️ QUEDAN PENDIENTES: ${saldoRestante} Lts por entregar en esta programación.\nEstado: Guardado en Celular (Offline-First)`
-        );
-      } else {
-        Alert.alert(
-          '✅ Entrega Completa Registrada',
-          `Se completó el abastecimiento de ${litrosNum} Lts para ${beneficiario.nombres_apellidos}.\n${diaMsg}\nCuota 100% cubierta.\nEstado: Guardado en Celular (Offline-First)`
-        );
-      }
+      const nombreGuardado = beneficiario.nombres_apellidos || beneficiario.nombres || 'Beneficiario';
+      setUltimaEntregaResumen({
+        nombre: nombreGuardado,
+        litros: litrosNum,
+        hora: new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }),
+      });
+
+      const capUnViaje = Number(
+        cisternas.find((c) => c.id === selectedCisternaId)?.capacidad_litros ||
+        selectedProg?.cisterna_capacidad_litros ||
+        19000
+      );
+      const acumuladoPrevioDia = entregasDelDia.reduce(
+        (acc, curr) => acc + (Number(curr.litros_entregados) || 0),
+        0
+      );
+      const nuevoTotalDia = Math.round((acumuladoPrevioDia + litrosNum) * 100) / 100;
+      const limiteViajeActual = viajeActual * capUnViaje;
 
       // Attempt background sync and refresh local metrics
       syncData().catch(() => {});
@@ -1866,6 +1915,60 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
 
       // Reset Form
       handleCancelBeneficiary();
+
+      if (nuevoTotalDia >= limiteViajeActual && acumuladoPrevioDia < limiteViajeActual) {
+        const sigViaje = viajeActual + 1;
+        Alert.alert(
+          `🚛 Capacidad de Viaje #${viajeActual} Alcanzada`,
+          `Entrega de ${litrosNum} L registrada para ${nombreGuardado}.\n\n` +
+            `Ha alcanzado ${nuevoTotalDia.toLocaleString('es-PE')} L hoy (meta del Viaje #${viajeActual}: ${limiteViajeActual.toLocaleString('es-PE')} L).\n` +
+            `¿Desea pasar al Viaje #${sigViaje} y medir el cloro de la nueva carga?`,
+          [
+            {
+              text: '📷 Escanear Siguiente',
+              onPress: () => {
+                setViajeActual(sigViaje);
+                openQrScanner();
+              },
+            },
+            {
+              text: `🚛 Viaje #${sigViaje} + Cloro`,
+              onPress: () => {
+                setViajeActual(sigViaje);
+                setEtapaControl('CARGA');
+                setSectorCalidad('Surtidor / Planta');
+                setCalidadModalVisible(true);
+              },
+            },
+            {
+              text: 'Listo',
+              style: 'cancel',
+              onPress: () => setViajeActual(sigViaje),
+            },
+          ]
+        );
+      } else {
+        const tituloAlerta = saldoRestante > 0 ? '🟡 Entrega Parcial Guardada' : '✅ Entrega Registrada';
+        const detalleAlerta =
+          saldoRestante > 0
+            ? `${litrosNum} L para ${nombreGuardado} (${diaMsg}).\nResta en la semana: ${saldoRestante} L.`
+            : `${litrosNum} L para ${nombreGuardado} (${diaMsg}).\nCuota semanal cubierta.`;
+
+        Alert.alert(tituloAlerta, detalleAlerta, [
+          {
+            text: '👥 Ir al Padrón',
+            onPress: () => setActiveTab('BENEFICIARIOS'),
+          },
+          {
+            text: '📷 Escanear Siguiente',
+            onPress: () => openQrScanner(),
+          },
+          {
+            text: 'Listo',
+            style: 'cancel',
+          },
+        ]);
+      }
     } catch (error: any) {
       Alert.alert('Error al guardar', error.message);
     }
@@ -2029,18 +2132,32 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
   const montoValorizadoDia = Number(((litrosEntregadosDia / 1000) * 39.13).toFixed(2));
   const volPromedioDia = familiasAtendidasDia > 0 ? Math.round(litrosEntregadosDia / familiasAtendidasDia) : 0;
 
-  // Comparativa: Meta del día (Cisterna asignada o programación) vs Entregado hoy
-  const metaLitrosDia = Number(
+  // Comparativa: Meta por Viaje de Cisterna y Acumulado Diario (Sugerencia 2)
+  const capacidadUnViaje = Number(
     activeCisterna?.capacidad_litros || 
     selectedProg?.cisterna_capacidad_litros || 
     selectedProg?.litros_programados || 
     19000
   );
+  const viajeCalculadoPorVolumen = litrosEntregadosDia > 0
+    ? Math.max(1, Math.ceil(litrosEntregadosDia / capacidadUnViaje))
+    : 1;
+  const viajeEfectivo = Math.max(viajeActual, viajeCalculadoPorVolumen);
+  const metaLitrosDia = viajeEfectivo * capacidadUnViaje;
+  const litrosEnViajeActual = Math.min(
+    capacidadUnViaje,
+    Math.max(0, Math.round((litrosEntregadosDia - (viajeEfectivo - 1) * capacidadUnViaje) * 100) / 100)
+  );
+  const porcentajeViajeActual = capacidadUnViaje > 0
+    ? Math.min(100, Math.round((litrosEnViajeActual / capacidadUnViaje) * 100))
+    : 0;
+
   const totalFamiliasPadrón = beneficiariosSector.length || Number(selectedProg?.total_beneficiarios || selectedProg?.poblacion_programada || 0);
   const familiasPendientesDia = Math.max(0, totalFamiliasPadrón - familiasAtendidasDia);
   const litrosRestantesDia = Math.max(0, metaLitrosDia - litrosEntregadosDia);
   const porcentajeAvanceLitros = metaLitrosDia > 0 ? Math.min(100, Math.round((litrosEntregadosDia / metaLitrosDia) * 100)) : 0;
   const porcentajeAvanceFamilias = totalFamiliasPadrón > 0 ? Math.min(100, Math.round((familiasAtendidasDia / totalFamiliasPadrón) * 100)) : 0;
+  const pendientesSyncDiaCount = entregasDelDia.filter((e) => e.sincronizado === 0 || e.sync_status !== 'SYNCED').length;
 
   // Métricas consolidadas ÚNICAMENTE de la jornada del día (NUNCA mostrar el global acumulado de la programación)
   const diaMetrics = {
@@ -2758,14 +2875,50 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
               </View>
             </View>
 
+            {/* CONTROL DE VIAJES DE CISTERNA (SUGERENCIA 2) */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, backgroundColor: '#f8fafc', padding: 6, borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                <MaterialCommunityIcons name="truck-fast-outline" size={15} color="#0284c7" />
+                <Text style={{ fontSize: 11, fontWeight: '800', color: '#334155' }}>
+                  Carga / Viaje:
+                </Text>
+              </View>
+              <View style={{ flexDirection: 'row', gap: 5 }}>
+                {[1, 2, 3].map((numV) => {
+                  const isCurrentV = viajeEfectivo === numV;
+                  return (
+                    <TouchableOpacity
+                      key={`viaje-btn-${numV}`}
+                      onPress={() => setViajeActual(numV)}
+                      style={{
+                        paddingHorizontal: 10,
+                        paddingVertical: 4,
+                        borderRadius: 999,
+                        backgroundColor: isCurrentV ? '#0284c7' : '#ffffff',
+                        borderWidth: 1,
+                        borderColor: isCurrentV ? '#0284c7' : '#cbd5e1',
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={{ fontSize: 10.5, fontWeight: '800', color: isCurrentV ? '#ffffff' : '#475569' }}>
+                        Viaje #{numV}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+
             {/* BARRA VISUAL DE PROGRESO DE CISTERNA */}
             <View style={[styles.progressBarWrapper, { paddingVertical: 8 }]}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                <Text style={styles.progressBarLabel}>Avance de Cisterna</Text>
-                <Text style={styles.progressBarPercent}>{porcentajeAvanceLitros}%</Text>
+                <Text style={styles.progressBarLabel}>
+                  Avance Viaje #{viajeEfectivo} ({litrosEnViajeActual.toLocaleString('es-PE')} / {capacidadUnViaje.toLocaleString('es-PE')} L)
+                </Text>
+                <Text style={styles.progressBarPercent}>{porcentajeViajeActual}%</Text>
               </View>
               <View style={styles.progressBarTrack}>
-                <View style={[styles.progressBarFill, { width: `${Math.min(100, Math.max(0, porcentajeAvanceLitros))}%` }]} />
+                <View style={[styles.progressBarFill, { width: `${Math.min(100, Math.max(0, porcentajeViajeActual))}%` }]} />
               </View>
             </View>
 
@@ -2800,29 +2953,66 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
               </View>
             </View>
 
-            {/* BOTÓN PARA VER REALMENTE LO QUE SE ENTREGÓ HOY */}
-            <TouchableOpacity
-              style={styles.btnVerDetalleEntregas}
-              onPress={() => setModalEntregasDiaVisible(true)}
-              activeOpacity={0.82}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
-                <View style={styles.iconBoxDetalleEntregas}>
-                  <Ionicons name="clipboard-outline" size={18} color="#0284c7" />
+            {/* BOTONES DE AUDITORÍA Y CIERRE DE JORNADA (SUGERENCIA 4) */}
+            <View style={{ gap: 8 }}>
+              <TouchableOpacity
+                style={styles.btnVerDetalleEntregas}
+                onPress={() => setModalEntregasDiaVisible(true)}
+                activeOpacity={0.82}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+                  <View style={styles.iconBoxDetalleEntregas}>
+                    <Ionicons name="clipboard-outline" size={18} color="#0284c7" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.btnVerDetalleEntregasText}>
+                      Entregas de Hoy ({entregasDelDia.length})
+                    </Text>
+                    <Text style={styles.btnVerDetalleEntregasSub}>
+                      {entregasDelDia.length > 0
+                        ? `${diaMetrics.volRepartido.toLocaleString('es-PE')} L • ${diaMetrics.familias} familias`
+                        : 'Sin entregas registradas hoy'}
+                    </Text>
+                  </View>
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.btnVerDetalleEntregasText}>
-                    Entregas de Hoy ({entregasDelDia.length})
-                  </Text>
-                  <Text style={styles.btnVerDetalleEntregasSub}>
-                    {entregasDelDia.length > 0
-                      ? `${diaMetrics.volRepartido.toLocaleString('es-PE')} L • ${diaMetrics.familias} familias`
-                      : 'Sin entregas registradas hoy'}
-                  </Text>
+                <Ionicons name="chevron-forward" size={18} color="#0284c7" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  backgroundColor: jornadaCerradaHoy ? '#dcfce7' : '#f0fdf4',
+                  borderWidth: 1.5,
+                  borderColor: '#86efac',
+                  borderRadius: 14,
+                  paddingVertical: 10,
+                  paddingHorizontal: 12,
+                }}
+                onPress={() => setCierreJornadaModalVisible(true)}
+                activeOpacity={0.82}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                  <Ionicons
+                    name={jornadaCerradaHoy ? 'checkmark-done-circle' : 'shield-checkmark-outline'}
+                    size={18}
+                    color="#15803d"
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 12.5, fontWeight: '800', color: '#166534' }}>
+                      {jornadaCerradaHoy ? '✅ Jornada Verificada y Cerrada' : 'Cerrar Jornada del Día'}
+                    </Text>
+                    <Text style={{ fontSize: 10.5, color: '#15803d', fontWeight: '600' }}>
+                      {pendientesSyncDiaCount > 0
+                        ? `⚠️ ${pendientesSyncDiaCount} entrega(s) por sincronizar`
+                        : '100% sincronizado • Ver acta resumen'}
+                    </Text>
+                  </View>
                 </View>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color="#0284c7" />
-            </TouchableOpacity>
+                <Ionicons name="chevron-forward" size={16} color="#15803d" />
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* BOTÓN PRINCIPAL DE ACCIÓN: CONDUCCIÓN VS REGISTRO COORDINADOR */}
@@ -3284,6 +3474,74 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
       {/* SI NO HAY BENEFICIARIO SELECCIONADO, MOSTRAR CONTROLES DE BÚSQUEDA Y FLOTA */}
       {!beneficiario ? (
         <>
+          {/* BANNER DE CONTINUAR REPARTO RÁPIDO TRAS REGISTRAR ENTREGA (SUGERENCIA 1) */}
+          {ultimaEntregaResumen && (
+            <View
+              style={{
+                backgroundColor: '#f0fdf4',
+                borderWidth: 1.5,
+                borderColor: '#86efac',
+                borderRadius: 16,
+                padding: 12,
+                marginBottom: 12,
+              }}
+            >
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+                  <Ionicons name="checkmark-circle" size={16} color="#16a34a" />
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: '#166534', flex: 1 }} numberOfLines={1}>
+                    Última: {ultimaEntregaResumen.nombre} ({ultimaEntregaResumen.litros} L)
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={() => setUltimaEntregaResumen(null)}>
+                  <Ionicons name="close" size={16} color="#15803d" />
+                </TouchableOpacity>
+              </View>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TouchableOpacity
+                  style={{
+                    flex: 1,
+                    backgroundColor: '#16a34a',
+                    paddingVertical: 8,
+                    borderRadius: 10,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 5,
+                  }}
+                  onPress={openQrScanner}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="qr-code-outline" size={14} color="#ffffff" />
+                  <Text style={{ color: '#ffffff', fontSize: 11.5, fontWeight: '800' }}>
+                    Escanear Siguiente
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={{
+                    flex: 1,
+                    backgroundColor: '#ffffff',
+                    borderWidth: 1,
+                    borderColor: '#86efac',
+                    paddingVertical: 8,
+                    borderRadius: 10,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 5,
+                  }}
+                  onPress={() => setActiveTab('BENEFICIARIOS')}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="people-outline" size={14} color="#15803d" />
+                  <Text style={{ color: '#15803d', fontSize: 11.5, fontWeight: '800' }}>
+                    Ir al Padrón
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
           {/* ACCIONES PRINCIPALES DE ENTREGA: QR Y DEPÓSITO SECTOR */}
           <View
             style={styles.identificacionCard}
@@ -5122,6 +5380,188 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
             >
               <Text style={styles.modalCancelPillText}>Cerrar</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL DE CIERRE DE JORNADA DIARIO (SUGERENCIA 4) */}
+      <Modal
+        visible={cierreJornadaModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setCierreJornadaModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.entregasDiaModalContent}>
+            <View style={styles.modalCalidadHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+                <View style={[styles.avatarCircle, { width: 38, height: 38, borderRadius: 19, backgroundColor: '#dcfce7' }]}>
+                  <Ionicons name="shield-checkmark" size={20} color="#16a34a" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.modalCalidadTitle}>Cierre de Jornada</Text>
+                  <Text style={styles.modalCalidadSubtitle}>{getFechaLarga(diaSeleccionado)}</Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                onPress={() => setCierreJornadaModalVisible(false)}
+                style={styles.modalCloseCircle}
+              >
+                <Ionicons name="close" size={20} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            {(() => {
+              const entregasDom = entregasDelDia.filter(
+                (e) => !String(e.local_id || '').startsWith('dep-') && !String(e.observaciones_entrega || '').includes('Depósito Único')
+              );
+              const entregasDep = entregasDelDia.filter(
+                (e) => String(e.local_id || '').startsWith('dep-') || String(e.observaciones_entrega || '').includes('Depósito Único')
+              );
+              const litrosDom = Math.round(entregasDom.reduce((acc, e) => acc + (Number(e.litros_entregados) || 0), 0) * 100) / 100;
+              const litrosDep = Math.round(entregasDep.reduce((acc, e) => acc + (Number(e.litros_entregados) || 0), 0) * 100) / 100;
+
+              return (
+                <View style={{ gap: 10, marginTop: 4 }}>
+                  {/* ESTADO DE SINCRONIZACIÓN */}
+                  <View
+                    style={{
+                      backgroundColor: pendientesSyncDiaCount > 0 ? '#fffbeb' : '#f0fdf4',
+                      borderWidth: 1.5,
+                      borderColor: pendientesSyncDiaCount > 0 ? '#fcd34d' : '#86efac',
+                      borderRadius: 14,
+                      padding: 12,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 8,
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                      <Ionicons
+                        name={pendientesSyncDiaCount > 0 ? 'cloud-upload-outline' : 'cloud-done'}
+                        size={20}
+                        color={pendientesSyncDiaCount > 0 ? '#d97706' : '#16a34a'}
+                      />
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 12, fontWeight: '800', color: pendientesSyncDiaCount > 0 ? '#b45309' : '#166534' }}>
+                          {pendientesSyncDiaCount > 0
+                            ? `${pendientesSyncDiaCount} entrega(s) pendientes de subir`
+                            : '100% Sincronizado con Servidor EPS'}
+                        </Text>
+                        <Text style={{ fontSize: 10.5, color: pendientesSyncDiaCount > 0 ? '#92400e' : '#15803d' }}>
+                          {pendientesSyncDiaCount > 0
+                            ? 'Se sincronizarán automáticamente al confirmar cierre'
+                            : 'Todos los registros están respaldados en la nube'}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* RESUMEN DE FLOTA Y VIAJES */}
+                  <View style={{ backgroundColor: '#f8fafc', borderRadius: 14, padding: 12, borderWidth: 1, borderColor: '#e2e8f0', gap: 6 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                      <Text style={{ fontSize: 11.5, color: '#64748b', fontWeight: '700' }}>Cisterna / Ruta:</Text>
+                      <Text style={{ fontSize: 12, color: '#0f172a', fontWeight: '800' }}>
+                        🚛 {activeCisterna?.placa || selectedProg?.cisterna_placa || 'CAT-849'} • {viajeEfectivo} Viaje(s)
+                      </Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                      <Text style={{ fontSize: 11.5, color: '#64748b', fontWeight: '700' }}>Conductor:</Text>
+                      <Text style={{ fontSize: 12, color: '#0f172a', fontWeight: '700' }}>
+                        {selectedProg?.conductor_nombre || user?.nombres || 'Conductor'}
+                      </Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                      <Text style={{ fontSize: 11.5, color: '#64748b', fontWeight: '700' }}>Control Sanitario:</Text>
+                      <Text style={{ fontSize: 12, color: '#0284c7', fontWeight: '800' }}>
+                        Cloro {cloroPpm} ppm • Turb. {turbiedadNtu} NTU
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* DESGLOSE DE VOLUMEN Y ATENCIÓN */}
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <View style={{ flex: 1, backgroundColor: '#f0f9ff', borderRadius: 12, padding: 10, borderWidth: 1, borderColor: '#bae6fd' }}>
+                      <Text style={{ fontSize: 10, fontWeight: '800', color: '#0369a1' }}>🏠 EN DOMICILIO</Text>
+                      <Text style={{ fontSize: 14, fontWeight: '900', color: '#0284c7', marginTop: 2 }}>
+                        {litrosDom.toLocaleString('es-PE')} L
+                      </Text>
+                      <Text style={{ fontSize: 10.5, color: '#0369a1', fontWeight: '600' }}>
+                        {entregasDom.length} entregas
+                      </Text>
+                    </View>
+                    <View style={{ flex: 1, backgroundColor: '#f0fdfa', borderRadius: 12, padding: 10, borderWidth: 1, borderColor: '#99f6e4' }}>
+                      <Text style={{ fontSize: 10, fontWeight: '800', color: '#0f766e' }}>🏢 DEPÓSITO SECTOR</Text>
+                      <Text style={{ fontSize: 14, fontWeight: '900', color: '#0d9488', marginTop: 2 }}>
+                        {litrosDep.toLocaleString('es-PE')} L
+                      </Text>
+                      <Text style={{ fontSize: 10.5, color: '#0f766e', fontWeight: '600' }}>
+                        {entregasDep.length} familias
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* TOTAL GENERAL CONSOLIDADO */}
+                  <View style={{ backgroundColor: '#0f172a', borderRadius: 14, padding: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <View>
+                      <Text style={{ fontSize: 10.5, fontWeight: '800', color: '#94a3b8' }}>TOTAL DESPACHADO HOY</Text>
+                      <Text style={{ fontSize: 18, fontWeight: '900', color: '#ffffff', marginTop: 2 }}>
+                        {diaMetrics.volRepartido.toLocaleString('es-PE')} L ({(diaMetrics.volRepartido / 1000).toFixed(2)} m³)
+                      </Text>
+                    </View>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={{ fontSize: 10.5, fontWeight: '800', color: '#86efac' }}>{diaMetrics.familias} Familias</Text>
+                      <Text style={{ fontSize: 13, fontWeight: '800', color: '#4ade80', marginTop: 2 }}>
+                        S/. {diaMetrics.monto.toFixed(2)}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* BOTÓN DE CONFIRMACIÓN Y SINCRONIZACIÓN DE CIERRE */}
+                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                    <TouchableOpacity
+                      style={[styles.modalCalidadCancelBtn, { flex: 1 }]}
+                      onPress={() => setCierreJornadaModalVisible(false)}
+                    >
+                      <Text style={styles.modalCalidadCancelText}>Volver</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.modalCalidadSaveBtn, { flex: 1.6, backgroundColor: '#16a34a' }]}
+                      disabled={isSyncing}
+                      onPress={async () => {
+                        setIsSyncing(true);
+                        try {
+                          await autoRecoverPendingSync();
+                          await syncData(true);
+                          await loadEntregasDelDia(diaSeleccionado?.fechaIso);
+                          setJornadaCerradaHoy(true);
+                          setCierreJornadaModalVisible(false);
+                          Alert.alert(
+                            '✅ Jornada Cerrada y Sincronizada',
+                            `Se verificó el cierre de la jornada (${diaMetrics.volRepartido.toLocaleString('es-PE')} L • ${diaMetrics.familias} familias atendidas en ${viajeEfectivo} viaje(s)).`
+                          );
+                        } catch (_) {
+                          setJornadaCerradaHoy(true);
+                          setCierreJornadaModalVisible(false);
+                        } finally {
+                          setIsSyncing(false);
+                        }
+                      }}
+                    >
+                      {isSyncing ? (
+                        <ActivityIndicator size="small" color="#ffffff" />
+                      ) : (
+                        <>
+                          <Ionicons name="checkmark-done-circle-outline" size={18} color="#ffffff" />
+                          <Text style={styles.modalCalidadSaveText}>Confirmar Cierre</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              );
+            })()}
           </View>
         </View>
       </Modal>

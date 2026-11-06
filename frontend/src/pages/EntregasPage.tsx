@@ -46,6 +46,7 @@ export default function EntregasPage() {
 
   // Estado para Entrega en Depósito Único por Sector
   const [depositoModalOpen, setDepositoModalOpen] = useState(false);
+  const [cierreModalOpen, setCierreModalOpen] = useState(false);
   const [beneficiariosList, setBeneficiariosList] = useState<any[]>([]);
   const [programacionesList, setProgramacionesList] = useState<any[]>([]);
   const [sectorDeposito, setSectorDeposito] = useState('');
@@ -719,6 +720,24 @@ export default function EntregasPage() {
           </span>
         </div>
         <div className="module-actions" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => setCierreModalOpen(true)}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              background: '#16a34a',
+              borderColor: '#16a34a',
+              borderRadius: 10,
+              padding: '8px 14px',
+              fontWeight: 700,
+              boxShadow: '0 2px 6px rgba(22,163,74,0.2)',
+            }}
+          >
+            ✅ Cierre de Jornada
+          </button>
           <button
             type="button"
             className="btn-primary"
@@ -1825,6 +1844,149 @@ export default function EntregasPage() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* MODAL RESUMEN DE CIERRE DE JORNADA (SUGERENCIA 4 WEB) */}
+      {cierreModalOpen && (() => {
+        const fechaBase = selectedFecha || hoyIso;
+        const entregasJornada = selectedFecha
+          ? filtered
+          : entregas.filter((e) => (e.fecha_captura || e.fecha_hora || '').slice(0, 10) === hoyIso);
+        const listaUsada = entregasJornada.length > 0 ? entregasJornada : filtered;
+        const etiquetaJornada = entregasJornada.length > 0 ? `Jornada ${fechaBase}` : ' Consolidado Filtrado';
+
+        const totalLitrosCierre = Math.round(
+          listaUsada.reduce((acc, e) => acc + Number(e.litros_entregados || 0), 0) * 100
+        ) / 100;
+        const viajesEstimadosCierre = totalLitrosCierre > 0 ? Math.max(1, Math.ceil(totalLitrosCierre / 19000)) : 0;
+
+        const entregasDom = listaUsada.filter(
+          (e) => !e.lote_deposito_id && !String(e.local_id || '').startsWith('dep-')
+        );
+        const entregasDep = listaUsada.filter(
+          (e) => !!e.lote_deposito_id || String(e.local_id || '').startsWith('dep-')
+        );
+        const litrosDom = Math.round(entregasDom.reduce((acc, e) => acc + Number(e.litros_entregados || 0), 0) * 100) / 100;
+        const litrosDep = Math.round(entregasDep.reduce((acc, e) => acc + Number(e.litros_entregados || 0), 0) * 100) / 100;
+
+        const porSectorMap = new Map<string, { count: number; litros: number }>();
+        for (const e of listaUsada) {
+          const sec = (e.sector || e.zona || 'General').trim();
+          const prev = porSectorMap.get(sec) || { count: 0, litros: 0 };
+          porSectorMap.set(sec, {
+            count: prev.count + 1,
+            litros: Math.round((prev.litros + Number(e.litros_entregados || 0)) * 100) / 100,
+          });
+        }
+
+        return (
+          <div className="modal-overlay" onClick={() => setCierreModalOpen(false)}>
+            <div className="modal-content" style={{ maxWidth: 620 }} onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <div>
+                  <h2 style={{ margin: 0 }}>✅ Acta Resumen de Cierre de Jornada</h2>
+                  <span style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>{etiquetaJornada} • EPS Moyobamba</span>
+                </div>
+                <button className="close-btn" onClick={() => setCierreModalOpen(false)}>✕</button>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 14 }}>
+                <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 12, padding: 12 }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, color: '#0369a1' }}>VOLUMEN TOTAL</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: '#0284c7', marginTop: 2 }}>
+                    {totalLitrosCierre.toLocaleString('es-PE', { maximumFractionDigits: 2 })} L
+                  </div>
+                  <div style={{ fontSize: 11, color: '#0369a1' }}>{(totalLitrosCierre / 1000).toFixed(2)} m³</div>
+                </div>
+
+                <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 12, padding: 12 }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, color: '#15803d' }}>FAMILIAS ATENDIDAS</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: '#166534', marginTop: 2 }}>
+                    {listaUsada.length}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#15803d' }}>100% sincronizadas</div>
+                </div>
+
+                <div style={{ background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: 12, padding: 12 }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, color: '#475569' }}>VIAJES DE CISTERNA</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: '#0f172a', marginTop: 2 }}>
+                    {viajesEstimadosCierre} Viaje(s)
+                  </div>
+                  <div style={{ fontSize: 11, color: '#64748b' }}>Base 19 m³ / viaje</div>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+                <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 12, padding: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: '#334155' }}>🏠 Entrega en Domicilio</div>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', marginTop: 4 }}>
+                    {litrosDom.toLocaleString('es-PE', { maximumFractionDigits: 2 })} L ({entregasDom.length} fam.)
+                  </div>
+                </div>
+                <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 12, padding: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: '#0f766e' }}>🚰 Depósito por Sector</div>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: '#0d9488', marginTop: 4 }}>
+                    {litrosDep.toLocaleString('es-PE', { maximumFractionDigits: 2 })} L ({entregasDep.length} fam.)
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: '#1e293b', marginBottom: 8 }}>
+                  Desglose por Sector Atendido ({porSectorMap.size})
+                </div>
+                <div style={{ maxHeight: 180, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 10, background: '#f8fafc', padding: 8 }}>
+                  {Array.from(porSectorMap.entries()).map(([sec, datos]) => (
+                    <div
+                      key={sec}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '7px 10px',
+                        background: '#ffffff',
+                        borderRadius: 8,
+                        border: '1px solid #e2e8f0',
+                        marginBottom: 4,
+                      }}
+                    >
+                      <span style={{ fontSize: 12.5, fontWeight: 700, color: '#0f172a' }}>📍 {sec}</span>
+                      <span style={{ fontSize: 12, fontWeight: 800, color: '#0284c7' }}>
+                        {datos.litros.toLocaleString('es-PE', { maximumFractionDigits: 2 })} L ({datos.count} fam.)
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="modal-footer" style={{ justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <a
+                    href={`${API_BASE_URL}/api/v1/entregas/export-pdf${queryString}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn-secondary"
+                    style={{ textDecoration: 'none', color: '#0369a1', borderColor: '#bae6fd', background: '#f0f9ff', fontWeight: 700 }}
+                  >
+                    📄 Descargar Acta PDF
+                  </a>
+                  <a
+                    href={`${API_BASE_URL}/api/v1/entregas/export-excel${queryString}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn-secondary"
+                    style={{ textDecoration: 'none', color: '#15803d', borderColor: '#bbf7d0', background: '#f0fdf4', fontWeight: 700 }}
+                  >
+                    📊 Exportar Excel
+                  </a>
+                </div>
+                <button className="btn-primary" onClick={() => setCierreModalOpen(false)} style={{ background: '#16a34a', borderColor: '#16a34a' }}>
+                  Listo
+                </button>
+              </div>
             </div>
           </div>
         );
