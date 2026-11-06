@@ -1064,6 +1064,46 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
     }
   };
 
+  const handlePickPhotoDepositoFromGallery = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permiso requerido', 'Se necesita acceso a la galería para adjuntar la fotografía.');
+        return;
+      }
+      const res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: false,
+        quality: 0.8,
+      });
+      if (!res.canceled && res.assets && res.assets.length > 0) {
+        let photoUri = res.assets[0].uri;
+        try {
+          const manipulated = await ImageManipulator.manipulateAsync(
+            photoUri,
+            [{ resize: { width: 1024 } }],
+            { compress: 0.75, format: ImageManipulator.SaveFormat.WEBP }
+          );
+          photoUri = manipulated.uri;
+        } catch (_) {}
+
+        if (Platform.OS !== 'web' && FileSystem.documentDirectory) {
+          try {
+            const dirPath = `${FileSystem.documentDirectory}evidencias/`;
+            await FileSystem.makeDirectoryAsync(dirPath, { intermediates: true }).catch(() => {});
+            const permPath = `${dirPath}deposito_${Date.now()}.webp`;
+            await FileSystem.copyAsync({ from: photoUri, to: permPath });
+            photoUri = permPath;
+          } catch (_) {}
+        }
+
+        setFotoDepositoUri(photoUri);
+      }
+    } catch (err: any) {
+      Alert.alert('Error de galería', err.message);
+    }
+  };
+
   const handleGuardarEntregaDepositoSector = async (forzarSegundoViaje = false) => {
     const litrosTot = parseFloat(litrosTotalesDeposito);
     if (isNaN(litrosTot) || litrosTot <= 0) {
@@ -1797,6 +1837,70 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
     } catch (error: any) {
       console.error('Error taking photo:', error);
       Alert.alert('Error', 'No se pudo capturar la foto: ' + error.message);
+    }
+  };
+
+  const handlePickPhotoFromGallery = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permiso requerido', 'Se necesita acceso a la galería para seleccionar la evidencia.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: false,
+        quality: 0.82,
+        exif: false,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const rawUri = result.assets[0].uri;
+
+        const nowFormatted = new Date().toLocaleString('es-PE', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+        });
+        setPhotoTimestamp(nowFormatted);
+
+        let lat = location?.coords?.latitude ? location.coords.latitude.toFixed(6) : '-6.034172';
+        let lng = location?.coords?.longitude ? location.coords.longitude.toFixed(6) : '-76.971391';
+        let acc = location?.coords?.accuracy ? `${Math.round(location.coords.accuracy)}` : '5';
+
+        if (!location) {
+          try {
+            const last = await Location.getLastKnownPositionAsync();
+            if (last) {
+              setLocation(last);
+              lat = last.coords.latitude.toFixed(6);
+              lng = last.coords.longitude.toFixed(6);
+              acc = `${Math.round(last.coords.accuracy || 5)}`;
+            }
+          } catch (_) {}
+        }
+        setPhotoGpsCoords({ lat, lng, acc });
+
+        let finalDisplayUri = rawUri;
+        try {
+          const manipulated = await ImageManipulator.manipulateAsync(
+            rawUri,
+            [{ resize: { width: 1024 } }],
+            { compress: 0.75, format: ImageManipulator.SaveFormat.WEBP }
+          );
+          finalDisplayUri = manipulated.uri;
+        } catch (_) {}
+
+        setTempPhotoUri(finalDisplayUri);
+        setPhotoPreviewVisible(true);
+      }
+    } catch (error: any) {
+      console.error('Error picking photo from gallery:', error);
+      Alert.alert('Error', 'No se pudo cargar la foto de la galería: ' + error.message);
     }
   };
 
@@ -4015,23 +4119,23 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
             );
           })()}
 
-          {/* EVIDENCIA OPCIONAL (FOTO Y FIRMA EN DISEÑO MATERIAL COMPACTO) */}
+          {/* EVIDENCIA OPCIONAL (CÁMARA, GALERÍA Y FIRMA EN DISEÑO MATERIAL COMPACTO) */}
           <View style={{ marginTop: 10, marginBottom: 4 }}>
             <Text style={{ fontSize: 11.5, fontWeight: '800', color: '#475569', marginBottom: 6 }}>
               Evidencia en Campo (Opcional)
             </Text>
 
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              {/* BOTÓN / ESTADO FOTO */}
+            <View style={{ flexDirection: 'row', gap: 6 }}>
+              {/* BOTÓN TOMAR FOTO (CÁMARA) */}
               <TouchableOpacity
                 style={{
                   flex: 1,
                   flexDirection: 'row',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: 6,
+                  gap: 5,
                   paddingVertical: 10,
-                  paddingHorizontal: 10,
+                  paddingHorizontal: 8,
                   borderRadius: 12,
                   borderWidth: 1.5,
                   borderColor: photoUri ? '#16a34a' : '#bae6fd',
@@ -4040,9 +4144,33 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                 onPress={handleTakePhoto}
                 activeOpacity={0.8}
               >
-                <Ionicons name={photoUri ? 'checkmark-circle' : 'camera-outline'} size={17} color={photoUri ? '#16a34a' : '#0284c7'} />
-                <Text style={{ fontSize: 12, fontWeight: '800', color: photoUri ? '#15803d' : '#0284c7' }}>
-                  {photoUri ? 'Foto Lista' : 'Tomar Foto'}
+                <Ionicons name={photoUri ? 'checkmark-circle' : 'camera-outline'} size={16} color={photoUri ? '#16a34a' : '#0284c7'} />
+                <Text style={{ fontSize: 11.5, fontWeight: '800', color: photoUri ? '#15803d' : '#0284c7' }}>
+                  {photoUri ? 'Cámara' : 'Cámara'}
+                </Text>
+              </TouchableOpacity>
+
+              {/* BOTÓN SUBIR DESDE GALERÍA */}
+              <TouchableOpacity
+                style={{
+                  flex: 1,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 5,
+                  paddingVertical: 10,
+                  paddingHorizontal: 8,
+                  borderRadius: 12,
+                  borderWidth: 1.5,
+                  borderColor: photoUri ? '#16a34a' : '#bae6fd',
+                  backgroundColor: photoUri ? '#f0fdf4' : '#f8fafc',
+                }}
+                onPress={handlePickPhotoFromGallery}
+                activeOpacity={0.8}
+              >
+                <Ionicons name={photoUri ? 'images' : 'images-outline'} size={16} color={photoUri ? '#16a34a' : '#0284c7'} />
+                <Text style={{ fontSize: 11.5, fontWeight: '800', color: photoUri ? '#15803d' : '#0284c7' }}>
+                  Galería
                 </Text>
               </TouchableOpacity>
 
@@ -4053,9 +4181,9 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                   flexDirection: 'row',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: 6,
+                  gap: 5,
                   paddingVertical: 10,
-                  paddingHorizontal: 10,
+                  paddingHorizontal: 8,
                   borderRadius: 12,
                   borderWidth: 1.5,
                   borderColor: hasSignature ? '#16a34a' : (showSignaturePad ? '#0284c7' : '#bae6fd'),
@@ -4064,9 +4192,9 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                 onPress={() => setShowSignaturePad(!showSignaturePad)}
                 activeOpacity={0.8}
               >
-                <Ionicons name={hasSignature ? 'checkmark-circle' : 'create-outline'} size={17} color={hasSignature ? '#16a34a' : '#0284c7'} />
-                <Text style={{ fontSize: 12, fontWeight: '800', color: hasSignature ? '#15803d' : '#0284c7' }}>
-                  {hasSignature ? 'Firmado' : (showSignaturePad ? 'Ocultar Firma' : 'Firmar')}
+                <Ionicons name={hasSignature ? 'checkmark-circle' : 'create-outline'} size={16} color={hasSignature ? '#16a34a' : '#0284c7'} />
+                <Text style={{ fontSize: 11.5, fontWeight: '800', color: hasSignature ? '#15803d' : '#0284c7' }}>
+                  {hasSignature ? 'Firmado' : (showSignaturePad ? 'Ocultar' : 'Firmar')}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -4979,38 +5107,98 @@ export default function RepartoScreen({ user, onLogout }: RepartoScreenProps) {
                     </ScrollView>
                   </View>
 
-                  {/* 4. FOTO OPCIONAL DEL DEPÓSITO */}
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                    <TouchableOpacity
-                      onPress={handleTakePhotoDeposito}
-                      style={{
-                        flex: 1,
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: 6,
-                        paddingVertical: 9,
-                        borderRadius: 12,
-                        borderWidth: 1.5,
-                        borderColor: fotoDepositoUri ? '#16a34a' : '#0284c7',
-                        backgroundColor: fotoDepositoUri ? '#f0fdf4' : '#f0f9ff',
-                      }}
-                    >
-                      <Ionicons
-                        name="camera-outline"
-                        size={16}
-                        color={fotoDepositoUri ? '#15803d' : '#0284c7'}
-                      />
-                      <Text
+                  {/* 4. FOTO OPCIONAL DEL DEPÓSITO (CÁMARA O GALERÍA) */}
+                  <View style={{ marginBottom: 12 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <TouchableOpacity
+                        onPress={handleTakePhotoDeposito}
                         style={{
-                          fontSize: 12,
-                          fontWeight: '800',
-                          color: fotoDepositoUri ? '#15803d' : '#0284c7',
+                          flex: 1,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 6,
+                          paddingVertical: 9,
+                          borderRadius: 12,
+                          borderWidth: 1.5,
+                          borderColor: fotoDepositoUri ? '#16a34a' : '#0284c7',
+                          backgroundColor: fotoDepositoUri ? '#f0fdf4' : '#f0f9ff',
                         }}
                       >
-                        {fotoDepositoUri ? '📸 Foto del Depósito Capturada (Cambiar)' : '📷 Tomar Foto del Depósito (Opcional)'}
-                      </Text>
-                    </TouchableOpacity>
+                        <Ionicons
+                          name="camera-outline"
+                          size={16}
+                          color={fotoDepositoUri ? '#15803d' : '#0284c7'}
+                        />
+                        <Text
+                          style={{
+                            fontSize: 12,
+                            fontWeight: '800',
+                            color: fotoDepositoUri ? '#15803d' : '#0284c7',
+                          }}
+                        >
+                          Tomar Foto
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        onPress={handlePickPhotoDepositoFromGallery}
+                        style={{
+                          flex: 1,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 6,
+                          paddingVertical: 9,
+                          borderRadius: 12,
+                          borderWidth: 1.5,
+                          borderColor: fotoDepositoUri ? '#16a34a' : '#0284c7',
+                          backgroundColor: fotoDepositoUri ? '#f0fdf4' : '#f0f9ff',
+                        }}
+                      >
+                        <Ionicons
+                          name="images-outline"
+                          size={16}
+                          color={fotoDepositoUri ? '#15803d' : '#0284c7'}
+                        />
+                        <Text
+                          style={{
+                            fontSize: 12,
+                            fontWeight: '800',
+                            color: fotoDepositoUri ? '#15803d' : '#0284c7',
+                          }}
+                        >
+                          Subir de Galería
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    {fotoDepositoUri ? (
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          marginTop: 6,
+                          backgroundColor: '#f0fdf4',
+                          borderRadius: 10,
+                          paddingHorizontal: 10,
+                          paddingVertical: 6,
+                          borderWidth: 1,
+                          borderColor: '#bbf7d0',
+                        }}
+                      >
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Ionicons name="checkmark-circle" size={16} color="#16a34a" />
+                          <Text style={{ fontSize: 11.5, fontWeight: '800', color: '#15803d' }}>
+                            Fotografía del depósito lista
+                          </Text>
+                        </View>
+                        <TouchableOpacity onPress={() => setFotoDepositoUri(null)}>
+                          <Text style={{ fontSize: 11.5, fontWeight: '800', color: '#dc2626' }}>Quitar</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : null}
                   </View>
 
                   {/* BOTONES ACCIÓN */}
